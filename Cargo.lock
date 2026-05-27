@@ -582,6 +582,7 @@ name = "ft-core"
 version = "0.0.0"
 dependencies = [
  "chrono",
+ "ft-testkit",
  "hex",
  "jsonschema",
  "proptest",
@@ -651,6 +652,7 @@ version = "0.0.0"
 dependencies = [
  "chrono",
  "ft-core",
+ "ft-storage",
  "ft-testkit",
  "rusqlite",
  "serde",
@@ -713,6 +715,7 @@ version = "0.0.0"
 dependencies = [
  "chrono",
  "ft-core",
+ "ft-storage",
  "proptest",
  "serde",
  "serde_json",

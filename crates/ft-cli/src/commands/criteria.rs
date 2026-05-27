@@ -56,10 +56,9 @@ pub fn add(args: &CriteriaAddArgs, global: &GlobalOpts) -> Result<CommandOutcome
     let _ = actor; // currently unused, would feed proposed-by in M2
 
     ctx.save_record(&mut record)?;
-    Ok(CommandOutcome::Updated(RecordOutcome {
-        command: COMMAND_ADD,
-        record,
-    }))
+    Ok(CommandOutcome::Updated(
+        RecordOutcome::new(COMMAND_ADD, record).with_warnings(ctx.warnings.clone()),
+    ))
 }
 
 /// `firetrail criteria list`
@@ -82,6 +81,7 @@ pub fn list(args: &CriteriaListArgs, global: &GlobalOpts) -> Result<CommandOutco
     Ok(CommandOutcome::CriteriaList(CriteriaListOutcome {
         record_id: id.as_str().to_string(),
         items,
+        warnings: ctx.warnings.clone(),
     }))
 }
 
@@ -132,7 +132,9 @@ fn toggle(
     record.envelope.updated_at = now;
     ctx.save_record(&mut record)?;
 
-    Ok(CommandOutcome::Updated(RecordOutcome { command, record }))
+    Ok(CommandOutcome::Updated(
+        RecordOutcome::new(command, record).with_warnings(ctx.warnings.clone()),
+    ))
 }
 
 /// `firetrail criteria evidence`
@@ -162,10 +164,9 @@ pub fn evidence(
     }
     record.envelope.updated_at = now;
     ctx.save_record(&mut record)?;
-    Ok(CommandOutcome::Updated(RecordOutcome {
-        command: COMMAND_EVIDENCE,
-        record,
-    }))
+    Ok(CommandOutcome::Updated(
+        RecordOutcome::new(COMMAND_EVIDENCE, record).with_warnings(ctx.warnings.clone()),
+    ))
 }
 
 fn criteria_ref(body: &RecordBody) -> Option<&[AcceptanceCriterion]> {
@@ -225,6 +226,9 @@ pub struct CriteriaListItem {
 pub struct CriteriaListOutcome {
     pub record_id: String,
     pub items: Vec<CriteriaListItem>,
+    /// Non-fatal warnings (e.g. index auto-rebuild on open).
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub warnings: Vec<String>,
 }
 
 impl CriteriaListOutcome {

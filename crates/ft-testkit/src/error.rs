@@ -25,6 +25,10 @@ pub enum TestKitError {
     /// A `ft-core` operation failed.
     #[error("core error: {0}")]
     Core(String),
+    /// Catch-all for downstream errors (e.g. `ft-storage`) that don't map
+    /// cleanly to the variants above.
+    #[error("{0}")]
+    Other(String),
 }
 
 impl From<ft_core::CoreError> for TestKitError {

@@ -13,8 +13,16 @@
 //!   ft-testkit must not depend on ft-cli (cycle), the integration test that
 //!   drives the M1 suite passes the path explicitly via [`RunnerOptions`].
 //! - Arbitrary shell commands (e.g. `git`, `rm`), useful for setup steps.
-//! - `testkit:` virtual commands used for the runner's self-tests
-//!   (`testkit:create-task`, `testkit:create-epic`, `testkit:assert-exists`).
+//! - `testkit:` virtual commands kept as a **legacy fallback** for the
+//!   runner's own self-tests (`testkit:create-task`, `testkit:create-epic`,
+//!   `testkit:assert-exists`). ft-testkit cannot depend on ft-cli (workspace
+//!   cycle), so the runner needs an in-process way to exercise itself without
+//!   a real `firetrail` binary path. New scenarios should prefer the real
+//!   `firetrail …` command form — pass the binary path via
+//!   [`RunnerOptions::firetrail_bin`]. The `testkit:` shortcuts are scheduled
+//!   for removal once a stable in-tree binary fixture is available
+//!   (`firetrail-xrr` resolved this in interim mode; canonical removal will
+//!   ride alongside the next ft-testkit refresh).
 //!
 //! ## Capture expressions
 //!
@@ -471,6 +479,11 @@ fn spawn(
     })
 }
 
+/// Legacy in-process dispatch of `testkit:` virtual commands.
+///
+/// Kept for ft-testkit's own self-test scenarios (notably `trivial.yml`)
+/// because ft-testkit may not depend on ft-cli. New scenarios should call
+/// `firetrail …` directly via [`RunnerOptions::firetrail_bin`].
 fn dispatch_testkit(repo: &TestRepo, sub: &str, args: &[String]) -> Result<StepOutput, String> {
     match sub {
         "create-task" => {

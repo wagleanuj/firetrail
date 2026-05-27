@@ -57,10 +57,9 @@ pub fn close(args: &CloseArgs, global: &GlobalOpts) -> Result<CommandOutcome, Cl
     record.envelope.updated_at = now;
     ctx.save_record(&mut record)?;
 
-    Ok(CommandOutcome::Closed(RecordOutcome {
-        command: COMMAND_CLOSE,
-        record,
-    }))
+    Ok(CommandOutcome::Closed(
+        RecordOutcome::new(COMMAND_CLOSE, record).with_warnings(ctx.warnings.clone()),
+    ))
 }
 
 /// `firetrail reopen`
@@ -80,10 +79,9 @@ pub fn reopen(args: &ReopenArgs, global: &GlobalOpts) -> Result<CommandOutcome, 
     record.envelope.closed_at = None;
     record.envelope.updated_at = Utc::now();
     ctx.save_record(&mut record)?;
-    Ok(CommandOutcome::Updated(RecordOutcome {
-        command: COMMAND_REOPEN,
-        record,
-    }))
+    Ok(CommandOutcome::Updated(
+        RecordOutcome::new(COMMAND_REOPEN, record).with_warnings(ctx.warnings.clone()),
+    ))
 }
 
 fn unchecked_criteria(body: &RecordBody) -> Vec<&AcceptanceCriterion> {

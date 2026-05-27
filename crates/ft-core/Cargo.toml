@@ -22,4 +22,5 @@ schemars = { workspace = true }
 rand = { workspace = true }
 
 [dev-dependencies]
+ft-testkit = { path = "../ft-testkit", version = "0.0.0" }
 proptest = { workspace = true }

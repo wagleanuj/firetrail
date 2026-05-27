@@ -65,8 +65,7 @@ pub fn run(args: &UpdateArgs, global: &GlobalOpts) -> Result<CommandOutcome, Cli
     record.envelope.updated_at = Utc::now();
     ctx.save_record(&mut record)?;
 
-    Ok(CommandOutcome::Updated(RecordOutcome {
-        command: COMMAND,
-        record,
-    }))
+    Ok(CommandOutcome::Updated(
+        RecordOutcome::new(COMMAND, record).with_warnings(ctx.warnings.clone()),
+    ))
 }

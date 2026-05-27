@@ -86,10 +86,9 @@ pub fn claim(args: &ClaimArgs, global: &GlobalOpts) -> Result<CommandOutcome, Cl
     record.envelope.updated_at = now;
     ctx.save_record(&mut record)?;
 
-    Ok(CommandOutcome::Claimed(RecordOutcome {
-        command: COMMAND_CLAIM,
-        record,
-    }))
+    Ok(CommandOutcome::Claimed(
+        RecordOutcome::new(COMMAND_CLAIM, record).with_warnings(ctx.warnings.clone()),
+    ))
 }
 
 /// `firetrail unclaim`
@@ -130,10 +129,9 @@ pub fn unclaim(args: &UnclaimArgs, global: &GlobalOpts) -> Result<CommandOutcome
     // Best-effort lockfile cleanup.
     let _ = fs::remove_file(lock_path(&ctx.ws, &id));
 
-    Ok(CommandOutcome::Updated(RecordOutcome {
-        command: COMMAND_UNCLAIM,
-        record,
-    }))
+    Ok(CommandOutcome::Updated(
+        RecordOutcome::new(COMMAND_UNCLAIM, record).with_warnings(ctx.warnings.clone()),
+    ))
 }
 
 fn claim_supported(kind: RecordKind) -> bool {

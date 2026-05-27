@@ -11,7 +11,7 @@
     clippy::doc_markdown
 )]
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Mutex;
 
 use chrono::Utc;
@@ -23,89 +23,128 @@ use ft_testkit::{make_bug, make_epic, make_identity_named, make_subtask, make_ta
 use tempfile::TempDir;
 
 // ─── Minimal in-memory storage backend for tests ────────────────────────────
+//
+// Implements the full `ft_storage::Storage` trait surface. Only the read-side
+// methods (`iter`, `read`, `path_for`, `records_root`) are exercised by the
+// index; write/delete/list/read_at_ref are stubbed but kept functional so the
+// type can stand in for `EmbeddedStorage` in any caller.
 
-#[derive(Default)]
 struct MemStorage {
-    inner: Mutex<Vec<(Record, PathBuf)>>,
+    root: PathBuf,
+    inner: Mutex<Vec<Record>>,
 }
 
 impl MemStorage {
-    fn new() -> Self {
-        Self::default()
+    fn new(root: PathBuf) -> Self {
+        Self {
+            root,
+            inner: Mutex::new(Vec::new()),
+        }
     }
 
     fn insert(&self, record: Record) -> PathBuf {
-        let path = PathBuf::from(format!(".firetrail/records/{}.json", record.envelope.id));
+        let path = self.path_for(&record.envelope.id);
         let mut g = self.inner.lock().unwrap();
-        g.retain(|(r, _)| r.envelope.id != record.envelope.id);
-        g.push((record, path.clone()));
+        g.retain(|r| r.envelope.id != record.envelope.id);
+        g.push(record);
         path
     }
 
     fn remove(&self, id: &RecordId) -> Option<PathBuf> {
         let mut g = self.inner.lock().unwrap();
-        let pos = g.iter().position(|(r, _)| &r.envelope.id == id)?;
-        Some(g.remove(pos).1)
+        let pos = g.iter().position(|r| &r.envelope.id == id)?;
+        let removed = g.remove(pos);
+        Some(self.path_for(&removed.envelope.id))
+    }
+
+    fn records_dir(&self) -> PathBuf {
+        self.root.join(".firetrail").join("records")
     }
 }
 
 impl Storage for MemStorage {
-    fn iter(
-        &self,
-        filter: StorageFilter,
-    ) -> Result<Box<dyn Iterator<Item = Result<(Record, PathBuf), StorageError>> + '_>, StorageError>
-    {
+    fn read(&self, id: &RecordId) -> Result<Record, StorageError> {
         let g = self.inner.lock().unwrap();
-        let snap: Vec<_> = g
+        g.iter()
+            .find(|r| &r.envelope.id == id)
+            .cloned()
+            .ok_or_else(|| StorageError::NotFound(id.clone()))
+    }
+
+    fn read_at_ref(&self, _gitref: &str, id: &RecordId) -> Result<Record, StorageError> {
+        self.read(id)
+    }
+
+    fn write(&self, _record: &Record) -> Result<PathBuf, StorageError> {
+        unimplemented!("MemStorage::write is not exercised by ft-index tests")
+    }
+
+    fn delete(&self, id: &RecordId) -> Result<(), StorageError> {
+        let mut g = self.inner.lock().unwrap();
+        let pos = g
             .iter()
-            .filter(|(r, _)| {
-                filter.include_closed
-                    || !matches!(
-                        r.envelope.status,
-                        Status::Closed | Status::Deferred | Status::Archived
-                    )
-            })
-            .cloned()
-            .collect();
-        Ok(Box::new(snap.into_iter().map(Ok)))
+            .position(|r| &r.envelope.id == id)
+            .ok_or_else(|| StorageError::NotFound(id.clone()))?;
+        g.remove(pos);
+        Ok(())
     }
 
-    fn read(&self, id: &RecordId) -> Result<(Record, PathBuf), StorageError> {
+    fn list(&self, _filter: &StorageFilter) -> Result<Vec<RecordId>, StorageError> {
         let g = self.inner.lock().unwrap();
-        g.iter()
-            .find(|(r, _)| &r.envelope.id == id)
-            .cloned()
-            .ok_or_else(|| StorageError::NotFound(id.to_string()))
+        Ok(g.iter().map(|r| r.envelope.id.clone()).collect())
     }
 
-    fn read_path(&self, path: &Path) -> Result<Record, StorageError> {
+    fn iter<'a>(
+        &'a self,
+        _filter: &'a StorageFilter,
+    ) -> Box<dyn Iterator<Item = Result<Record, StorageError>> + 'a> {
         let g = self.inner.lock().unwrap();
-        g.iter()
-            .find(|(_, p)| p == path)
-            .map(|(r, _)| r.clone())
-            .ok_or_else(|| StorageError::NotFound(path.to_string_lossy().into()))
+        let snap: Vec<Record> = g.clone();
+        Box::new(snap.into_iter().map(Ok))
+    }
+
+    fn path_for(&self, id: &RecordId) -> PathBuf {
+        let kind_str = match id.kind() {
+            ft_core::RecordKind::Task => "task",
+            ft_core::RecordKind::Epic => "epic",
+            ft_core::RecordKind::Subtask => "subtask",
+            ft_core::RecordKind::Bug => "bug",
+            ft_core::RecordKind::Incident => "incident",
+            ft_core::RecordKind::Finding => "finding",
+            ft_core::RecordKind::Runbook => "runbook",
+            ft_core::RecordKind::Decision => "decision",
+            ft_core::RecordKind::Gotcha => "gotcha",
+            ft_core::RecordKind::Memory => "memory",
+        };
+        self.records_dir()
+            .join(kind_str)
+            .join(format!("{}.json", id.as_str().to_lowercase()))
+    }
+
+    fn records_root(&self) -> PathBuf {
+        self.records_dir()
     }
 }
 
-fn fresh_index() -> (TempDir, Index) {
+fn fresh_index() -> (TempDir, Index, MemStorage) {
     let dir = TempDir::new().unwrap();
-    std::fs::create_dir_all(dir.path().join(".firetrail")).unwrap();
+    std::fs::create_dir_all(dir.path().join(".firetrail").join("records")).unwrap();
     let idx = Index::open(dir.path()).unwrap();
-    (dir, idx)
+    let storage = MemStorage::new(dir.path().to_path_buf());
+    (dir, idx, storage)
 }
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
 
 #[test]
 fn open_creates_schema_v1() {
-    let (_d, idx) = fresh_index();
+    let (_d, idx, _storage) = fresh_index();
     assert_eq!(idx.schema_version(), 1);
 }
 
 #[test]
 fn rebuild_from_empty_storage_succeeds() {
-    let (_d, mut idx) = fresh_index();
-    let storage = MemStorage::new();
+    let (_d, mut idx, storage) = fresh_index();
     let report = idx.rebuild_from(&storage).unwrap();
     assert_eq!(report.records_indexed, 0);
     assert_eq!(report.relations_indexed, 0);
@@ -114,8 +153,7 @@ fn rebuild_from_empty_storage_succeeds() {
 
 #[test]
 fn rebuild_indexes_all_records() {
-    let (_d, mut idx) = fresh_index();
-    let storage = MemStorage::new();
+    let (_d, mut idx, storage) = fresh_index();
     let t1 = make_task().title("first").build();
     let t2 = make_task().title("second").priority(Priority::P0).build();
     storage.insert(t1.clone());
@@ -133,8 +171,7 @@ fn rebuild_indexes_all_records() {
 
 #[test]
 fn list_filters_compose() {
-    let (_d, mut idx) = fresh_index();
-    let storage = MemStorage::new();
+    let (_d, mut idx, storage) = fresh_index();
     let alice = make_identity_named("alice");
     let bob = make_identity_named("bob");
 
@@ -170,8 +207,7 @@ fn list_filters_compose() {
 
 #[test]
 fn list_excludes_closed_by_default() {
-    let (_d, mut idx) = fresh_index();
-    let storage = MemStorage::new();
+    let (_d, mut idx, storage) = fresh_index();
     let open = make_task().title("open").build();
     let closed = make_task().title("closed").status(Status::Closed).build();
     storage.insert(open.clone());
@@ -193,8 +229,7 @@ fn list_excludes_closed_by_default() {
 
 #[test]
 fn count_matches_list_len() {
-    let (_d, mut idx) = fresh_index();
-    let storage = MemStorage::new();
+    let (_d, mut idx, storage) = fresh_index();
     for i in 0..7 {
         storage.insert(make_task().title(format!("t{i}")).build());
     }
@@ -205,8 +240,7 @@ fn count_matches_list_len() {
 
 #[test]
 fn list_filters_by_label() {
-    let (_d, mut idx) = fresh_index();
-    let storage = MemStorage::new();
+    let (_d, mut idx, storage) = fresh_index();
     storage.insert(make_task().label("area", "search").build());
     storage.insert(make_task().label("area", "index").build());
     idx.rebuild_from(&storage).unwrap();
@@ -221,8 +255,7 @@ fn list_filters_by_label() {
 
 #[test]
 fn parent_child_relations_are_derived() {
-    let (_d, mut idx) = fresh_index();
-    let storage = MemStorage::new();
+    let (_d, mut idx, storage) = fresh_index();
     let epic = make_epic().title("E").build();
     let task = make_task()
         .title("T")
@@ -255,8 +288,7 @@ fn ready_excludes_blocked_records() {
     use ft_core::Relation;
     use ft_index::IndexError;
 
-    let (_d, mut idx) = fresh_index();
-    let storage = MemStorage::new();
+    let (_d, mut idx, storage) = fresh_index();
     let blocker = make_task().title("blocker").build();
     let blocked = make_task().title("blocked").build();
     storage.insert(blocker.clone());
@@ -283,10 +315,7 @@ fn ready_excludes_blocked_records() {
     let mut blocker_closed = blocker.clone();
     blocker_closed.envelope.status = Status::Closed;
     storage.insert(blocker_closed.clone());
-    let path = storage
-        .read(&blocker_closed.envelope.id)
-        .map(|(_, p)| p)
-        .unwrap();
+    let path = storage.path_for(&blocker_closed.envelope.id);
     idx.refresh(&storage, &[path], &[]).unwrap();
 
     let ready2 = idx.ready(&ReadyQuery::default()).unwrap();
@@ -303,8 +332,7 @@ fn ready_excludes_blocked_records() {
 
 #[test]
 fn ready_excludes_actively_claimed_records() {
-    let (_d, mut idx) = fresh_index();
-    let storage = MemStorage::new();
+    let (_d, mut idx, storage) = fresh_index();
     let alice = make_identity_named("alice");
 
     // Build a task with an unexpired claim.
@@ -336,8 +364,7 @@ fn ready_excludes_actively_claimed_records() {
 
 #[test]
 fn refresh_handles_add_modify_delete() {
-    let (_d, mut idx) = fresh_index();
-    let storage = MemStorage::new();
+    let (_d, mut idx, storage) = fresh_index();
     let t = make_task().title("v1").build();
     let p = storage.insert(t.clone());
     idx.rebuild_from(&storage).unwrap();
@@ -365,8 +392,7 @@ fn refresh_handles_add_modify_delete() {
 
 #[test]
 fn dependency_walk_handles_cycles() {
-    let (_d, mut idx) = fresh_index();
-    let storage = MemStorage::new();
+    let (_d, mut idx, storage) = fresh_index();
     let a = make_task().title("a").build();
     let b = make_task().title("b").build();
     let c = make_task().title("c").build();
@@ -391,8 +417,7 @@ fn dependency_walk_handles_cycles() {
 
 #[test]
 fn show_returns_indexed_record() {
-    let (_d, mut idx) = fresh_index();
-    let storage = MemStorage::new();
+    let (_d, mut idx, storage) = fresh_index();
     let t = make_task().title("hello").build();
     storage.insert(t.clone());
     idx.rebuild_from(&storage).unwrap();
@@ -404,8 +429,7 @@ fn show_returns_indexed_record() {
 
 #[test]
 fn relations_returns_both_directions() {
-    let (_d, mut idx) = fresh_index();
-    let storage = MemStorage::new();
+    let (_d, mut idx, storage) = fresh_index();
     let epic = make_epic().title("e").build();
     let task = make_task()
         .title("t")
@@ -425,8 +449,7 @@ fn relations_returns_both_directions() {
 
 #[test]
 fn list_order_by_title() {
-    let (_d, mut idx) = fresh_index();
-    let storage = MemStorage::new();
+    let (_d, mut idx, storage) = fresh_index();
     storage.insert(make_task().title("zzz").build());
     storage.insert(make_task().title("aaa").build());
     idx.rebuild_from(&storage).unwrap();
@@ -442,8 +465,7 @@ fn list_order_by_title() {
 
 #[test]
 fn list_limit_and_offset() {
-    let (_d, mut idx) = fresh_index();
-    let storage = MemStorage::new();
+    let (_d, mut idx, storage) = fresh_index();
     for i in 0..5 {
         storage.insert(make_task().title(format!("t{i:02}")).build());
     }

@@ -64,6 +64,7 @@ pub fn dep_remove(args: &DepRemoveArgs, global: &GlobalOpts) -> Result<CommandOu
         to,
         kind: kind_filter.unwrap_or(RelationKind::RelatedTo),
         removed: u32::try_from(removed).unwrap_or(u32::MAX),
+        warnings: ctx.warnings.clone(),
     }))
 }
 
@@ -116,6 +117,7 @@ fn write_relation(
         to,
         kind: core_kind,
         removed: 0,
+        warnings: ctx.warnings.clone(),
     }))
 }
 
@@ -127,6 +129,9 @@ pub struct RelationOutcome {
     pub kind: RelationKind,
     /// Only set for remove operations.
     pub removed: u32,
+    /// Non-fatal warnings (e.g. index auto-rebuild on open).
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub warnings: Vec<String>,
 }
 
 impl RelationOutcome {

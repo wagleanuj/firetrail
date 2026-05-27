@@ -14,6 +14,7 @@ const COMMAND: &str = "board";
 /// Entry point.
 pub fn run(args: &BoardArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
     let ctx = WorkCtx::open(COMMAND, global.workspace.as_deref())?;
+    let warnings = ctx.warnings.clone();
     let mut q = ListQuery {
         include_closed: true,
         include_archived: false,
@@ -31,7 +32,9 @@ pub fn run(args: &BoardArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliE
         .index
         .list(&q)
         .map_err(|e| CliError::internal(COMMAND, e))?;
-    Ok(CommandOutcome::Board(build_board(&rows)))
+    let mut outcome = build_board(&rows);
+    outcome.warnings = warnings;
+    Ok(CommandOutcome::Board(outcome))
 }
 
 fn build_board(rows: &[IndexedRecord]) -> BoardOutcome {
@@ -65,6 +68,7 @@ fn build_board(rows: &[IndexedRecord]) -> BoardOutcome {
         in_progress,
         review,
         done,
+        warnings: Vec::new(),
     }
 }
 
@@ -83,6 +87,9 @@ pub struct BoardOutcome {
     pub in_progress: Vec<BoardCard>,
     pub review: Vec<BoardCard>,
     pub done: Vec<BoardCard>,
+    /// Non-fatal warnings (e.g. index auto-rebuild on open).
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub warnings: Vec<String>,
 }
 
 impl BoardOutcome {

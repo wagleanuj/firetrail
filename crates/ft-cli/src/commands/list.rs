@@ -15,6 +15,7 @@ const COMMAND_READY: &str = "ready";
 /// `firetrail list`
 pub fn list(args: &ListArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
     let ctx = WorkCtx::open(COMMAND_LIST, global.workspace.as_deref())?;
+    let warnings = ctx.warnings.clone();
     let mut q = ListQuery::default();
     if let Some(k) = args.kind {
         q.kinds = Some(vec![k.to_core()]);
@@ -43,12 +44,14 @@ pub fn list(args: &ListArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliE
     Ok(CommandOutcome::List(ListOutcome {
         command: COMMAND_LIST,
         rows: rows.into_iter().map(IndexedRow::from).collect(),
+        warnings,
     }))
 }
 
 /// `firetrail ready`
 pub fn ready(args: &ReadyArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
     let ctx = WorkCtx::open(COMMAND_READY, global.workspace.as_deref())?;
+    let warnings = ctx.warnings.clone();
     let mut q = ReadyQuery::default();
     if let Some(k) = args.kind {
         q.kinds = Some(vec![k.to_core()]);
@@ -70,6 +73,7 @@ pub fn ready(args: &ReadyArgs, global: &GlobalOpts) -> Result<CommandOutcome, Cl
     Ok(CommandOutcome::List(ListOutcome {
         command: COMMAND_READY,
         rows: rows.into_iter().map(IndexedRow::from).collect(),
+        warnings,
     }))
 }
 
@@ -111,6 +115,9 @@ fn serde_value_str<T: serde::Serialize>(value: &T) -> String {
 pub struct ListOutcome {
     pub command: &'static str,
     pub rows: Vec<IndexedRow>,
+    /// Non-fatal warnings (e.g. index auto-rebuild on open).
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub warnings: Vec<String>,
 }
 
 impl ListOutcome {

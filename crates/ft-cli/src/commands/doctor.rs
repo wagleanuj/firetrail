@@ -13,74 +13,6 @@ use ft_index::Index;
 use ft_storage::EmbeddedStorage;
 use serde::Serialize;
 
-/// Adapter that lets `ft_storage::EmbeddedStorage` satisfy
-/// `ft_index::Storage`. The two traits will merge once `ft-storage` exports
-/// the canonical trait; until then this glue lives here.
-mod index_adapter {
-    use std::path::{Path, PathBuf};
-
-    use ft_core::{Record, RecordId};
-    use ft_index::{
-        Storage as IndexStorageTrait, StorageError as IndexStorageError, StorageFilter,
-    };
-    use ft_storage::{EmbeddedStorage, Storage as FsStorage};
-
-    /// View of an [`EmbeddedStorage`] as an [`ft_index::Storage`].
-    pub struct IndexStorage<'a> {
-        inner: &'a EmbeddedStorage,
-    }
-
-    impl<'a> IndexStorage<'a> {
-        /// Wrap an [`EmbeddedStorage`] reference.
-        pub fn new(inner: &'a EmbeddedStorage) -> Self {
-            Self { inner }
-        }
-    }
-
-    fn map_err(e: ft_storage::StorageError) -> IndexStorageError {
-        match e {
-            ft_storage::StorageError::NotFound(id) => IndexStorageError::NotFound(id.to_string()),
-            other => IndexStorageError::Other(other.to_string()),
-        }
-    }
-
-    impl IndexStorageTrait for IndexStorage<'_> {
-        fn iter(
-            &self,
-            filter: StorageFilter,
-        ) -> Result<
-            Box<dyn Iterator<Item = Result<(Record, PathBuf), IndexStorageError>> + '_>,
-            IndexStorageError,
-        > {
-            // ft-storage's filter doesn't have a `include_closed` flag — its
-            // default already returns every record. Pass-through `filter` is
-            // accepted for forward compatibility and otherwise unused.
-            let _ = filter;
-            let fs_filter = ft_storage::StorageFilter::default();
-            let ids = self.inner.list(&fs_filter).map_err(map_err)?;
-            let inner = self.inner.clone();
-            let iter = ids.into_iter().map(move |id| {
-                let path = inner.path_for(&id);
-                let record = inner.read(&id).map_err(map_err)?;
-                Ok((record, path))
-            });
-            Ok(Box::new(iter))
-        }
-
-        fn read(&self, id: &RecordId) -> Result<(Record, PathBuf), IndexStorageError> {
-            let path = self.inner.path_for(id);
-            let record = self.inner.read(id).map_err(map_err)?;
-            Ok((record, path))
-        }
-
-        fn read_path(&self, _path: &Path) -> Result<Record, IndexStorageError> {
-            Err(IndexStorageError::Other(
-                "read_path not implemented in CLI doctor adapter".into(),
-            ))
-        }
-    }
-}
-
 use crate::cli::{DoctorArgs, GlobalOpts};
 use crate::commands::CommandOutcome;
 use crate::error::CliError;
@@ -394,24 +326,22 @@ fn check_index(ws: &workspace::Workspace, fix: bool, checks: &mut Vec<CheckResul
         if fix {
             match EmbeddedStorage::open(&ws.root) {
                 Ok(storage) => match Index::open(&ws.root) {
-                    Ok(mut idx) => {
-                        match idx.rebuild_from(&index_adapter::IndexStorage::new(&storage)) {
-                            Ok(_) => checks.push(CheckResult {
-                                id: "index.integrity".into(),
-                                title: "Index integrity".into(),
-                                status: CheckStatus::Ok,
-                                message: "index.db missing — rebuilt from storage".into(),
-                                suggestion: Some("firetrail index rebuild".into()),
-                                fix_applied: true,
-                            }),
-                            Err(e) => checks.push(CheckResult::fail(
-                                "index.integrity",
-                                "Index integrity",
-                                format!("index.db missing and rebuild failed: {e}"),
-                                "firetrail index rebuild",
-                            )),
-                        }
-                    }
+                    Ok(mut idx) => match idx.rebuild_from(&storage) {
+                        Ok(_) => checks.push(CheckResult {
+                            id: "index.integrity".into(),
+                            title: "Index integrity".into(),
+                            status: CheckStatus::Ok,
+                            message: "index.db missing — rebuilt from storage".into(),
+                            suggestion: Some("firetrail index rebuild".into()),
+                            fix_applied: true,
+                        }),
+                        Err(e) => checks.push(CheckResult::fail(
+                            "index.integrity",
+                            "Index integrity",
+                            format!("index.db missing and rebuild failed: {e}"),
+                            "firetrail index rebuild",
+                        )),
+                    },
                     Err(e) => checks.push(CheckResult::fail(
                         "index.integrity",
                         "Index integrity",

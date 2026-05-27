@@ -1,6 +1,6 @@
 //! Error types for `ft-index`.
 
-use crate::storage::StorageError;
+use ft_storage::StorageError;
 
 /// Errors that can arise from index operations.
 #[derive(Debug, thiserror::Error)]

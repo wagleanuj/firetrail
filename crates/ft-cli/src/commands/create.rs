@@ -39,10 +39,9 @@ pub fn epic(args: &CreateRecordArgs, global: &GlobalOpts) -> Result<CommandOutco
         .map_err(|e| CliError::user(CMD_EPIC, e.to_string()))?;
     apply_label_envelope(&mut record, &args.labels, CMD_EPIC)?;
     ctx.save_record(&mut record)?;
-    Ok(CommandOutcome::Created(RecordOutcome {
-        command: CMD_EPIC,
-        record,
-    }))
+    Ok(CommandOutcome::Created(
+        RecordOutcome::new(CMD_EPIC, record).with_warnings(ctx.warnings.clone()),
+    ))
 }
 
 /// `firetrail task create`
@@ -90,10 +89,9 @@ pub fn task(args: &CreateTaskArgs, global: &GlobalOpts) -> Result<CommandOutcome
         .map_err(|e| CliError::user(CMD_TASK, e.to_string()))?;
     apply_label_envelope(&mut record, &args.labels, CMD_TASK)?;
     ctx.save_record(&mut record)?;
-    Ok(CommandOutcome::Created(RecordOutcome {
-        command: CMD_TASK,
-        record,
-    }))
+    Ok(CommandOutcome::Created(
+        RecordOutcome::new(CMD_TASK, record).with_warnings(ctx.warnings.clone()),
+    ))
 }
 
 /// `firetrail subtask create`
@@ -135,10 +133,9 @@ pub fn subtask(args: &CreateSubtaskArgs, global: &GlobalOpts) -> Result<CommandO
         .map_err(|e| CliError::user(CMD_SUBTASK, e.to_string()))?;
     apply_label_envelope(&mut record, &args.labels, CMD_SUBTASK)?;
     ctx.save_record(&mut record)?;
-    Ok(CommandOutcome::Created(RecordOutcome {
-        command: CMD_SUBTASK,
-        record,
-    }))
+    Ok(CommandOutcome::Created(
+        RecordOutcome::new(CMD_SUBTASK, record).with_warnings(ctx.warnings.clone()),
+    ))
 }
 
 /// `firetrail bug create`
@@ -168,10 +165,9 @@ pub fn bug(args: &CreateBugArgs, global: &GlobalOpts) -> Result<CommandOutcome, 
         .map_err(|e| CliError::user(CMD_BUG, e.to_string()))?;
     apply_label_envelope(&mut record, &args.labels, CMD_BUG)?;
     ctx.save_record(&mut record)?;
-    Ok(CommandOutcome::Created(RecordOutcome {
-        command: CMD_BUG,
-        record,
-    }))
+    Ok(CommandOutcome::Created(
+        RecordOutcome::new(CMD_BUG, record).with_warnings(ctx.warnings.clone()),
+    ))
 }
 
 fn builder_with_common(

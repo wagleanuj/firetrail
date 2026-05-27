@@ -38,9 +38,30 @@ pub struct RecordOutcome {
     pub command: &'static str,
     /// The record itself (already includes its id and state hash).
     pub record: Record,
+    /// Non-fatal warnings to surface in the JSON envelope (e.g. auto-rebuild
+    /// of `index.db`). Defaults empty.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub warnings: Vec<String>,
 }
 
 impl RecordOutcome {
+    /// Build a [`RecordOutcome`] with no warnings.
+    pub fn new(command: &'static str, record: Record) -> Self {
+        Self {
+            command,
+            record,
+            warnings: Vec::new(),
+        }
+    }
+
+    /// Attach warnings (e.g. from [`crate::context::WorkCtx::warnings`]) to
+    /// this outcome.
+    #[must_use]
+    pub fn with_warnings(mut self, warnings: Vec<String>) -> Self {
+        self.warnings = warnings;
+        self
+    }
+
     /// Markdown rendering.
     pub fn markdown(&self) -> String {
         format!(
@@ -162,7 +183,15 @@ impl CommandOutcome {
         match self {
             Self::Init(r) => r.warnings.clone(),
             Self::Doctor(r) => r.warnings.clone(),
-            _ => Vec::new(),
+            Self::Created(r) | Self::Updated(r) | Self::Closed(r) | Self::Claimed(r) => {
+                r.warnings.clone()
+            }
+            Self::RelationAdded(r) | Self::RelationRemoved(r) => r.warnings.clone(),
+            Self::CriteriaList(c) => c.warnings.clone(),
+            Self::Show(s) => s.warnings.clone(),
+            Self::List(l) => l.warnings.clone(),
+            Self::Board(b) => b.warnings.clone(),
+            Self::Graph(g) => g.warnings.clone(),
         }
     }
 }

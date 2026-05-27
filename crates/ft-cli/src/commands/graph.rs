@@ -15,6 +15,7 @@ const COMMAND: &str = "graph";
 /// Entry point.
 pub fn run(args: &GraphArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
     let ctx = WorkCtx::open(COMMAND, global.workspace.as_deref())?;
+    let warnings = ctx.warnings.clone();
     let root = ctx.resolve_id(&args.id)?;
     // Verify the record exists before walking.
     let _ = ctx.read_record(&root)?;
@@ -55,6 +56,7 @@ pub fn run(args: &GraphArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliE
         depth: args.depth,
         direction: format!("{:?}", args.direction).to_lowercase(),
         edges: children,
+        warnings,
     }))
 }
 
@@ -72,6 +74,9 @@ pub struct GraphOutcome {
     pub direction: String,
     /// `parent_id -> [(kind, child_id, depth)]`.
     pub edges: BTreeMap<String, Vec<GraphNode>>,
+    /// Non-fatal warnings (e.g. index auto-rebuild on open).
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub warnings: Vec<String>,
 }
 
 impl GraphOutcome {

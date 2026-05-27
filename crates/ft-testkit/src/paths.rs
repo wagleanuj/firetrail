@@ -1,46 +1,24 @@
 //! On-disk path layout used by ft-testkit when persisting records for
 //! assertion helpers.
 //!
-//! **Conservative mirror of the ft-storage layout** documented in
-//! `docs/components/ft-storage.md`:
-//!
-//! ```text
-//! <repo_root>/.firetrail/
-//! └── records/
-//!     ├── task/<lowercase_id>.json
-//!     ├── epic/<lowercase_id>.json
-//!     ├── subtask/...
-//!     └── bug/...
-//! ```
-//!
-//! Records are written with `<lowercase_id>.json` filenames so the canonical
-//! path is reproducible from a `RecordId` alone. ft-storage will eventually
-//! own this layout — ft-testkit's helpers will then thin out to delegate
-//! through ft-storage.
+//! These helpers now delegate to `ft-storage` for the canonical layout
+//! constants and path resolution. The previous local definitions remain
+//! exposed as re-exports so existing test code keeps compiling.
 
 use std::path::{Path, PathBuf};
 
 use ft_core::{RecordId, RecordKind};
 
 /// Relative path of the records directory under the repo root.
-pub const RECORDS_DIR: &str = ".firetrail/records";
+///
+/// Re-exported from [`ft_storage::RECORDS_DIR`] so there is exactly one
+/// source of truth for the on-disk layout.
+pub use ft_storage::RECORDS_DIR;
 
 /// Subdirectory name for a record kind (lowercase).
-#[must_use]
-pub fn kind_dir(kind: RecordKind) -> &'static str {
-    match kind {
-        RecordKind::Task => "task",
-        RecordKind::Epic => "epic",
-        RecordKind::Subtask => "subtask",
-        RecordKind::Bug => "bug",
-        RecordKind::Incident => "incident",
-        RecordKind::Finding => "finding",
-        RecordKind::Runbook => "runbook",
-        RecordKind::Decision => "decision",
-        RecordKind::Gotcha => "gotcha",
-        RecordKind::Memory => "memory",
-    }
-}
+///
+/// Re-exported from [`ft_storage::kind_dir`].
+pub use ft_storage::kind_dir;
 
 /// Absolute path to the directory holding records of a given kind, rooted at
 /// `repo_root`.
@@ -50,6 +28,10 @@ pub fn records_kind_dir(repo_root: &Path, kind: RecordKind) -> PathBuf {
 }
 
 /// Absolute path of the JSON file that backs `id`, rooted at `repo_root`.
+///
+/// Thin wrapper over [`ft_storage::EmbeddedStorage::path_for`] semantics —
+/// kept as a free function so tests that have a `&Path` (and not a fully
+/// constructed storage handle) can still resolve a record path cheaply.
 #[must_use]
 pub fn record_path(repo_root: &Path, id: &RecordId) -> PathBuf {
     records_kind_dir(repo_root, id.kind()).join(format!("{}.json", id.as_str().to_lowercase()))

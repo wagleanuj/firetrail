@@ -36,16 +36,28 @@ fn read_record(repo: &TestRepo, id: &RecordId) -> Record {
 /// Write a [`Record`] to disk under the canonical path. Used by tests and the
 /// scenario runner to set up state for assertion helpers.
 ///
+/// Delegates through [`ft_storage::EmbeddedStorage::write`] so the write is
+/// atomic and the embedded `state_hash` is verified before the bytes hit
+/// disk — tests get the same hash-consistency guarantees as production code
+/// paths for free.
+///
 /// # Errors
 ///
-/// Returns the underlying I/O or serde error on failure.
+/// Returns the underlying I/O, serde, or storage error on failure.
 pub fn write_record(repo: &TestRepo, record: &Record) -> Result<(), crate::TestKitError> {
-    let path = record_path(repo.root(), &record.envelope.id);
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
+    use ft_storage::{EmbeddedStorage, Storage as _};
+
+    // Ensure the records tree exists (TestRepo::new bootstraps it, but
+    // belt-and-braces for hand-rolled TestRepoConfig users).
+    let records_root = repo.root().join(ft_storage::RECORDS_DIR);
+    if !records_root.exists() {
+        fs::create_dir_all(&records_root)?;
     }
-    let bytes = serde_json::to_vec_pretty(record)?;
-    fs::write(&path, bytes)?;
+    let storage = EmbeddedStorage::open(repo.root())
+        .map_err(|e| crate::TestKitError::Other(format!("open storage: {e}")))?;
+    storage
+        .write(record)
+        .map_err(|e| crate::TestKitError::Other(format!("write record: {e}")))?;
     Ok(())
 }
 

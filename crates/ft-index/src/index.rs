@@ -12,9 +12,10 @@ use ft_core::{
 };
 use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 
+use ft_storage::{Storage, StorageFilter};
+
 use crate::error::IndexError;
 use crate::schema;
-use crate::storage::{Storage, StorageFilter};
 use crate::types::{
     DepEdge, IndexedRecord, ListQuery, OrderBy, ReadyQuery, RebuildReport, RefreshReport,
     WalkDirection,
@@ -99,11 +100,14 @@ impl Index {
         let mut report = RebuildReport::default();
 
         // Collect first so we can iterate twice (records, then relations).
+        // ft_storage::Storage::iter already yields every record without a
+        // closed/archived filter; the index intentionally tracks every kind.
+        let filter = StorageFilter::default();
         let mut all: Vec<(Record, PathBuf)> = Vec::new();
-        for row in storage.iter(StorageFilter {
-            include_closed: true,
-        })? {
-            all.push(row?);
+        for row in storage.iter(&filter) {
+            let record = row?;
+            let path = storage.path_for(&record.envelope.id);
+            all.push((record, path));
         }
 
         let tx = self.conn.transaction()?;
@@ -132,6 +136,17 @@ impl Index {
                 insert_relation(&tx, &edge)?;
                 report.relations_indexed += 1;
             }
+        }
+
+        // Ingest the interim `.firetrail/relations.jsonl` log so blocked-by /
+        // related-to edges added via `firetrail dep add` and friends are
+        // queryable. ft-storage will own the canonical relation store in
+        // `firetrail-tq7`; until then this side-channel keeps `ready` honest.
+        let relations_path = relations_log_path_for(storage);
+        let extra = read_relations_log(&relations_path)?;
+        for edge in &extra {
+            insert_relation(&tx, edge)?;
+            report.relations_indexed += 1;
         }
 
         tx.execute(
@@ -187,7 +202,8 @@ impl Index {
         }
 
         for path in changed {
-            let record = storage.read_path(path)?;
+            let id = id_from_path(path)?;
+            let record = storage.read(&id)?;
             let existed: Option<String> = tx
                 .query_row(
                     "SELECT id FROM records WHERE id = ?1",
@@ -209,6 +225,14 @@ impl Index {
             } else {
                 report.records_added += 1;
             }
+        }
+
+        // Re-ingest the interim relations log on every refresh so external
+        // edges added since the last rebuild become visible.
+        let relations_path = relations_log_path_for(storage);
+        let extra = read_relations_log(&relations_path)?;
+        for edge in &extra {
+            insert_relation(&tx, edge)?;
         }
 
         tx.commit()?;
@@ -1057,6 +1081,89 @@ fn evidence_kind_to_str(k: EvidenceKind) -> &'static str {
         EvidenceKind::JiraTicket => "jira_ticket",
         EvidenceKind::ConfluencePage => "confluence_page",
         EvidenceKind::ManualNote => "manual_note",
+    }
+}
+
+/// Recover a [`RecordId`] from the on-disk filename a Storage `path_for` would
+/// produce.
+///
+/// The file layout is `<root>/.firetrail/records/<kind>/<lower-id>.json`; the
+/// canonical id is `<KIND-PREFIX>-<hex>` and the stem matches the lowercased
+/// id one-to-one.
+fn id_from_path(path: &Path) -> Result<RecordId, IndexError> {
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| IndexError::Integrity(format!("bad path: {}", path.display())))?;
+    let (prefix, rest) = stem.split_once('-').ok_or_else(|| {
+        IndexError::Integrity(format!("cannot parse id from path: {}", path.display()))
+    })?;
+    let canonical = format!("{}-{}", prefix.to_uppercase(), rest.to_lowercase());
+    RecordId::from_string(canonical).map_err(|e| IndexError::Integrity(e.to_string()))
+}
+
+/// Resolve the path to the interim `.firetrail/relations.jsonl` log given a
+/// [`Storage`] reference.
+///
+/// The path is derived from [`Storage::records_root`] (which is always
+/// `<root>/.firetrail/records/`) so the helper works for any backend that
+/// honours the canonical layout.
+fn relations_log_path_for(storage: &dyn Storage) -> PathBuf {
+    let root = storage.records_root();
+    // records_root() points at `.firetrail/records/`; the relations log sits
+    // one level up at `.firetrail/relations.jsonl`.
+    root.parent().unwrap_or(&root).join("relations.jsonl")
+}
+
+/// Parse the interim `.firetrail/relations.jsonl` file (one JSON-encoded
+/// [`ft_core::Relation`] per line). Missing files yield an empty vector.
+fn read_relations_log(path: &Path) -> Result<Vec<DerivedEdge>, IndexError> {
+    use std::io::{BufRead, BufReader};
+
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let f = std::fs::File::open(path)?;
+    let mut out = Vec::new();
+    for (lineno, line) in BufReader::new(f).lines().enumerate() {
+        let line = line?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let rel: ft_core::Relation = serde_json::from_str(&line).map_err(|e| {
+            IndexError::Integrity(format!("relations.jsonl line {}: {e}", lineno + 1))
+        })?;
+        let kind = relation_kind_to_str(rel.kind).to_string();
+        out.push(DerivedEdge {
+            from: rel.from.as_str().to_string(),
+            to: rel.to.as_str().to_string(),
+            kind,
+            created_at: rel.created_at,
+            created_by: rel.created_by,
+        });
+    }
+    Ok(out)
+}
+
+fn relation_kind_to_str(k: RelationKind) -> &'static str {
+    match k {
+        RelationKind::Blocks => "blocks",
+        RelationKind::BlockedBy => "blocked-by",
+        RelationKind::ParentOf => "parent-of",
+        RelationKind::ChildOf => "child-of",
+        RelationKind::RelatedTo => "related-to",
+        RelationKind::Duplicates => "duplicates",
+        RelationKind::Supersedes => "supersedes",
+        RelationKind::DiscoveredDuring => "discovered-during",
+        RelationKind::FollowUpFrom => "follow-up-from",
+        RelationKind::FixedBy => "fixed-by",
+        RelationKind::CausedBy => "caused-by",
+        RelationKind::MitigatedBy => "mitigated-by",
+        RelationKind::DocumentedIn => "documented-in",
+        RelationKind::ImplementedBy => "implemented-by",
+        RelationKind::RegressedBy => "regressed-by",
+        RelationKind::Affects => "affects",
+        RelationKind::OwnedBy => "owned-by",
     }
 }
 

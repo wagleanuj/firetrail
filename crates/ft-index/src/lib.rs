@@ -14,11 +14,9 @@
 //!   shapes.
 //! - [`IndexedRecord`] / [`DepEdge`] — query results.
 //! - [`RebuildReport`] / [`RefreshReport`] — write-path summaries.
-//! - [`Storage`] / [`StorageError`] — the contract the index consumes. The
-//!   real implementation lives in the sibling `ft-storage` crate; this crate
-//!   declares the trait locally so M1 work on the index is not gated on the
-//!   storage crate landing first. When `ft-storage` ships an in-tree trait
-//!   this one becomes a re-export.
+//! - [`Storage`] / [`StorageError`] / [`StorageFilter`] — re-exported from the
+//!   canonical `ft-storage` crate so downstream callers can keep importing
+//!   them from `ft-index` while a single trait owns the contract.
 //!
 //! ## Relevant ADRs
 //!
@@ -34,12 +32,11 @@
 mod error;
 mod index;
 mod schema;
-mod storage;
 mod types;
 
 pub use error::IndexError;
+pub use ft_storage::{Storage, StorageError, StorageFilter};
 pub use index::Index;
-pub use storage::{Storage, StorageError, StorageFilter};
 pub use types::{
     DepEdge, IndexedRecord, ListQuery, OrderBy, ReadyQuery, RebuildReport, RefreshReport,
     WalkDirection,

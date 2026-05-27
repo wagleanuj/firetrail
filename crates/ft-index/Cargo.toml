@@ -17,6 +17,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 chrono = { workspace = true }
 ft-core = { path = "../ft-core", version = "0.0.0" }
+ft-storage = { path = "../ft-storage", version = "0.0.0" }
 
 [dev-dependencies]
 ft-testkit = { path = "../ft-testkit", version = "0.0.0" }

@@ -13,6 +13,7 @@ const COMMAND: &str = "show";
 /// Entry point.
 pub fn run(args: &ShowArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
     let ctx = WorkCtx::open(COMMAND, global.workspace.as_deref())?;
+    let warnings = ctx.warnings.clone();
     let id = ctx.resolve_id(&args.id)?;
     let record = ctx.read_record(&id)?;
 
@@ -22,13 +23,20 @@ pub fn run(args: &ShowArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliEr
         .filter(|r| r.from == id || r.to == id)
         .collect();
 
-    Ok(CommandOutcome::Show(ShowOutcome { record, relations }))
+    Ok(CommandOutcome::Show(ShowOutcome {
+        record,
+        relations,
+        warnings,
+    }))
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ShowOutcome {
     pub record: Record,
     pub relations: Vec<Relation>,
+    /// Non-fatal warnings (e.g. index auto-rebuild on open).
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub warnings: Vec<String>,
 }
 
 impl ShowOutcome {

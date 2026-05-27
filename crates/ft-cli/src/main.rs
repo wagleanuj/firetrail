@@ -21,7 +21,6 @@ mod cli;
 mod commands;
 mod context;
 mod error;
-mod index_adapter;
 mod output;
 mod workspace;
 

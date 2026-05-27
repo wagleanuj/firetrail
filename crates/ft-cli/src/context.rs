@@ -35,7 +35,6 @@ use ft_index::Index;
 use ft_storage::{EmbeddedStorage, Storage as _, StorageFilter};
 
 use crate::error::CliError;
-use crate::index_adapter::IndexStorage;
 use crate::workspace::{self, Workspace};
 
 /// Bundle of resources every work-graph command needs.
@@ -46,6 +45,8 @@ pub struct WorkCtx {
     pub storage: EmbeddedStorage,
     /// Index handle.
     pub index: Index,
+    /// Non-fatal warnings to surface in the JSON envelope.
+    pub warnings: Vec<String>,
     /// Identity to stamp on writes (lazily computed on first call).
     actor: Option<Identity>,
     /// Command name for error framing.
@@ -54,16 +55,50 @@ pub struct WorkCtx {
 
 impl WorkCtx {
     /// Open the workspace, storage, and index for `command`.
+    ///
+    /// If the index database is missing or fails to open (e.g. corrupt
+    /// schema), the index is silently rebuilt from storage. A warning is
+    /// emitted so the recovery is observable via the JSON envelope.
     pub fn open(command: &str, override_path: Option<&Path>) -> Result<Self, CliError> {
         let ws = workspace::require_initialised(command, override_path)?;
         let storage = EmbeddedStorage::open(&ws.root)
             .map_err(|e| CliError::internal(command, format!("open storage: {e}")))?;
-        let index = Index::open(&ws.root)
-            .map_err(|e| CliError::internal(command, format!("open index: {e}")))?;
+
+        let mut warnings = Vec::new();
+        let db_path = ws.index_db_path();
+        let needs_rebuild = !db_path.exists();
+        let mut index = match Index::open(&ws.root) {
+            Ok(idx) => idx,
+            Err(e) => {
+                // Corrupt schema or unmigratable file: nuke and reopen.
+                let _ = std::fs::remove_file(&db_path);
+                warnings.push(format!(
+                    "index.db could not be opened ({e}); rebuilding from storage"
+                ));
+                Index::open(&ws.root)
+                    .map_err(|e| CliError::internal(command, format!("reopen index: {e}")))?
+            }
+        };
+        // Empty schema_version => freshly created or migrations missing.
+        let needs_rebuild = needs_rebuild || index.schema_version() == 0;
+        if needs_rebuild {
+            if !warnings
+                .iter()
+                .any(|w| w.contains("rebuilding from storage"))
+            {
+                warnings.push("index.db was missing; rebuilt from storage".to_string());
+            }
+            index
+                .rebuild_from(&storage)
+                .map_err(|e| CliError::internal(command, format!("rebuild index: {e}")))?;
+            tracing::debug!("auto-rebuilt missing/corrupt index for `{command}`");
+        }
+
         Ok(Self {
             ws,
             storage,
             index,
+            warnings,
             actor: None,
             command: command.to_string(),
         })
@@ -104,9 +139,8 @@ impl WorkCtx {
 
         // The index may have changed shape (status, claim, AC, …); a targeted
         // refresh is cheap and avoids rebuilds.
-        let adapter = IndexStorage::new(&self.storage);
         self.index
-            .refresh(&adapter, std::slice::from_ref(&path), &[])
+            .refresh(&self.storage, std::slice::from_ref(&path), &[])
             .map_err(|e| CliError::internal(&self.command, format!("refresh: {e}")))?;
         Ok(path)
     }

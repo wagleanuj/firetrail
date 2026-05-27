@@ -50,6 +50,7 @@ anyhow = "1.0"
 
 # CLI
 clap = { version = "4.5", features = ["derive"] }
+is-terminal = "0.4"
 
 # Storage / index
 rusqlite = { version = "0.32", features = ["bundled"] }

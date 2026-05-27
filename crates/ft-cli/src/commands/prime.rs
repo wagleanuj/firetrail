@@ -1,7 +1,11 @@
 //! `firetrail prime` — produce a context pack for a task or query.
 
+use std::collections::HashSet;
+
 use chrono::Utc;
+use ft_import::is_quarantined;
 use ft_prime::{ContextPack, PrimeFormat, PrimeOptions, prime_for_query, prime_for_task};
+use ft_storage::Storage as _;
 use serde::Serialize;
 use serde_json::Value;
 
@@ -54,7 +58,7 @@ pub fn run(args: &PrimeArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliE
         opts.scope_filter = Some(s.clone());
     }
 
-    let pack = if let Some(raw) = &args.task {
+    let mut pack = if let Some(raw) = &args.task {
         let id = ctx.resolve_id(raw)?;
         prime_for_task(&ctx.storage, &ctx.index, &id, &opts)
             .map_err(|e| CliError::internal(COMMAND, format!("prime: {e}")))?
@@ -67,6 +71,28 @@ pub fn run(args: &PrimeArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliE
             .map_err(|e| CliError::internal(COMMAND, format!("prime: {e}")))?
     };
 
+    // Quarantine filter (ADR-0014). The default ContextPack from ft-prime is
+    // import-agnostic; we materialise the filter at the CLI layer (per
+    // firetrail-2z2 design note) by inspecting each item's source record.
+    // Re-tally `total_tokens` after the drop so downstream renderers see a
+    // consistent budget view.
+    let mut quarantined_ids: HashSet<String> = HashSet::new();
+    if args.include_quarantine {
+        for item in &pack.items {
+            if let Ok(rec) = ctx.storage.read(&item.id)
+                && is_quarantined(&rec)
+            {
+                quarantined_ids.insert(item.id.as_str().to_string());
+            }
+        }
+    } else {
+        pack.items.retain(|item| match ctx.storage.read(&item.id) {
+            Ok(rec) => !is_quarantined(&rec),
+            Err(_) => true,
+        });
+        pack.total_tokens = pack.items.iter().map(|i| i.tokens).sum();
+    }
+
     let rendered = match opts.format {
         PrimeFormat::Markdown => Rendered::Markdown(ft_prime::render_markdown(&pack)),
         PrimeFormat::Json => Rendered::Json(ft_prime::render_json(&pack)),
@@ -76,6 +102,7 @@ pub fn run(args: &PrimeArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliE
         pack,
         rendered,
         warnings,
+        quarantined_ids,
     }))
 }
 
@@ -94,6 +121,9 @@ pub struct PrimeOutcome {
     rendered: Rendered,
     /// Non-fatal warnings.
     pub warnings: Vec<String>,
+    /// Ids of items in the pack that are quarantined imports. Empty when the
+    /// caller did not pass `--include-quarantine` (those are filtered out).
+    quarantined_ids: HashSet<String>,
 }
 
 impl PrimeOutcome {
@@ -124,6 +154,21 @@ impl PrimeOutcome {
         if let Rendered::Markdown(s) = &self.rendered {
             if let Some(obj) = data.as_object_mut() {
                 obj.insert("rendered_markdown".to_string(), Value::String(s.clone()));
+            }
+        }
+        // Stamp `quarantine: true` on items whose source record is
+        // quarantined. ADR-0014 says agents should know when they're reading
+        // an unreviewed import even with `--include-quarantine`.
+        if !self.quarantined_ids.is_empty()
+            && let Some(items) = data.get_mut("items").and_then(Value::as_array_mut)
+        {
+            for item in items {
+                if let Some(obj) = item.as_object_mut()
+                    && let Some(id) = obj.get("id").and_then(Value::as_str)
+                    && self.quarantined_ids.contains(id)
+                {
+                    obj.insert("quarantine".to_string(), Value::Bool(true));
+                }
             }
         }
         data

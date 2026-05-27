@@ -18,6 +18,7 @@ pub mod doctor;
 pub mod graph;
 pub mod hook;
 pub mod identity;
+pub mod import_cmd;
 pub mod index_cmd;
 pub mod init;
 pub mod link;
@@ -27,6 +28,7 @@ pub mod memory_create;
 pub mod memory_views;
 pub mod merge_driver;
 pub mod prime;
+pub mod promote_import;
 pub mod review;
 pub mod salvage;
 pub mod scope;
@@ -179,6 +181,10 @@ pub enum CommandOutcome {
     ScopeOwners(scope::ScopeOwnersOutcome),
     /// `firetrail sync`.
     Sync(sync_cmd::SyncOutcome),
+    /// `firetrail import …` (M6).
+    Import(import_cmd::ImportOutcome),
+    /// `firetrail promote-import` (M6).
+    PromoteImport(promote_import::PromoteImportOutcome),
 }
 
 impl CommandOutcome {
@@ -220,6 +226,8 @@ impl CommandOutcome {
             Self::ScopeAliases(r) => r.command,
             Self::ScopeOwners(r) => r.command,
             Self::Sync(r) => r.command,
+            Self::Import(r) => r.command,
+            Self::PromoteImport(r) => r.command,
         }
     }
 
@@ -263,6 +271,8 @@ impl CommandOutcome {
             Self::ScopeAliases(r) => r.markdown(),
             Self::ScopeOwners(r) => r.markdown(),
             Self::Sync(r) => r.markdown(),
+            Self::Import(r) => r.markdown(),
+            Self::PromoteImport(r) => r.markdown(),
         }
     }
 
@@ -306,6 +316,8 @@ impl CommandOutcome {
             Self::ScopeAliases(r) => r.quiet_line(),
             Self::ScopeOwners(r) => r.quiet_line(),
             Self::Sync(r) => r.quiet_line(),
+            Self::Import(r) => r.quiet_line(),
+            Self::PromoteImport(r) => r.quiet_line(),
         }
     }
 
@@ -351,6 +363,8 @@ impl CommandOutcome {
             Self::ScopeAliases(r) => serde_json::to_value(r).unwrap_or(Value::Null),
             Self::ScopeOwners(r) => serde_json::to_value(r).unwrap_or(Value::Null),
             Self::Sync(r) => serde_json::to_value(r).unwrap_or(Value::Null),
+            Self::Import(r) => serde_json::to_value(r).unwrap_or(Value::Null),
+            Self::PromoteImport(r) => serde_json::to_value(r).unwrap_or(Value::Null),
         }
     }
 
@@ -394,6 +408,8 @@ impl CommandOutcome {
             Self::ScopeAliases(r) => r.warnings.clone(),
             Self::ScopeOwners(r) => r.warnings.clone(),
             Self::Sync(r) => r.warnings.clone(),
+            Self::Import(r) => r.warnings.clone(),
+            Self::PromoteImport(r) => r.warnings.clone(),
         }
     }
 }

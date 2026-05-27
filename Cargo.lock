@@ -646,6 +646,7 @@ dependencies = [
  "ft-git",
  "ft-history",
  "ft-identity",
+ "ft-import",
  "ft-index",
  "ft-pr",
  "ft-prime",

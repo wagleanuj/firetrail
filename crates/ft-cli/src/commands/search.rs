@@ -1,7 +1,9 @@
 //! `firetrail search` and `firetrail similar` — M3 search surface.
 
 use ft_embed::{Embedder, MockEmbedder, daemon};
+use ft_import::is_quarantined;
 use ft_search::{HitMode, SearchHit, SearchMode, SearchQuery};
+use ft_storage::Storage as _;
 use serde::Serialize;
 
 use crate::cli::{EmbedderArg, GlobalOpts, SearchArgs, SimilarArgs};
@@ -69,16 +71,41 @@ pub fn search(args: &SearchArgs, global: &GlobalOpts) -> Result<CommandOutcome, 
         query.scope_filter = Some(s.clone());
     }
 
-    let engine = ctx.search_engine()?;
-    let hits = engine
-        .search(&query)
-        .map_err(|e| CliError::internal(CMD_SEARCH, format!("search: {e}")))?;
+    let hits = {
+        let engine = ctx.search_engine()?;
+        engine
+            .search(&query)
+            .map_err(|e| CliError::internal(CMD_SEARCH, format!("search: {e}")))?
+    };
+
+    // Quarantine filter (ADR-0014). By default, imported/quarantined records
+    // are dropped from the result set; with `--include-quarantine` they pass
+    // through with a `quarantine: true` marker in the JSON view. We materialise
+    // the filter at the CLI layer (rather than in ft-search) so the search
+    // engine stays oblivious to import labels — see firetrail-2z2.
+    let hit_views: Vec<SearchHitView> = hits
+        .into_iter()
+        .filter_map(|h| {
+            let quarantined = match ctx.storage.read(&h.id) {
+                Ok(rec) => is_quarantined(&rec),
+                Err(_) => false,
+            };
+            if quarantined && !args.include_quarantine {
+                return None;
+            }
+            let mut view = SearchHitView::from(h);
+            if quarantined {
+                view.quarantine = true;
+            }
+            Some(view)
+        })
+        .collect();
 
     Ok(CommandOutcome::Search(SearchOutcome {
         command: CMD_SEARCH,
         query: args.query.clone(),
         mode: mode_label(mode),
-        hits: hits.into_iter().map(SearchHitView::from).collect(),
+        hits: hit_views,
         warnings,
     }))
 }
@@ -134,6 +161,11 @@ pub struct SearchHitView {
     pub trust: String,
     /// Which signal produced this hit.
     pub mode: &'static str,
+    /// Marker for quarantined imports (only present when the hit refers to a
+    /// record carrying the `quarantine=true` label and the caller passed
+    /// `--include-quarantine`).
+    #[serde(skip_serializing_if = "std::ops::Not::not", default)]
+    pub quarantine: bool,
 }
 
 impl From<SearchHit> for SearchHitView {
@@ -145,6 +177,7 @@ impl From<SearchHit> for SearchHitView {
             score: h.score,
             trust: serde_lower(&h.trust),
             mode: hit_mode_label(h.mode),
+            quarantine: false,
         }
     }
 }

@@ -1,0 +1,51 @@
+name: m6-import-dry-run
+description: |
+  M6 success criterion #1 — `firetrail import incidents <dir> --dry-run`.
+
+  Stages three markdown incident reports under `imports/`, runs the importer in
+  dry-run mode, and asserts that:
+    - parsed = 3
+    - written = 0
+    - no quarantine records were materialised on disk (records dir empty for
+      incident kind).
+
+  ADR-0014 (Import quarantine): dry-run never touches storage; the report is a
+  preview only.
+
+setup:
+  config:
+    storage_mode: embedded
+    strict_identity: false
+    author_email: alice@example.com
+    author_name: Alice Tester
+
+steps:
+  - name: init repo
+    run: firetrail init --json --no-agents --no-hooks
+    expect:
+      exit: 0
+
+  - name: stage imports directory with three incident reports
+    run: sh -c 'mkdir -p imports && printf "# Redis pool exhaustion\n\n## Symptoms\n\nCheckout requests timed out.\n\n## Root Cause\n\nPool size reduced by bad config push.\n\n## Resolution\n\nReverted config push.\n" > imports/a.md && printf "# Login outage\n\n## Symptoms\n\nLogin requests returned 500.\n\n## Root Cause\n\nToken cache eviction storm.\n" > imports/b.md && printf "# Checkout failures\n\n## Symptoms\n\nCheckout flow erroring.\n" > imports/c.md'
+    expect:
+      exit: 0
+
+  - name: dry-run import reports parsed:3 written:0
+    run: firetrail --json import incidents imports --dry-run
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.dry_run: true
+        data.apply: false
+        data.parsed: 3
+        data.written: 0
+
+  - name: no incident records were materialised under .firetrail/records
+    # `ls` with a non-existent or empty dir exits non-zero with `nullglob`-less
+    # shells; we instead check the directory exists but contains no JSON files
+    # by counting matches. A successful `wc -l` reporting 0 means dry-run held
+    # to its contract.
+    run: sh -c 'find .firetrail/records/incident -name "*.json" -type f 2>/dev/null | wc -l | tr -d " \n"'
+    expect:
+      exit: 0
+      stdout_contains: "0"

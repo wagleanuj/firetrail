@@ -1,0 +1,90 @@
+name: m6-promotion
+description: |
+  M6 success criterion #3 — promotion workflow.
+
+  - Apply a single-incident import (quarantined).
+  - Create 3 canonical findings each referencing the imported incident's id via
+    `finding create --incident <id>`. The incident id appears in the finding
+    body, which the promotion-candidate scan picks up via substring match.
+  - `firetrail promote-import` lists exactly 1 candidate.
+  - `firetrail promote-import <id>` succeeds; the record loses its
+    `quarantine=true` label and now appears in default search results.
+
+  ADR-0014 (quarantine) + ADR-0017 (audit chain): promotion strips the label
+  and appends a `promote-import:` history entry.
+
+setup:
+  config:
+    storage_mode: embedded
+    strict_identity: false
+    author_email: alice@example.com
+    author_name: Alice Tester
+
+steps:
+  - name: init repo
+    run: firetrail init --json --no-agents --no-hooks
+    expect:
+      exit: 0
+
+  - name: stage one incident markdown file
+    run: sh -c 'mkdir -p imports && printf "# Pelican gateway outage\n\n## Symptoms\n\nGateway pelican failures.\n\n## Root Cause\n\nUpstream pelican rate limit.\n\n## Resolution\n\nRaised pelican quota.\n" > imports/pelican.md'
+    expect:
+      exit: 0
+
+  - name: apply the import (1 quarantined incident written)
+    run: firetrail --json import incidents imports --apply
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.parsed: 1
+        data.written: 1
+    capture:
+      incident_id: stdout_field=data.records.0
+
+  - name: candidate listing is empty before any canonical references exist
+    run: firetrail --json promote-import
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.action: list
+        data.candidates: []
+
+  - name: first canonical finding references the imported incident
+    run: firetrail --json finding create "First pelican finding" --incident ${incident_id} --details "ref one"
+    expect:
+      exit: 0
+
+  - name: second canonical finding references the imported incident
+    run: firetrail --json finding create "Second pelican finding" --incident ${incident_id} --details "ref two"
+    expect:
+      exit: 0
+
+  - name: third canonical finding references the imported incident
+    run: firetrail --json finding create "Third pelican finding" --incident ${incident_id} --details "ref three"
+    expect:
+      exit: 0
+
+  - name: promote-import now lists exactly one candidate
+    run: firetrail --json promote-import
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.action: list
+        data.candidates.0.id: ${incident_id}
+        data.candidates.0.inbound_refs: 3
+
+  - name: targeted promotion succeeds
+    run: firetrail --json promote-import ${incident_id}
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.action: promote
+        data.promoted_ids.0: ${incident_id}
+
+  - name: after promotion the record is no longer a candidate
+    run: firetrail --json promote-import
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.action: list
+        data.candidates: []

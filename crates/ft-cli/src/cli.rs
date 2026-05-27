@@ -220,6 +220,107 @@ pub enum Command {
 
     /// Synchronise the external data repository (M5).
     Sync(SyncArgs),
+
+    /// Import records from external systems (M6).
+    #[command(subcommand)]
+    Import(ImportCmd),
+
+    /// Jira integration (M6).
+    #[command(subcommand)]
+    Jira(JiraCmd),
+
+    /// Promote quarantined imported records into the canonical corpus (M6).
+    #[command(name = "promote-import")]
+    PromoteImport(PromoteImportArgs),
+}
+
+/// `firetrail import …` — M6 import surface (ADR-0014).
+#[derive(Debug, Subcommand)]
+pub enum ImportCmd {
+    /// Import a directory of markdown incident reports.
+    Incidents(ImportDirArgs),
+    /// Import a directory of markdown ADRs.
+    Adrs(ImportDirArgs),
+    /// Import a directory of markdown runbooks.
+    Runbooks(ImportDirArgs),
+    /// Import a Confluence page (requires MCP adapter — stub at M6).
+    Confluence(ImportConfluenceArgs),
+    /// Re-pull and re-parse already-imported records from their source URLs.
+    Refresh(ImportRefreshArgs),
+}
+
+/// Common `import incidents|adrs|runbooks <dir>` arguments.
+#[derive(Debug, Args)]
+pub struct ImportDirArgs {
+    /// Directory containing `*.md` files to import.
+    pub dir: PathBuf,
+    /// Parse and report without writing (default).
+    #[arg(long, conflicts_with = "apply")]
+    pub dry_run: bool,
+    /// Parse and write quarantined records to storage.
+    #[arg(long)]
+    pub apply: bool,
+}
+
+/// `firetrail import confluence <space>/<page-id>` arguments.
+#[derive(Debug, Args)]
+pub struct ImportConfluenceArgs {
+    /// `<space>/<page-id>` identifier.
+    pub target: String,
+}
+
+/// `firetrail import refresh` arguments.
+#[derive(Debug, Args)]
+pub struct ImportRefreshArgs {
+    /// Optional record id to refresh; refresh everything when omitted.
+    pub id: Option<String>,
+}
+
+/// `firetrail jira …`
+#[derive(Debug, Subcommand)]
+pub enum JiraCmd {
+    /// Import a Jira ticket by issue key (requires MCP adapter — stub at M6).
+    Import(JiraImportArgs),
+}
+
+/// `firetrail jira import <ISSUE-KEY>` arguments.
+#[derive(Debug, Args)]
+pub struct JiraImportArgs {
+    /// Jira issue key (e.g. `ENG-123`).
+    pub key: String,
+    /// Parse and report without writing.
+    #[arg(long, conflicts_with = "apply")]
+    pub dry_run: bool,
+    /// Parse and write the quarantined record to storage.
+    #[arg(long)]
+    pub apply: bool,
+}
+
+/// `firetrail promote-import` arguments.
+#[derive(Debug, Args)]
+#[allow(clippy::struct_excessive_bools)]
+pub struct PromoteImportArgs {
+    /// Optional id of the quarantined record to promote. When omitted, lists
+    /// candidates.
+    pub id: Option<String>,
+    /// Interactive prompt (M6: behaves like a non-interactive prompt that
+    /// rejects ambiguity; full TTY interactivity is a follow-up).
+    #[arg(long)]
+    pub interactive: bool,
+    /// Promote every candidate that meets the threshold non-interactively.
+    #[arg(long, conflicts_with = "id")]
+    pub batch: bool,
+    /// Restrict listing / batch promotion to records meeting the inbound-ref
+    /// threshold (default behaviour; flag kept for spec parity).
+    #[arg(long = "all-candidates")]
+    pub all_candidates: bool,
+    /// Force-promote a non-quarantined record (no-op) or one that doesn't
+    /// meet the inbound-ref threshold.
+    #[arg(long)]
+    pub force: bool,
+    /// Inbound-reference threshold (default: 3).
+    #[arg(long)]
+    pub min_inbound_refs: Option<usize>,
 }
 
 /// `firetrail identity …`
@@ -463,6 +564,12 @@ pub struct SearchArgs {
     /// Use `daemon` to forward embed requests to a running embedding daemon.
     #[arg(long, value_enum, default_value_t = EmbedderArg::Mock)]
     pub embedder: EmbedderArg,
+    /// Include quarantined (imported but not yet promoted) records in
+    /// results. Off by default — quarantined records are excluded so agents
+    /// don't trust unreviewed imports (ADR-0014). When included, each
+    /// quarantined hit carries `quarantine: true` in JSON output.
+    #[arg(long = "include-quarantine")]
+    pub include_quarantine: bool,
 }
 
 /// `firetrail similar` arguments.
@@ -496,6 +603,9 @@ pub struct PrimeArgs {
     /// Restrict to owning scope.
     #[arg(long)]
     pub scope: Option<String>,
+    /// Include quarantined records in the pack (ADR-0014). Off by default.
+    #[arg(long = "include-quarantine")]
+    pub include_quarantine: bool,
 }
 
 /// `firetrail index …` subcommands.

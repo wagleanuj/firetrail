@@ -301,3 +301,37 @@ fn m5_offboarding() {
 fn m5_pilot_rollout() {
     run_scenario_with_budget("m5-pilot-rollout.yml", M5_BUDGET);
 }
+
+// ---------------------------------------------------------------------------
+// M6 scenarios — import + promotion surface (ADR-0014):
+//
+//   - m6-import-dry-run : `import incidents <dir> --dry-run` reports parsed
+//                          counts and writes nothing.
+//   - m6-import-apply   : `import incidents <dir> --apply` writes
+//                          quarantined records; default search excludes them;
+//                          `--include-quarantine` surfaces them with marker.
+//   - m6-promotion      : three canonical findings reference an imported
+//                          incident, then `promote-import <id>` clears the
+//                          quarantine label.
+//
+// Per-scenario budget is 15s (each importer pass walks a temp dir, runs an
+// index refresh, and exercises the search engine). The M6 suite stays well
+// under the 60s envelope.
+// ---------------------------------------------------------------------------
+
+const M6_BUDGET: std::time::Duration = std::time::Duration::from_secs(15);
+
+#[test]
+fn m6_import_dry_run() {
+    run_scenario_with_budget("m6-import-dry-run.yml", M6_BUDGET);
+}
+
+#[test]
+fn m6_import_apply() {
+    run_scenario_with_budget("m6-import-apply.yml", M6_BUDGET);
+}
+
+#[test]
+fn m6_promotion() {
+    run_scenario_with_budget("m6-promotion.yml", M6_BUDGET);
+}

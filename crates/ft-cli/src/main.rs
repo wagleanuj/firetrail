@@ -67,8 +67,8 @@ fn main() -> ExitCode {
 fn dispatch(cli: &Cli) -> Result<commands::CommandOutcome, CliError> {
     use crate::cli::{
         BugCmd, CheckCmd, CriteriaCmd, DaemonCmd, DecisionCmd, DepCmd, EpicCmd, FindingCmd,
-        GotchaCmd, HookCmd, IdentityCmd, IncidentCmd, IndexCmd, LintCmd, MemoryCmd, RunbookCmd,
-        RunbookStepCmd, ScopeCmd, ServerHooksCmd, SubtaskCmd, TaskCmd,
+        GotchaCmd, HookCmd, IdentityCmd, ImportCmd, IncidentCmd, IndexCmd, JiraCmd, LintCmd,
+        MemoryCmd, RunbookCmd, RunbookStepCmd, ScopeCmd, ServerHooksCmd, SubtaskCmd, TaskCmd,
     };
     match &cli.command {
         Command::Init(args) => commands::init::run(args, &cli.global),
@@ -180,5 +180,23 @@ fn dispatch(cli: &Cli) -> Result<commands::CommandOutcome, CliError> {
         Command::Scope(ScopeCmd::Owners(args)) => commands::scope::owners(args, &cli.global),
 
         Command::Sync(args) => commands::sync_cmd::run(args, &cli.global),
+
+        Command::Import(ImportCmd::Incidents(args)) => {
+            commands::import_cmd::incidents(args, &cli.global)
+        }
+        Command::Import(ImportCmd::Adrs(args)) => commands::import_cmd::adrs(args, &cli.global),
+        Command::Import(ImportCmd::Runbooks(args)) => {
+            commands::import_cmd::runbooks(args, &cli.global)
+        }
+        Command::Import(ImportCmd::Confluence(args)) => {
+            commands::import_cmd::confluence(args, &cli.global)
+        }
+        Command::Import(ImportCmd::Refresh(args)) => {
+            commands::import_cmd::refresh(args, &cli.global)
+        }
+        Command::Jira(JiraCmd::Import(args)) => {
+            commands::import_cmd::jira_import(args, &cli.global)
+        }
+        Command::PromoteImport(args) => commands::promote_import::run(args, &cli.global),
     }
 }

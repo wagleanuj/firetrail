@@ -1,0 +1,54 @@
+name: m6-import-apply
+description: |
+  M6 success criterion #2 — `firetrail import incidents <dir> --apply` plus the
+  default-exclude / `--include-quarantine` search contract.
+
+  Stages three markdown incident reports, imports them in apply mode, then:
+    - Asserts the on-disk records count matches the import report.
+    - `firetrail search "<term>"` returns no hits (quarantine excluded by
+      default per ADR-0014).
+    - `firetrail search "<term>" --include-quarantine` surfaces the records,
+      each carrying `quarantine: true` in the JSON view.
+
+setup:
+  config:
+    storage_mode: embedded
+    strict_identity: false
+    author_email: alice@example.com
+    author_name: Alice Tester
+
+steps:
+  - name: init repo
+    run: firetrail init --json --no-agents --no-hooks
+    expect:
+      exit: 0
+
+  - name: stage imports directory with three incident reports
+    run: sh -c 'mkdir -p imports && printf "# Redis pool tarantula incident\n\n## Symptoms\n\nCheckout tarantula failures across the fleet.\n\n## Root Cause\n\nConfig push.\n" > imports/a.md && printf "# Login tarantula\n\n## Symptoms\n\nLogin tarantula timing out.\n" > imports/b.md && printf "# Checkout tarantula failure\n\n## Symptoms\n\nCheckout tarantula erroring.\n" > imports/c.md'
+    expect:
+      exit: 0
+
+  - name: apply import writes 3 quarantined records
+    run: firetrail --json import incidents imports --apply
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.dry_run: false
+        data.apply: true
+        data.parsed: 3
+        data.written: 3
+
+  - name: search excludes quarantined records by default
+    run: firetrail --json search "tarantula" --mode lexical
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.hits: []
+
+  - name: search --include-quarantine surfaces the imports with quarantine marker
+    run: firetrail --json search "tarantula" --mode lexical --include-quarantine
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.hits.0.quarantine: true
+        data.hits.0.kind: incident

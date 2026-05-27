@@ -1,0 +1,122 @@
+name: m3-search-lexical
+description: |
+  M3 success criterion — lexical search over a mixed-kind corpus.
+
+  Populates the workspace with one of each searchable kind (incident,
+  finding, runbook, decision) plus a task for trust-filter coverage, then
+  exercises:
+
+    - Body-term query returns the matching record(s).
+    - `--mode lexical` reports `mode: lexical` on the envelope (no vector
+      index is loaded by default — ADR-0007 sqlite-vec wiring is a follow-up).
+    - Hit mode marker is `lexical` on every result.
+    - `--trust reviewed` filter excludes memory drafts (findings/incidents
+      default to `Draft`) but keeps work-tracking kinds (tasks/epics default
+      to `Reviewed` per `default_trust_for_kind`).
+
+  Known gap (filed as follow-up)
+  ------------------------------
+  `finding create` (and other `memory create` paths) call
+  `write_with_history` directly instead of `WorkCtx::save_record`, so the
+  FTS index is NOT upserted on write. The roadmap M3 acceptance criterion
+  ("searchable within 1s of write completion") therefore needs an explicit
+  `firetrail index rebuild` step here before search will find the corpus.
+
+setup:
+  config:
+    storage_mode: embedded
+    strict_identity: false
+    author_email: alice@example.com
+    author_name: Alice Tester
+
+steps:
+  - name: init repo
+    run: firetrail init --json --no-hooks --no-agents
+    expect:
+      exit: 0
+
+  - name: alice creates an incident
+    run: firetrail --json incident create "Login outage during deploy" --severity sev2 --services auth,gateway
+    expect:
+      exit: 0
+    capture:
+      incident_id: stdout_field=data.record.envelope.id
+
+  - name: alice creates a finding tied to the incident
+    run: firetrail --json finding create "Token cache TTL too aggressive" --incident ${incident_id} --details "Auth tokens evicted under load during renewal storm."
+    expect:
+      exit: 0
+    capture:
+      finding_id: stdout_field=data.record.envelope.id
+
+  - name: alice creates a runbook
+    run: firetrail --json runbook create "Drain auth gateway" --summary "Operator steps for cutting traffic away from auth gateway."
+    expect:
+      exit: 0
+    capture:
+      runbook_id: stdout_field=data.record.envelope.id
+
+  - name: alice records a decision
+    run: firetrail --json decision create "Adopt 5m token TTL" --context "Aggressive eviction destabilises auth." --decision "Raise token cache TTL floor to 5 minutes."
+    expect:
+      exit: 0
+    capture:
+      decision_id: stdout_field=data.record.envelope.id
+
+  - name: alice creates a task referencing the same domain
+    run: firetrail --json task create "Raise token TTL floor"
+    expect:
+      exit: 0
+    capture:
+      task_id: stdout_field=data.record.envelope.id
+
+  - name: rebuild index so search FTS rows materialise for memory kinds
+    # Follow-up: memory_create paths bypass WorkCtx::save_record, so the
+    # search index does not pick them up on write. The user-facing recovery
+    # path until that is fixed is `firetrail index rebuild`.
+    run: firetrail --json index rebuild
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.action: rebuild
+
+  - name: lexical search on a body term returns hits with mode=lexical
+    run: firetrail --json search "token" --mode lexical
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.mode: lexical
+        data.hits.0.mode: lexical
+
+  - name: --kind filter restricts hits to findings
+    run: firetrail --json search "token" --mode lexical --kind finding
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.hits.0.kind: finding
+        data.hits.0.id: ${finding_id}
+
+  - name: --trust reviewed excludes the draft memory hits
+    # default_trust_for_kind treats findings/incidents/decisions/runbooks
+    # as Draft, and work-tracking kinds (task/epic) as Reviewed. So a
+    # `--trust reviewed` floor filters memory drafts and surfaces the task.
+    run: firetrail --json search "token" --mode lexical --trust reviewed
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.mode: lexical
+        data.hits.0.kind: task
+        data.hits.0.trust: reviewed
+        data.hits.0.id: ${task_id}
+
+  - name: --trust verified excludes everything (no records reach Verified via FTS today)
+    # Follow-up: trust transitions are not propagated into the FTS metadata,
+    # so even a promoted record reports its default-by-kind trust. Once
+    # ft-search materialises trust from the record body, this assertion can
+    # become "verified-only memory remains".
+    run: firetrail --json search "token" --mode lexical --trust verified
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.mode: lexical
+        data.hits: []

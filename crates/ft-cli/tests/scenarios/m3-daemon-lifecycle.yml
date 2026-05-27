@@ -1,0 +1,81 @@
+name: m3-daemon-lifecycle
+description: |
+  M3 success criterion — embedding daemon lifecycle is controllable from
+  the CLI. Asserts the state machine `daemon status` reports:
+    stopped (cold) → running (after `daemon start --foreground` in the
+    background) → stopped (after `daemon stop`).
+
+  Backgrounding strategy
+  ----------------------
+  The scenario runner is synchronous (each `run:` blocks until the spawned
+  process exits). `daemon start --foreground` blocks forever, so we go via
+  `sh -c '<bin> daemon start --foreground & ...'` to detach. The scenario
+  driver exports the resolved firetrail binary path as `FIRETRAIL_BIN` so
+  the shell command does not need to find the binary on PATH.
+
+  Cleanup
+  -------
+  `daemon stop` removes the socket file, which causes the next `accept()`
+  in the foregrounded `serve()` loop to error out and the background
+  process exits. As a belt-and-braces fallback, a `pkill` step kills any
+  surviving child by its argv signature.
+
+setup:
+  config:
+    storage_mode: embedded
+    strict_identity: false
+    author_email: alice@example.com
+    author_name: Alice Tester
+
+steps:
+  - name: init repo
+    run: firetrail init --json --no-hooks --no-agents
+    expect:
+      exit: 0
+
+  - name: status is stopped before any start
+    run: firetrail --json daemon status
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.status: stopped
+
+  - name: launch the daemon in the background via sh -c
+    # FIRETRAIL_BIN is exported by the scenarios.rs driver. The redirect
+    # detaches stdio so `sh -c` returns immediately. A short sleep lets the
+    # daemon bind its socket before the next status probe.
+    run: sh -c "$FIRETRAIL_BIN daemon start --foreground >/dev/null 2>&1 & sleep 0.7"
+    expect:
+      exit: 0
+
+  - name: status reports running while the daemon is up
+    run: firetrail --json daemon status
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.status: running
+
+  - name: stop removes the socket and the serve loop exits
+    run: firetrail --json daemon stop
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.status: stopped
+
+  - name: status returns stopped after the socket is gone
+    # `daemon stop` removed the socket file; `status` no longer sees one
+    # and reports `stopped`. The background process has either exited or
+    # is moments from doing so — either way the user-facing contract holds.
+    run: firetrail --json daemon status
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.status: stopped
+
+  - name: belt-and-braces — reap any surviving background firetrail daemon
+    # `pkill` exits 1 when no process matched; that is the expected case
+    # when `daemon stop` already caused the child to exit. We treat both
+    # exit codes (0 = killed, 1 = nothing to kill) as success.
+    run: sh -c "pkill -f 'firetrail daemon start --foreground' ; exit 0"
+    expect:
+      exit: 0

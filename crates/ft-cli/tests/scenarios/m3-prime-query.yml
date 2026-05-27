@@ -1,0 +1,55 @@
+name: m3-prime-query
+description: |
+  M3 success criterion — `firetrail prime --query "<term>"` returns
+  relevant records and a budget-respecting pack (ADR-0019).
+
+  The corpus mixes one strongly relevant finding ("payment retry storm")
+  against unrelated noise. Prime is asked for the payment domain; the
+  matched finding must appear in the pack and the pack must stay within
+  the requested `--max-tokens` budget.
+
+setup:
+  config:
+    storage_mode: embedded
+    strict_identity: false
+    author_email: alice@example.com
+    author_name: Alice Tester
+
+steps:
+  - name: init repo
+    run: firetrail init --json --no-hooks --no-agents
+    expect:
+      exit: 0
+
+  - name: noise finding (auth domain)
+    run: firetrail --json finding create "Auth token cache TTL" --details "auth token cache renewal storm"
+    expect:
+      exit: 0
+
+  - name: relevant finding (payment domain)
+    run: firetrail --json finding create "Payment retry storm" --details "payment retries exhausted budget during cold start; downstream gateway saturated."
+    expect:
+      exit: 0
+    capture:
+      pay_id: stdout_field=data.record.envelope.id
+
+  - name: another noise finding (observability domain)
+    run: firetrail --json finding create "Metrics scrape overhead" --details "prometheus scrape interval too tight during deploy"
+    expect:
+      exit: 0
+
+  - name: rebuild index so prime --query can locate the memory corpus
+    run: firetrail --json index rebuild
+    expect:
+      exit: 0
+
+  - name: prime by query returns the matching finding inside the budget
+    run: firetrail --json prime --query "payment" --max-tokens 400
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.budget: 400
+        data.query: payment
+        data.target_id: null
+        data.items.0.id: ${pay_id}
+        data.items.0.kind: finding

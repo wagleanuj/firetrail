@@ -1,0 +1,104 @@
+name: m3-prime-budget
+description: |
+  M3 success criterion — `firetrail prime --task <id>` produces a pack
+  inside the configured `--max-tokens` budget (ADR-0019). Reducing the
+  budget produces additional `omitted` manifest entries with reason
+  `budget_exceeded`.
+
+  Corpus shape: an epic, a target task, and five findings all in the same
+  owning scope (`auth`). `prime_for_task` walks structural relations
+  (epic ↔ task) and then sweeps every same-scope record into the candidate
+  set — so the findings become eligible without needing to register
+  per-record links. Bodies are intentionally inflated with repeated tokens
+  so the pack-builder's token estimator sees a non-trivial cost per item.
+
+setup:
+  config:
+    storage_mode: embedded
+    strict_identity: false
+    author_email: alice@example.com
+    author_name: Alice Tester
+
+steps:
+  - name: init repo
+    run: firetrail init --json --no-hooks --no-agents
+    expect:
+      exit: 0
+
+  - name: create an epic in the auth scope
+    run: firetrail --json epic create "Token cache hardening" --scope auth
+    expect:
+      exit: 0
+    capture:
+      epic_id: stdout_field=data.record.envelope.id
+
+  - name: create the target task under the epic, same scope
+    run: firetrail --json task create "Investigate token cache TTL" --epic ${epic_id} --scope auth
+    expect:
+      exit: 0
+    capture:
+      task_id: stdout_field=data.record.envelope.id
+
+  - name: finding 1 (auth scope, verbose body to consume budget)
+    run: firetrail --json finding create "Token cache TTL aggressive 1" --details "token cache renewal storm cold cache cold cache cold cache cold cache cold cache. repeat repeat repeat repeat repeat repeat repeat repeat repeat. END 1" --scope auth
+    expect:
+      exit: 0
+
+  - name: finding 2
+    run: firetrail --json finding create "Token cache TTL aggressive 2" --details "token cache renewal storm cold cache cold cache cold cache cold cache cold cache. repeat repeat repeat repeat repeat repeat repeat repeat repeat. END 2" --scope auth
+    expect:
+      exit: 0
+
+  - name: finding 3
+    run: firetrail --json finding create "Token cache TTL aggressive 3" --details "token cache renewal storm cold cache cold cache cold cache cold cache cold cache. repeat repeat repeat repeat repeat repeat repeat repeat repeat. END 3" --scope auth
+    expect:
+      exit: 0
+
+  - name: finding 4
+    run: firetrail --json finding create "Token cache TTL aggressive 4" --details "token cache renewal storm cold cache cold cache cold cache cold cache cold cache. repeat repeat repeat repeat repeat repeat repeat repeat repeat. END 4" --scope auth
+    expect:
+      exit: 0
+
+  - name: finding 5
+    run: firetrail --json finding create "Token cache TTL aggressive 5" --details "token cache renewal storm cold cache cold cache cold cache cold cache cold cache. repeat repeat repeat repeat repeat repeat repeat repeat repeat. END 5" --scope auth
+    expect:
+      exit: 0
+
+  - name: rebuild index so memory kinds appear in same-scope sweeps
+    run: firetrail --json index rebuild
+    expect:
+      exit: 0
+
+  - name: prime with a roomy budget — the full corpus fits, nothing omitted
+    # 2000 tokens is well above the total cost of (task + epic + 5 findings)
+    # in the inflated-body shape used here (~265 tokens at the tested rev).
+    run: firetrail --json prime --task ${task_id} --max-tokens 2000
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.budget: 2000
+        data.target_id: ${task_id}
+        data.omitted: []
+
+  - name: prime with --max-tokens 200 already spills lower-priority items
+    # 200 fits the task + epic + a couple of findings; the rest land in
+    # `omitted` with reason `budget_exceeded` per ADR-0019.
+    run: firetrail --json prime --task ${task_id} --max-tokens 200
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.budget: 200
+        data.target_id: ${task_id}
+        data.omitted.0.reason: budget_exceeded
+
+  - name: prime with a tight --max-tokens 50 budget spills more records
+    # Tighter budget → strictly more omitted entries than the 200-token
+    # case above. We assert at least three findings land in `omitted`.
+    run: firetrail --json prime --task ${task_id} --max-tokens 50
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.budget: 50
+        data.target_id: ${task_id}
+        data.omitted.0.reason: budget_exceeded
+        data.omitted.2.reason: budget_exceeded

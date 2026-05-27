@@ -34,6 +34,11 @@ fn runner_options() -> RunnerOptions {
         .with_firetrail_bin(bin)
         // Pin identity so the scenario is host-agnostic.
         .with_env("FIRETRAIL_AUTHOR", "alice@example.com")
+        // Expose the resolved binary path to shell-out steps (M3 daemon
+        // scenario needs to spawn `firetrail daemon start --foreground` in
+        // the background via `sh -c`, and the scenario runner only rewrites
+        // the literal `firetrail` head argv when it dispatches directly).
+        .with_env("FIRETRAIL_BIN", bin)
 }
 
 fn scenario_path(name: &str) -> PathBuf {
@@ -152,4 +157,43 @@ fn m2_force_push_detection() {
 #[test]
 fn m2_salvage() {
     run_scenario_with_budget("m2-salvage.yml", M2_BUDGET);
+}
+
+// ---------------------------------------------------------------------------
+// M3 scenarios — lexical search, trust weighting / filtering, prime budget &
+// query, daemon lifecycle, and index rebuild on the M3 surface. ADR/roadmap
+// references live in each YAML's `description:` block. Per-scenario budget
+// is 15s (roadmap M3 plan); the M3 suite stays under 90s total.
+// ---------------------------------------------------------------------------
+
+const M3_BUDGET: std::time::Duration = std::time::Duration::from_secs(15);
+
+#[test]
+fn m3_search_lexical() {
+    run_scenario_with_budget("m3-search-lexical.yml", M3_BUDGET);
+}
+
+#[test]
+fn m3_trust_weighting() {
+    run_scenario_with_budget("m3-trust-weighting.yml", M3_BUDGET);
+}
+
+#[test]
+fn m3_prime_budget() {
+    run_scenario_with_budget("m3-prime-budget.yml", M3_BUDGET);
+}
+
+#[test]
+fn m3_prime_query() {
+    run_scenario_with_budget("m3-prime-query.yml", M3_BUDGET);
+}
+
+#[test]
+fn m3_daemon_lifecycle() {
+    run_scenario_with_budget("m3-daemon-lifecycle.yml", M3_BUDGET);
+}
+
+#[test]
+fn m3_index_rebuild() {
+    run_scenario_with_budget("m3-index-rebuild.yml", M3_BUDGET);
 }

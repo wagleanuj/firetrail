@@ -1,0 +1,95 @@
+name: m3-index-rebuild
+description: |
+  M3 surface — the search FTS table is a derived cache. Deleting
+  `.firetrail/index.db` must not lose data; `firetrail index rebuild`
+  reconstructs both the SQL index *and* the search FTS rows from on-disk
+  records. After rebuild, `firetrail search` returns hits again.
+
+  Complements `m1-index-rebuild.yml` (work-tracking kinds + doctor path)
+  by exercising the search-FTS portion of the rebuild loop on M3 record
+  kinds.
+
+setup:
+  config:
+    storage_mode: embedded
+    strict_identity: false
+    author_email: alice@example.com
+    author_name: Alice Tester
+
+steps:
+  - name: init repo
+    run: firetrail init --json --no-hooks --no-agents
+    expect:
+      exit: 0
+
+  - name: alice creates a finding
+    run: firetrail --json finding create "Token cache TTL" --details "tokens evicted under load"
+    expect:
+      exit: 0
+    capture:
+      finding_id: stdout_field=data.record.envelope.id
+
+  - name: alice creates a runbook
+    run: firetrail --json runbook create "Drain auth gateway" --summary "Operator steps to drain the auth gateway during incidents."
+    expect:
+      exit: 0
+
+  - name: alice creates a decision
+    run: firetrail --json decision create "Adopt 5m token TTL" --context "Aggressive eviction destabilises auth." --decision "Raise token cache TTL floor to 5 minutes."
+    expect:
+      exit: 0
+
+  - name: initial rebuild populates the FTS table from storage
+    run: firetrail --json index rebuild
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.action: rebuild
+
+  - name: baseline search succeeds before deletion
+    # --kind finding pins the assertion to the record we captured; the
+    # decision body also contains "token" so unfiltered search ranking
+    # could place it first.
+    run: firetrail --json search "token" --mode lexical --kind finding
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.mode: lexical
+        data.hits.0.kind: finding
+        data.hits.0.id: ${finding_id}
+
+  - name: delete the index db (the derived cache)
+    run: rm .firetrail/index.db
+    expect:
+      exit: 0
+
+  - name: rebuild reconstructs both relational and FTS indexes
+    # records_indexed should reflect at least the three memory records we
+    # wrote above (alongside the implicit init bookkeeping); search FTS
+    # rows are upserted in the same pass.
+    run: firetrail --json index rebuild
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.action: rebuild
+
+  - name: index.db is back on disk
+    run: test -f .firetrail/index.db
+    expect:
+      exit: 0
+
+  - name: search works after rebuild and finds the finding again
+    run: firetrail --json search "token" --mode lexical --kind finding
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.mode: lexical
+        data.hits.0.kind: finding
+        data.hits.0.id: ${finding_id}
+
+  - name: show still works (record file survived)
+    run: firetrail --json show ${finding_id}
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.envelope.id: ${finding_id}

@@ -162,6 +162,45 @@ pub enum Command {
     /// Workspace / PR sanity checks.
     #[command(subcommand)]
     Check(CheckCmd),
+
+    /// Internal hook entrypoints (not user-facing).
+    ///
+    /// Invoked by the git hooks installed by `firetrail init`. The leading
+    /// underscore in the name marks this command as internal — its surface
+    /// is unstable and not documented for direct use.
+    #[command(name = "_hook", hide = true, subcommand)]
+    Hook(HookCmd),
+}
+
+/// Internal `_hook …` dispatcher.
+///
+/// Each variant is invoked by the git hook script installed by
+/// `firetrail init`. The signatures track what git passes on the
+/// corresponding hook's stdin / argv (per `githooks(5)`).
+#[derive(Debug, Subcommand)]
+pub enum HookCmd {
+    /// Invoked from `post-checkout`. Receives `<prev> <new> <branch_flag>`.
+    OnCheckout(HookOnCheckoutArgs),
+    /// Invoked from `post-merge`. Receives `<squash_flag>`.
+    OnMerge(HookOnMergeArgs),
+}
+
+/// Arguments forwarded from the `post-checkout` hook.
+#[derive(Debug, Args)]
+pub struct HookOnCheckoutArgs {
+    /// Commit SHA the previous HEAD pointed at.
+    pub prev_ref: String,
+    /// Commit SHA the new HEAD points at.
+    pub new_ref: String,
+    /// `1` if this was a branch switch, `0` if a file-level checkout.
+    pub branch_flag: String,
+}
+
+/// Arguments forwarded from the `post-merge` hook.
+#[derive(Debug, Args)]
+pub struct HookOnMergeArgs {
+    /// `1` if `git merge --squash`, `0` otherwise.
+    pub squash_flag: String,
 }
 
 /// Severity selector for `incident create`.
@@ -415,6 +454,37 @@ pub enum MemoryCmd {
     Merge(TrustMergeArgs),
     /// Redact a record (irreversible body wipe).
     Redact(TrustReasonArgs),
+    /// Salvage memory records from an abandoned / about-to-be-deleted branch
+    /// (ADR-0018).
+    Salvage(MemorySalvageArgs),
+}
+
+/// `firetrail memory salvage` arguments.
+#[derive(Debug, Args)]
+pub struct MemorySalvageArgs {
+    /// Base branch to compare against (records on HEAD that aren't on the
+    /// base will be candidates for salvage). Defaults to `main`.
+    #[arg(long, default_value = "main")]
+    pub base: String,
+
+    /// Salvage source branch. Defaults to the current branch.
+    #[arg(long)]
+    pub branch: Option<String>,
+
+    /// Accept defaults for every record without prompting.
+    ///
+    /// Equivalent to `--non-interactive`. Memory-kind records are salvaged;
+    /// structural-kind records (task/epic/subtask/bug) are skipped.
+    #[arg(long, conflicts_with = "non_interactive")]
+    pub auto: bool,
+
+    /// Explicit non-interactive flag (alias of `--auto`).
+    #[arg(long)]
+    pub non_interactive: bool,
+
+    /// Plan only — list what would be salvaged without mutating the repo.
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 /// Incident creation arguments.

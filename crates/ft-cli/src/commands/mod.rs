@@ -14,11 +14,13 @@ pub mod create;
 pub mod criteria;
 pub mod doctor;
 pub mod graph;
+pub mod hook;
 pub mod init;
 pub mod link;
 pub mod list;
 pub mod memory_create;
 pub mod memory_views;
+pub mod salvage;
 pub mod show;
 pub mod trust;
 pub mod update;
@@ -123,6 +125,10 @@ pub enum CommandOutcome {
     MemoryList(memory_views::MemoryListOutcome),
     /// `firetrail memory show`.
     MemoryShow(memory_views::MemoryShowOutcome),
+    /// `firetrail memory salvage`.
+    MemorySalvage(salvage::SalvageOutcome),
+    /// `firetrail _hook on-checkout` / `_hook on-merge`.
+    Hook(hook::HookOutcome),
 }
 
 impl CommandOutcome {
@@ -143,6 +149,8 @@ impl CommandOutcome {
             Self::CheckPr(_) => "check pr",
             Self::MemoryList(l) => l.command,
             Self::MemoryShow(_) => "memory show",
+            Self::MemorySalvage(_) => "memory salvage",
+            Self::Hook(h) => h.command,
         }
     }
 
@@ -165,6 +173,8 @@ impl CommandOutcome {
             Self::CheckPr(c) => c.markdown(),
             Self::MemoryList(l) => l.markdown(),
             Self::MemoryShow(s) => s.markdown(),
+            Self::MemorySalvage(s) => s.markdown(),
+            Self::Hook(h) => h.markdown(),
         }
     }
 
@@ -187,6 +197,8 @@ impl CommandOutcome {
             Self::CheckPr(c) => c.quiet_line(),
             Self::MemoryList(l) => l.quiet_line(),
             Self::MemoryShow(s) => s.quiet_line(),
+            Self::MemorySalvage(s) => s.quiet_line(),
+            Self::Hook(h) => h.quiet_line(),
         }
     }
 
@@ -211,6 +223,8 @@ impl CommandOutcome {
             Self::CheckPr(c) => serde_json::to_value(c).unwrap_or(Value::Null),
             Self::MemoryList(l) => serde_json::to_value(l).unwrap_or(Value::Null),
             Self::MemoryShow(s) => serde_json::to_value(s).unwrap_or(Value::Null),
+            Self::MemorySalvage(s) => serde_json::to_value(s).unwrap_or(Value::Null),
+            Self::Hook(h) => serde_json::to_value(h).unwrap_or(Value::Null),
         }
     }
 
@@ -233,6 +247,8 @@ impl CommandOutcome {
             Self::CheckPr(c) => c.warnings.clone(),
             Self::MemoryList(l) => l.warnings.clone(),
             Self::MemoryShow(s) => s.warnings.clone(),
+            Self::MemorySalvage(s) => s.warnings.clone(),
+            Self::Hook(h) => h.warnings.clone(),
         }
     }
 }

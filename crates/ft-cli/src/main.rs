@@ -66,7 +66,7 @@ fn main() -> ExitCode {
 fn dispatch(cli: &Cli) -> Result<commands::CommandOutcome, CliError> {
     use crate::cli::{
         BugCmd, CheckCmd, CriteriaCmd, DecisionCmd, DepCmd, EpicCmd, FindingCmd, GotchaCmd,
-        IncidentCmd, MemoryCmd, RunbookCmd, RunbookStepCmd, SubtaskCmd, TaskCmd,
+        HookCmd, IncidentCmd, MemoryCmd, RunbookCmd, RunbookStepCmd, SubtaskCmd, TaskCmd,
     };
     match &cli.command {
         Command::Init(args) => commands::init::run(args, &cli.global),
@@ -134,10 +134,14 @@ fn dispatch(cli: &Cli) -> Result<commands::CommandOutcome, CliError> {
         }
         Command::Memory(MemoryCmd::Merge(args)) => commands::trust::merge(args, &cli.global),
         Command::Memory(MemoryCmd::Redact(args)) => commands::trust::redact(args, &cli.global),
+        Command::Memory(MemoryCmd::Salvage(args)) => commands::salvage::run(args, &cli.global),
 
         Command::Capture(args) => commands::memory_create::capture(args, &cli.global),
         Command::Verify(args) => commands::verify::run(args, &cli.global),
         Command::Compact(args) => commands::compact::run(args, &cli.global),
         Command::Check(CheckCmd::Pr(args)) => commands::check::pr(args, &cli.global),
+
+        Command::Hook(HookCmd::OnCheckout(args)) => commands::hook::on_checkout(args, &cli.global),
+        Command::Hook(HookCmd::OnMerge(args)) => commands::hook::on_merge(args, &cli.global),
     }
 }

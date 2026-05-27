@@ -305,14 +305,20 @@ fn default_hooks() -> [(HookName, &'static str); 3] {
         ),
         (
             HookName::PostCheckout,
-            "# firetrail post-checkout: refresh local index after branch switch.\n\
-             # Real implementation arrives with ft-index refresh hook (M2).\n\
+            // post-checkout receives: <prev-ref> <new-ref> <branch-flag>
+            // (`branch-flag` is 1 for branch switches, 0 for file-level checkouts).
+            // We invoke the internal `_hook on-checkout` entrypoint, which warns
+            // about unsaved memory records (ADR-0018). Failures are swallowed so
+            // a buggy firetrail can never block a checkout.
+            "# firetrail post-checkout — branch-salvage warning (ADR-0018).\n\
+             firetrail _hook on-checkout \"$1\" \"$2\" \"$3\" >/dev/null 2>&1 || true\n\
              exit 0\n",
         ),
         (
             HookName::PostMerge,
-            "# firetrail post-merge: refresh local index after a merge.\n\
-             # Real implementation arrives with ft-index refresh hook (M2).\n\
+            // post-merge receives a single argument: 1 if squash-merge, 0 otherwise.
+            "# firetrail post-merge — branch-salvage notice (ADR-0018).\n\
+             firetrail _hook on-merge \"$1\" >/dev/null 2>&1 || true\n\
              exit 0\n",
         ),
     ]

@@ -66,8 +66,8 @@ fn main() -> ExitCode {
 fn dispatch(cli: &Cli) -> Result<commands::CommandOutcome, CliError> {
     use crate::cli::{
         BugCmd, CheckCmd, CriteriaCmd, DaemonCmd, DecisionCmd, DepCmd, EpicCmd, FindingCmd,
-        GotchaCmd, HookCmd, IncidentCmd, IndexCmd, MemoryCmd, RunbookCmd, RunbookStepCmd,
-        SubtaskCmd, TaskCmd,
+        GotchaCmd, HookCmd, IncidentCmd, IndexCmd, LintCmd, MemoryCmd, RunbookCmd, RunbookStepCmd,
+        ServerHooksCmd, SubtaskCmd, TaskCmd,
     };
     match &cli.command {
         Command::Init(args) => commands::init::run(args, &cli.global),
@@ -141,6 +141,14 @@ fn dispatch(cli: &Cli) -> Result<commands::CommandOutcome, CliError> {
         Command::Verify(args) => commands::verify::run(args, &cli.global),
         Command::Compact(args) => commands::compact::run(args, &cli.global),
         Command::Check(CheckCmd::Pr(args)) => commands::check::pr(args, &cli.global),
+        Command::Check(CheckCmd::Paths(args)) => commands::check::paths(args, &cli.global),
+        Command::Diff(args) => commands::diff::run(args, &cli.global),
+        Command::Lint(LintCmd::Memory(args)) => commands::lint::memory(args, &cli.global),
+        Command::Review(args) => commands::review::run(args, &cli.global),
+        Command::MergeDriverInstall(args) => commands::merge_driver::install(args, &cli.global),
+        Command::ServerHooks(ServerHooksCmd::Install(args)) => {
+            commands::server_hooks::install(args, &cli.global)
+        }
 
         Command::Hook(HookCmd::OnCheckout(args)) => commands::hook::on_checkout(args, &cli.global),
         Command::Hook(HookCmd::OnMerge(args)) => commands::hook::on_merge(args, &cli.global),

@@ -163,6 +163,24 @@ pub enum Command {
     #[command(subcommand)]
     Check(CheckCmd),
 
+    /// Show records that changed between two git refs (record-aware diff).
+    Diff(DiffArgs),
+
+    /// Lint workspace state (subset of ft-pr rules that work without a diff).
+    #[command(subcommand)]
+    Lint(LintCmd),
+
+    /// Interactive review helper — render record state + suggested next action.
+    Review(ReviewArgs),
+
+    /// Install the Firetrail JSON merge driver into the local repo.
+    #[command(name = "merge-driver-install")]
+    MergeDriverInstall(MergeDriverInstallArgs),
+
+    /// Install server-side hook templates into a destination directory.
+    #[command(name = "server-hooks", subcommand)]
+    ServerHooks(ServerHooksCmd),
+
     /// Internal hook entrypoints (not user-facing).
     ///
     /// Invoked by the git hooks installed by `firetrail init`. The leading
@@ -987,8 +1005,12 @@ pub struct CompactArgs {
 /// `firetrail check …`
 #[derive(Debug, Subcommand)]
 pub enum CheckCmd {
-    /// Validate the records changed between two git refs.
+    /// Validate the records changed between two git refs using the full
+    /// ft-pr rule set.
     Pr(CheckPrArgs),
+    /// Run the per-commit path validator over an explicit path list
+    /// (M2 hook surface; ft-storage::validate_pre_commit).
+    Paths(CheckPathsArgs),
 }
 
 /// `firetrail check pr` arguments.
@@ -998,6 +1020,83 @@ pub struct CheckPrArgs {
     pub base: String,
     /// Head git ref of the PR.
     pub head: String,
+    /// Promote warnings to errors.
+    #[arg(long)]
+    pub strict: bool,
+    /// Disable the secret-scan rule.
+    #[arg(long)]
+    pub no_secret_scan: bool,
+}
+
+/// `firetrail check paths` arguments.
+#[derive(Debug, Args)]
+pub struct CheckPathsArgs {
+    /// Repo-relative paths to validate. Non-record paths are pass-through.
+    #[arg(required = true)]
+    pub paths: Vec<PathBuf>,
+}
+
+/// `firetrail diff` arguments.
+#[derive(Debug, Args)]
+pub struct DiffArgs {
+    /// Base git ref.
+    pub base: String,
+    /// Head git ref.
+    pub head: String,
+    /// Only show changes touching memory-kind records.
+    #[arg(long)]
+    pub memory: bool,
+    /// Filter to a single scope path prefix.
+    #[arg(long)]
+    pub scope: Option<String>,
+}
+
+/// `firetrail lint …`
+#[derive(Debug, Subcommand)]
+pub enum LintCmd {
+    /// Lint memory records in the current workspace state.
+    Memory(LintMemoryArgs),
+}
+
+/// `firetrail lint memory` arguments.
+#[derive(Debug, Args)]
+pub struct LintMemoryArgs {
+    /// Apply auto-fixes where possible (M4: no-op; placeholder for follow-up).
+    #[arg(long)]
+    pub fix: bool,
+}
+
+/// `firetrail review <id>` arguments.
+#[derive(Debug, Args)]
+pub struct ReviewArgs {
+    /// Record id (full or unambiguous prefix).
+    pub id: String,
+}
+
+/// `firetrail merge-driver-install` arguments.
+#[derive(Debug, Args)]
+pub struct MergeDriverInstallArgs {
+    /// Path to the `firetrail-merge-driver` binary used in the git config
+    /// entry. Defaults to `firetrail-merge-driver` (must be on `$PATH`).
+    #[arg(long)]
+    pub binary: Option<String>,
+}
+
+/// `firetrail server-hooks …`
+#[derive(Debug, Subcommand)]
+pub enum ServerHooksCmd {
+    /// Copy the bundled server-side hook templates into a destination
+    /// directory.
+    Install(ServerHooksInstallArgs),
+}
+
+/// `firetrail server-hooks install` arguments.
+#[derive(Debug, Args)]
+pub struct ServerHooksInstallArgs {
+    /// Destination directory (e.g. a git hosting provider's hook dir, or
+    /// `.git/hooks/` for a bare repo).
+    #[arg(long)]
+    pub dest: PathBuf,
 }
 
 /// Arguments for `firetrail init`.

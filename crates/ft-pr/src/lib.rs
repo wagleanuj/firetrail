@@ -36,6 +36,6 @@ pub mod merge;
 
 pub use cache::{ValidationCache, validate_pr_cached};
 pub use error::PrError;
-pub use options::PrValidatorOptions;
+pub use options::{PrValidatorOptions, default_secret_patterns};
 pub use report::{PrFinding, PrReport, PrSummary, RuleId, Severity};
 pub use validator::{PrValidator, validate_pr};

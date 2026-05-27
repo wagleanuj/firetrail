@@ -1,0 +1,95 @@
+# Firetrail PR validation workflow.
+#
+# Drop into `.github/workflows/firetrail-check.yml`. Runs `firetrail check pr`
+# against the PR's base..HEAD range and surfaces the report as a PR comment
+# on failure.
+#
+# TODO: once the Firetrail GitHub Marketplace action ships, replace the
+# `cargo install --path` step with `uses: firetrail/firetrail-action@v1`.
+# The marketplace action will cache builds and pre-publish signed binaries.
+
+name: Firetrail check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  firetrail-check:
+    runs-on: ubuntu-latest
+    inputs:
+      strict:
+        description: "Promote warnings to errors"
+        required: false
+        default: "true"
+      skip-rules:
+        description: "Comma-separated list of rule ids to skip (currently advisory; reserved for the marketplace action)"
+        required: false
+        default: ""
+
+    steps:
+      - name: Checkout (with full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: firetrail-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install firetrail
+        # TODO: replace with `uses: firetrail/firetrail-action@v1` once the
+        # marketplace action is published.
+        run: cargo install --path crates/ft-cli --locked --force
+
+      - name: Determine base ref
+        id: base
+        run: |
+          echo "ref=origin/${{ github.base_ref }}" >> "$GITHUB_OUTPUT"
+
+      - name: Run firetrail check pr
+        id: check
+        env:
+          STRICT: ${{ inputs.strict || 'true' }}
+        run: |
+          set +e
+          FLAGS=""
+          if [ "$STRICT" = "true" ]; then
+            FLAGS="--strict"
+          fi
+          firetrail --json check pr "${{ steps.base.outputs.ref }}" "HEAD" $FLAGS \
+            > firetrail-report.json 2> firetrail-report.err
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          cat firetrail-report.json || true
+          cat firetrail-report.err || true
+
+      - name: Post summary comment on failure
+        if: steps.check.outputs.exit_code != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            echo "## Firetrail check failed"
+            echo ""
+            echo '```json'
+            cat firetrail-report.json
+            echo '```'
+          } > firetrail-comment.md
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --body-file firetrail-comment.md
+
+      - name: Fail the job if validation failed
+        if: steps.check.outputs.exit_code != '0'
+        run: exit 1

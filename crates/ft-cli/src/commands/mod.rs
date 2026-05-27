@@ -13,18 +13,23 @@ pub mod compact;
 pub mod create;
 pub mod criteria;
 pub mod daemon_cmd;
+pub mod diff;
 pub mod doctor;
 pub mod graph;
 pub mod hook;
 pub mod index_cmd;
 pub mod init;
 pub mod link;
+pub mod lint;
 pub mod list;
 pub mod memory_create;
 pub mod memory_views;
+pub mod merge_driver;
 pub mod prime;
+pub mod review;
 pub mod salvage;
 pub mod search;
+pub mod server_hooks;
 pub mod show;
 pub mod trust;
 pub mod update;
@@ -125,6 +130,18 @@ pub enum CommandOutcome {
     Compact(compact::CompactOutcome),
     /// `firetrail check pr`.
     CheckPr(check::CheckPrOutcome),
+    /// `firetrail check paths`.
+    CheckPaths(check::CheckPathsOutcome),
+    /// `firetrail diff`.
+    Diff(diff::DiffOutcome),
+    /// `firetrail lint memory`.
+    LintMemory(lint::LintMemoryOutcome),
+    /// `firetrail review`.
+    Review(review::ReviewOutcome),
+    /// `firetrail merge-driver-install`.
+    MergeDriverInstall(merge_driver::MergeDriverInstallOutcome),
+    /// `firetrail server-hooks install`.
+    ServerHooks(server_hooks::ServerHooksOutcome),
     /// `firetrail memory list` / `memory stale`.
     MemoryList(memory_views::MemoryListOutcome),
     /// `firetrail memory show`.
@@ -159,6 +176,12 @@ impl CommandOutcome {
             Self::Verify(_) => "verify",
             Self::Compact(_) => "compact",
             Self::CheckPr(_) => "check pr",
+            Self::CheckPaths(_) => "check paths",
+            Self::Diff(_) => "diff",
+            Self::LintMemory(_) => "lint memory",
+            Self::Review(_) => "review",
+            Self::MergeDriverInstall(_) => "merge-driver-install",
+            Self::ServerHooks(_) => "server-hooks install",
             Self::MemoryList(l) => l.command,
             Self::MemoryShow(_) => "memory show",
             Self::MemorySalvage(_) => "memory salvage",
@@ -187,6 +210,12 @@ impl CommandOutcome {
             Self::Verify(v) => v.markdown(),
             Self::Compact(c) => c.markdown(),
             Self::CheckPr(c) => c.markdown(),
+            Self::CheckPaths(c) => c.markdown(),
+            Self::Diff(d) => d.markdown(),
+            Self::LintMemory(l) => l.markdown(),
+            Self::Review(r) => r.markdown(),
+            Self::MergeDriverInstall(m) => m.markdown(),
+            Self::ServerHooks(s) => s.markdown(),
             Self::MemoryList(l) => l.markdown(),
             Self::MemoryShow(s) => s.markdown(),
             Self::MemorySalvage(s) => s.markdown(),
@@ -215,6 +244,12 @@ impl CommandOutcome {
             Self::Verify(v) => v.quiet_line(),
             Self::Compact(c) => c.quiet_line(),
             Self::CheckPr(c) => c.quiet_line(),
+            Self::CheckPaths(c) => c.quiet_line(),
+            Self::Diff(d) => d.quiet_line(),
+            Self::LintMemory(l) => l.quiet_line(),
+            Self::Review(r) => r.quiet_line(),
+            Self::MergeDriverInstall(m) => m.quiet_line(),
+            Self::ServerHooks(s) => s.quiet_line(),
             Self::MemoryList(l) => l.quiet_line(),
             Self::MemoryShow(s) => s.quiet_line(),
             Self::MemorySalvage(s) => s.quiet_line(),
@@ -245,6 +280,12 @@ impl CommandOutcome {
             Self::Verify(v) => serde_json::to_value(v).unwrap_or(Value::Null),
             Self::Compact(c) => serde_json::to_value(c).unwrap_or(Value::Null),
             Self::CheckPr(c) => serde_json::to_value(c).unwrap_or(Value::Null),
+            Self::CheckPaths(c) => serde_json::to_value(c).unwrap_or(Value::Null),
+            Self::Diff(d) => serde_json::to_value(d).unwrap_or(Value::Null),
+            Self::LintMemory(l) => serde_json::to_value(l).unwrap_or(Value::Null),
+            Self::Review(r) => serde_json::to_value(r).unwrap_or(Value::Null),
+            Self::MergeDriverInstall(m) => serde_json::to_value(m).unwrap_or(Value::Null),
+            Self::ServerHooks(s) => serde_json::to_value(s).unwrap_or(Value::Null),
             Self::MemoryList(l) => serde_json::to_value(l).unwrap_or(Value::Null),
             Self::MemoryShow(s) => serde_json::to_value(s).unwrap_or(Value::Null),
             Self::MemorySalvage(s) => serde_json::to_value(s).unwrap_or(Value::Null),
@@ -273,6 +314,12 @@ impl CommandOutcome {
             Self::Verify(v) => v.warnings.clone(),
             Self::Compact(c) => c.warnings.clone(),
             Self::CheckPr(c) => c.warnings.clone(),
+            Self::CheckPaths(c) => c.warnings.clone(),
+            Self::Diff(d) => d.warnings.clone(),
+            Self::LintMemory(l) => l.warnings.clone(),
+            Self::Review(r) => r.warnings.clone(),
+            Self::MergeDriverInstall(m) => m.warnings.clone(),
+            Self::ServerHooks(s) => s.warnings.clone(),
             Self::MemoryList(l) => l.warnings.clone(),
             Self::MemoryShow(s) => s.warnings.clone(),
             Self::MemorySalvage(s) => s.warnings.clone(),

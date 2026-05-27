@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+#
+# Firetrail pre-receive hook.
+#
+# Runs `firetrail check pr <old-ref> <new-ref> --strict` for every pushed
+# ref and rejects the push when any error-severity finding fires.
+#
+# Force pushes (`old-ref` -> different lineage than `new-ref`) are blocked
+# unless `FIRETRAIL_ALLOW_FORCE_PUSH=1` is set in the hook environment. This
+# is a basic ADR-0017 guardrail and intentionally conservative — a real
+# deployment should layer additional protections (signed pushes, branch
+# protection rules, …) on top of this script.
+#
+# Installation
+# ------------
+#
+# For repos hosted on a custom git server:
+#
+#   cp templates/hooks/pre-receive /srv/git/<repo>/hooks/pre-receive
+#   chmod +x /srv/git/<repo>/hooks/pre-receive
+#
+# For local bare repos used as a test endpoint:
+#
+#   cp templates/hooks/pre-receive .git/hooks/pre-receive
+#   chmod +x .git/hooks/pre-receive
+#
+# Or, from the workspace root:
+#
+#   firetrail server-hooks install --dest /srv/git/<repo>/hooks
+#
+# The script expects the `firetrail` binary to be on $PATH for the
+# pushing user. Override via FIRETRAIL_BIN to pin a specific path.
+#
+
+set -euo pipefail
+
+FIRETRAIL_BIN="${FIRETRAIL_BIN:-firetrail}"
+ALLOW_FORCE_PUSH="${FIRETRAIL_ALLOW_FORCE_PUSH:-0}"
+
+ZERO="0000000000000000000000000000000000000000"
+
+fail=0
+while read -r old_ref new_ref ref_name; do
+    # Branch deletion — nothing to validate.
+    if [ "$new_ref" = "$ZERO" ]; then
+        continue
+    fi
+
+    # Brand-new ref — nothing to diff against; skip with a notice.
+    if [ "$old_ref" = "$ZERO" ]; then
+        echo "firetrail: new ref ${ref_name}; skipping pr check" >&2
+        continue
+    fi
+
+    # Detect non-fast-forward pushes (force push).
+    if ! git merge-base --is-ancestor "$old_ref" "$new_ref" 2>/dev/null; then
+        if [ "$ALLOW_FORCE_PUSH" != "1" ]; then
+            echo "firetrail: force-push to ${ref_name} rejected" >&2
+            echo "  (set FIRETRAIL_ALLOW_FORCE_PUSH=1 to override; see ADR-0017)" >&2
+            fail=1
+            continue
+        fi
+        echo "firetrail: allowing force-push to ${ref_name} (FIRETRAIL_ALLOW_FORCE_PUSH=1)" >&2
+    fi
+
+    echo "firetrail: check pr ${old_ref}..${new_ref} --strict" >&2
+    if ! "$FIRETRAIL_BIN" check pr "$old_ref" "$new_ref" --strict; then
+        echo "firetrail: rejecting push to ${ref_name} (validation failed)" >&2
+        fail=1
+    fi
+done
+
+exit "$fail"

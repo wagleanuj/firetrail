@@ -303,6 +303,11 @@ pub fn resolve_record_id(
             message: "empty record id".to_string(),
             details: serde_json::Value::Null,
         }),
+        Err(ResolveError::EmptyHexPrefix(kind)) => Err(CliError::UserError {
+            command: command.to_string(),
+            message: format!("hex prefix is required after kind tag `{kind}`"),
+            details: serde_json::json!({ "kind": kind }),
+        }),
         Err(ResolveError::Unknown(_)) => Err(CliError::NotFound {
             command: command.to_string(),
             what: raw.to_string(),

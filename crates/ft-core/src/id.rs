@@ -237,6 +237,12 @@ pub enum ResolveError {
     #[error("empty record-id prefix")]
     Empty,
 
+    /// A kind tag was present (e.g. `TASK-` or bare `TASK`) but no hex tail
+    /// was supplied. Distinct from `Empty` so the CLI can surface a clearer
+    /// user error than a generic not-found.
+    #[error("hex prefix is required after kind tag `{0}`")]
+    EmptyHexPrefix(String),
+
     /// No candidate matched the supplied prefix.
     #[error("no record matches prefix `{0}`")]
     Unknown(String),
@@ -300,11 +306,28 @@ pub fn resolve_prefix(prefix: &str, candidates: &[RecordId]) -> Result<RecordId,
 
     // Parse `KIND-hex` vs bare hex.
     let (kind_filter, hex_prefix) = if let Some((kind_part, tail_part)) = trimmed.split_once('-') {
-        let Some(kind) = RecordKind::from_prefix(&kind_part.to_ascii_uppercase()) else {
+        let upper = kind_part.to_ascii_uppercase();
+        let Some(kind) = RecordKind::from_prefix(&upper) else {
             return Err(ResolveError::Unknown(trimmed.to_string()));
         };
+        // `KIND-` with empty/whitespace-only tail is a user error, not a
+        // not-found.
+        if tail_part.trim().is_empty() {
+            return Err(ResolveError::EmptyHexPrefix(upper));
+        }
         (Some(kind), tail_part)
     } else {
+        // Bare input with no `-`. If it matches a known kind tag
+        // (case-insensitive) AND is not itself a valid hex prefix, the
+        // user meant `KIND-<hex>` but forgot the tail — same error as
+        // `KIND-`. We only short-circuit on non-hex tokens so bare hex
+        // inputs that happen to spell short kind tags (e.g. `DEC`,
+        // `FED`) still match candidates the normal way.
+        let upper = trimmed.to_ascii_uppercase();
+        let is_hex = trimmed.bytes().all(|b| b.is_ascii_hexdigit());
+        if !is_hex && RecordKind::from_prefix(&upper).is_some() {
+            return Err(ResolveError::EmptyHexPrefix(upper));
+        }
         (None, trimmed)
     };
 
@@ -563,6 +586,35 @@ mod tests {
             resolve_prefix("TASK-xyz", &candidates),
             Err(ResolveError::Unknown(_))
         ));
+    }
+
+    #[test]
+    fn resolve_prefix_kind_only_with_no_hex_is_user_error() {
+        // Regression for firetrail-58h: `TASK-` and `TASK` are kind-only
+        // inputs and must surface as a distinct error variant, not
+        // Unknown/NotFound.
+        let t = task(&"a".repeat(64));
+        let candidates = vec![t];
+        assert_eq!(
+            resolve_prefix("TASK-", &candidates),
+            Err(ResolveError::EmptyHexPrefix("TASK".to_string()))
+        );
+        assert_eq!(
+            resolve_prefix("TASK- ", &candidates),
+            Err(ResolveError::EmptyHexPrefix("TASK".to_string()))
+        );
+        assert_eq!(
+            resolve_prefix("task-", &candidates),
+            Err(ResolveError::EmptyHexPrefix("TASK".to_string()))
+        );
+        assert_eq!(
+            resolve_prefix("TASK", &candidates),
+            Err(ResolveError::EmptyHexPrefix("TASK".to_string()))
+        );
+        assert_eq!(
+            resolve_prefix("task", &candidates),
+            Err(ResolveError::EmptyHexPrefix("TASK".to_string()))
+        );
     }
 
     #[test]

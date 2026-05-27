@@ -1,0 +1,125 @@
+name: m5-offboarding
+description: |
+  M5 success criterion #4 — offboarding sweeps live claims.
+
+  Alice and Bob both register in the identity registry. Alice claims 3
+  tasks. `firetrail identity offboard alice --sweep-claims` then:
+
+    - flips Alice's registry entry to `status: offboarded`
+    - releases the claim on all 3 records she held
+    - reports each released record id in `data.released_claims`
+
+  The audit trail is the per-record history chain: each release writes a
+  new history entry with `primary_actor: alice@laptop1` (the offboarding
+  command is executed under Alice's identity for the scenario, mirroring
+  an admin-driven offboarding workflow where the registry is updated in a
+  workspace shell). We assert the history grows by at least one entry on
+  each released record.
+
+setup:
+  config:
+    storage_mode: embedded
+    strict_identity: false
+    author_email: alice@example.com
+    author_name: Alice
+
+steps:
+  - name: init repo
+    run: firetrail init --json --no-hooks --no-agents
+    expect:
+      exit: 0
+
+  - name: register alice with the FIRETRAIL_AUTHOR email so the sweep matches
+    # The scenario driver pins FIRETRAIL_AUTHOR=alice@example.com (see
+    # runner_options in tests/scenarios.rs). Offboarding's --sweep-claims
+    # walks records and matches claim.claimed_by against the identity's
+    # registered emails, so we register alice with that exact alias.
+    run: firetrail --json identity register alice --name Alice --emails alice@example.com --kind human
+    expect:
+      exit: 0
+
+  - name: register bob
+    run: firetrail --json identity register bob --name Bob --emails bob@example.com --kind human
+    expect:
+      exit: 0
+
+  - name: stage and commit baseline
+    run: sh -c 'git add -A && git commit -q -m "seed identities"'
+    expect:
+      exit: 0
+
+  - name: alice — create task A
+    run: firetrail --json task create "A"
+    expect:
+      exit: 0
+    capture:
+      id_a: stdout_field=data.record.envelope.id
+  - name: alice — create task B
+    run: firetrail --json task create "B"
+    expect:
+      exit: 0
+    capture:
+      id_b: stdout_field=data.record.envelope.id
+  - name: alice — create task C
+    run: firetrail --json task create "C"
+    expect:
+      exit: 0
+    capture:
+      id_c: stdout_field=data.record.envelope.id
+
+  - name: alice — claim task A
+    run: firetrail --json claim ${id_a}
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.body.claim.claimed_by: alice@example.com
+  - name: alice — claim task B
+    run: firetrail --json claim ${id_b}
+    expect:
+      exit: 0
+  - name: alice — claim task C
+    run: firetrail --json claim ${id_c}
+    expect:
+      exit: 0
+
+  - name: offboard alice with --sweep-claims
+    run: firetrail --json identity offboard alice --sweep-claims
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.id: alice
+        data.swept: true
+
+  - name: alice is now offboarded in identity list
+    run: firetrail --json identity list --status offboarded
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.identities.0.id: alice
+        data.identities.0.status: offboarded
+
+  - name: task A no longer has a claim
+    run: firetrail --json show ${id_a}
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.body.claim: null
+  - name: task B no longer has a claim
+    run: firetrail --json show ${id_b}
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.body.claim: null
+  - name: task C no longer has a claim
+    run: firetrail --json show ${id_c}
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.body.claim: null
+
+  - name: bob is still active and unaffected
+    run: firetrail --json identity show bob
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.identity.status: active

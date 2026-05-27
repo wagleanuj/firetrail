@@ -1,0 +1,122 @@
+name: m5-multi-scope-incident
+description: |
+  M5 success criterion #1 — multi-scope incident routing.
+
+  Two scopes (`apps/checkout`, `apps/payment`) are defined in
+  `.firetrail/scopes.yaml`. An incident is raised in apps/checkout. A
+  finding tied to that incident is owned by apps/payment (its
+  `owning_scope` envelope field) and lists payment-side paths as
+  `affected_paths`. The scenario then proves that the finding is
+  discoverable from apps/payment's perspective:
+
+    1. `memory list --kind finding` surfaces it (the finding kind isn't
+       part of `list`/`ready`, which target the work-graph kinds; this is
+       the equivalent surface for memory).
+    2. `firetrail show <finding>` returns owning_scope=apps/payment so the
+       routing intent is locked in.
+    3. A payment-scoped follow-up task created on the same branch is
+       reachable via `firetrail list --scope apps/payment`, demonstrating
+       that the scope filter on work-graph queries does what payment
+       engineers expect.
+
+setup:
+  config:
+    storage_mode: embedded
+    strict_identity: false
+    author_email: alice@example.com
+    author_name: Alice Tester
+
+steps:
+  - name: init repo on main
+    run: firetrail init --json --no-hooks --no-agents
+    expect:
+      exit: 0
+
+  - name: write scopes.yaml with two scopes
+    run: >-
+      sh -c 'printf "scopes:\n  - id: apps/checkout\n    name: Checkout\n    applies_to:\n      - apps/checkout/**\n    aliases:\n      - checkout\n  - id: apps/payment\n    name: Payment\n    applies_to:\n      - apps/payment/**\n    aliases:\n      - payment\n" > .firetrail/scopes.yaml'
+    expect:
+      exit: 0
+
+  - name: scope list shows both scopes
+    run: firetrail --json scope list
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.scopes.0.id: apps/checkout
+        data.scopes.1.id: apps/payment
+
+  - name: stage baseline
+    run: git add -A
+    expect:
+      exit: 0
+  - name: baseline commit
+    run: git commit -q -m "seed workspace with two scopes"
+    expect:
+      exit: 0
+
+  - name: create incident in apps/checkout
+    run: firetrail --json incident create "Checkout deploy caused payment failures" --severity sev2 --services checkout,payment --scope apps/checkout
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.envelope.owning_scope: apps/checkout
+    capture:
+      incident_id: stdout_field=data.record.envelope.id
+
+  - name: create finding scoped to apps/payment but linked to checkout incident
+    run: firetrail --json finding create "Payment retry loop saturates queue" --incident ${incident_id} --scope apps/payment --affected apps/payment/retry.rs,apps/payment/queue.rs
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.envelope.kind: finding
+        data.record.envelope.owning_scope: apps/payment
+        data.record.body.incident: ${incident_id}
+    capture:
+      finding_id: stdout_field=data.record.envelope.id
+
+  - name: show finding confirms it is routed to payment
+    run: firetrail --json show ${finding_id}
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.envelope.owning_scope: apps/payment
+        data.record.body.affected_paths.0: apps/payment/retry.rs
+
+  - name: memory list --kind finding surfaces the cross-scope finding
+    run: firetrail --json memory list --kind finding
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.rows.0.kind: finding
+
+  - name: create a payment-scoped follow-up task so list --scope has a work-graph row
+    run: firetrail --json task create "Bound payment retry queue" --scope apps/payment
+    expect:
+      exit: 0
+    capture:
+      task_id: stdout_field=data.record.envelope.id
+
+  - name: list --scope apps/payment returns the payment task
+    run: firetrail --json list --scope apps/payment
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.rows.0.scope: apps/payment
+        data.rows.0.id: ${task_id}
+
+  - name: list --scope apps/checkout shows the checkout incident, not the payment task
+    # Sanity check that scope filtering actually restricts results: the
+    # apps/checkout view returns the incident (also a record indexed by
+    # owning_scope) and excludes the payment-scoped task.
+    run: firetrail --json list --scope apps/checkout
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.rows.0.scope: apps/checkout
+        data.rows.0.id: ${incident_id}
+
+  - name: commit records
+    run: sh -c 'git add -A && git commit -q -m "incident + finding + payment follow-up"'
+    expect:
+      exit: 0

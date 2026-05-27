@@ -1,0 +1,184 @@
+name: m5-pilot-rollout
+description: |
+  M5 success criterion #5 — pilot rollout via `enabled_scopes`.
+
+  Goal (planned behaviour):
+    A workspace can pilot Firetrail's PR enforcement on a subset of
+    scopes by setting `enabled_scopes: [apps/checkout]` in
+    `.firetrail/scopes.yaml`. PRs that touch only out-of-pilot scopes
+    (e.g. apps/payment) should be skipped by `firetrail check pr` (or
+    reported as "out of pilot scope" with a Warning). PRs that touch
+    apps/checkout still get the full rule set.
+
+  Current scope (this scenario):
+    `ft_scope::ScopeRegistry::is_scope_enabled` is wired and parses
+    `enabled_scopes`, but `ft_pr::validate_pr` (driven by
+    `firetrail check pr`) does NOT yet read scopes.yaml nor filter
+    findings by the enabled set. This scenario therefore locks in:
+
+      1. `enabled_scopes` parses and round-trips through `scope list`.
+      2. The current `check pr` surface still runs end-to-end against
+         both a payment-only and a checkout-touching PR, on the same
+         workspace, so the regression baseline is captured.
+
+    Once the ft-pr filter lands (see follow-up issue tracked in beads),
+    the two `check pr` calls below should diverge:
+      - apps/payment PR → exit 0 with a Warning finding noting the scope
+        is out of pilot, OR skipped entirely.
+      - apps/checkout PR → exit 1 with whatever rule findings the diff
+        produces (in this scenario, incomplete_acceptance via a forced
+        close), unchanged from today.
+
+    PENDING(firetrail follow-up): wire `enabled_scopes` into
+    `ft_pr::validate_pr` and update this scenario to assert the
+    diverging surface. The currently-asserted shape is the pre-filter
+    baseline only.
+
+setup:
+  config:
+    storage_mode: embedded
+    strict_identity: false
+    author_email: alice@example.com
+    author_name: Alice
+
+steps:
+  - name: init repo on main
+    run: firetrail init --json --no-hooks --no-agents
+    expect:
+      exit: 0
+
+  - name: write scopes.yaml with enabled_scopes pilot filter
+    run: >-
+      sh -c 'printf "enabled_scopes:\n  - apps/checkout\nscopes:\n  - id: apps/checkout\n    name: Checkout\n    applies_to:\n      - apps/checkout/**\n    aliases:\n      - checkout\n  - id: apps/payment\n    name: Payment\n    applies_to:\n      - apps/payment/**\n    aliases:\n      - payment\n" > .firetrail/scopes.yaml'
+    expect:
+      exit: 0
+
+  - name: scope list reflects both scopes (enabled_scopes is parsed by ScopeRegistry)
+    run: firetrail --json scope list
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.scopes.0.id: apps/checkout
+        data.scopes.1.id: apps/payment
+
+  - name: stage and baseline commit on main
+    run: sh -c 'git add -A && git commit -q -m "seed workspace with pilot scopes"'
+    expect:
+      exit: 0
+
+  # ── Build a payment-scope task closed with --force on a feature branch ───
+  - name: create payment-scope task on main
+    run: firetrail --json task create "Bound payment retry queue" --scope apps/payment
+    expect:
+      exit: 0
+    capture:
+      payment_task: stdout_field=data.record.envelope.id
+
+  - name: add an AC so a force-close trips the incomplete_acceptance rule
+    run: firetrail --json criteria add ${payment_task} "queue is bounded"
+    expect:
+      exit: 0
+
+  - name: commit the payment task to main
+    run: sh -c 'git add -A && git commit -q -m "add payment task with one AC"'
+    expect:
+      exit: 0
+
+  - name: capture base ref for the payment PR
+    run: git rev-parse HEAD
+    expect:
+      exit: 0
+    capture:
+      payment_base: stdout
+
+  - name: branch for the payment-only PR
+    run: git checkout -q -b feature/payment-only
+    expect:
+      exit: 0
+
+  - name: force-close the payment task without checking the AC
+    run: firetrail --json close ${payment_task} --force --reason "pilot rollout scenario"
+    expect:
+      exit: 0
+
+  - name: commit the closure on the payment branch
+    run: sh -c 'git add -A && git commit -q -m "force-close payment task"'
+    expect:
+      exit: 0
+
+  - name: capture payment head
+    run: git rev-parse HEAD
+    expect:
+      exit: 0
+    capture:
+      payment_head: stdout
+
+  - name: |
+      PENDING — `check pr` over a payment-only PR currently surfaces a finding
+      regardless of enabled_scopes. Once ft-pr respects the pilot filter, this
+      should become exit 0 (skipped or warned).
+    run: firetrail --json check pr ${payment_base} ${payment_head} --strict
+    expect:
+      exit: 1
+      stderr_json_path:
+        error.kind: user_error
+
+  # ── Build a checkout-scope task on a second feature branch ────────────────
+  - name: back to main
+    run: git checkout -q main
+    expect:
+      exit: 0
+
+  - name: create checkout-scope task on main
+    run: firetrail --json task create "Decouple checkout payment client" --scope apps/checkout
+    expect:
+      exit: 0
+    capture:
+      checkout_task: stdout_field=data.record.envelope.id
+
+  - name: add an AC to the checkout task
+    run: firetrail --json criteria add ${checkout_task} "client is decoupled"
+    expect:
+      exit: 0
+
+  - name: commit the checkout task to main
+    run: sh -c 'git add -A && git commit -q -m "add checkout task"'
+    expect:
+      exit: 0
+
+  - name: capture checkout base ref
+    run: git rev-parse HEAD
+    expect:
+      exit: 0
+    capture:
+      checkout_base: stdout
+
+  - name: branch for the checkout PR
+    run: git checkout -q -b feature/checkout-pr
+    expect:
+      exit: 0
+
+  - name: force-close the checkout task without checking the AC
+    run: firetrail --json close ${checkout_task} --force --reason "pilot rollout scenario"
+    expect:
+      exit: 0
+
+  - name: commit checkout closure
+    run: sh -c 'git add -A && git commit -q -m "force-close checkout task"'
+    expect:
+      exit: 0
+
+  - name: capture checkout head
+    run: git rev-parse HEAD
+    expect:
+      exit: 0
+    capture:
+      checkout_head: stdout
+
+  - name: check pr over the checkout PR fires incomplete_acceptance (unchanged by pilot filter)
+    run: firetrail --json check pr ${checkout_base} ${checkout_head} --strict
+    expect:
+      exit: 1
+      stderr_json_path:
+        error.kind: user_error
+        error.details.report.findings.0.rule: incomplete_acceptance

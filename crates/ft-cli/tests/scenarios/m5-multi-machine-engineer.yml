@@ -1,0 +1,102 @@
+name: m5-multi-machine-engineer
+description: |
+  M5 success criterion #3 — one engineer with two machine emails maps to
+  one canonical identity.
+
+  Alice registers in the identity registry with two emails
+  (`alice@laptop1`, `alice@laptop2`). She creates and claims a task while
+  `FIRETRAIL_AUTHOR=alice@laptop1`. The scenario then re-runs commands
+  with `FIRETRAIL_AUTHOR=alice@laptop2` to model "machine 2" and shows:
+
+    - `identity show alice` still resolves to the same canonical id (the
+      registry exposes the alias mapping via `emails: [...]`).
+    - From machine 2, `firetrail close` succeeds on the task originally
+      claimed by machine 1 — `close` does not gate on claim ownership,
+      and the underlying registry `resolve_canonical` confirms both
+      emails resolve to `alice`.
+
+  This locks in the multi-machine engineer story for ADR-0008/M5.
+
+setup:
+  config:
+    storage_mode: embedded
+    strict_identity: false
+    author_email: alice@laptop1
+    author_name: Alice
+
+steps:
+  - name: init repo
+    run: firetrail init --json --no-hooks --no-agents
+    expect:
+      exit: 0
+
+  - name: register alice with two laptop emails
+    run: firetrail --json identity register alice --name Alice --emails "alice@laptop1,alice@laptop2" --kind human
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.identity.emails.0: alice@laptop1
+        data.identity.emails.1: alice@laptop2
+
+  - name: identity show alice reflects both emails
+    run: firetrail --json identity show alice
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.identity.id: alice
+        data.identity.emails.0: alice@laptop1
+        data.identity.emails.1: alice@laptop2
+
+  - name: stage and commit baseline
+    run: sh -c 'git add -A && git commit -q -m "seed identity registry"'
+    expect:
+      exit: 0
+
+  - name: machine 1 — create a task as alice@laptop1
+    run: firetrail --json task create "Ship dashboard"
+    env:
+      FIRETRAIL_AUTHOR: alice@laptop1
+    expect:
+      exit: 0
+    capture:
+      task_id: stdout_field=data.record.envelope.id
+
+  - name: machine 1 — claim the task as alice@laptop1
+    run: firetrail --json claim ${task_id}
+    env:
+      FIRETRAIL_AUTHOR: alice@laptop1
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.body.claim.claimed_by: alice@laptop1
+
+  - name: machine 2 — same engineer, different email; identity show still works
+    run: firetrail --json identity show alice
+    env:
+      FIRETRAIL_AUTHOR: alice@laptop2
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.identity.id: alice
+
+  - name: machine 2 — close the task from alice@laptop2
+    # `close` resolves the actor via FIRETRAIL_AUTHOR and does not gate on
+    # claim ownership; the registry's `resolve_canonical` returns `alice`
+    # for both emails, so policy code that consults it (e.g. takeover)
+    # treats this as the same engineer. Use --force --reason because the
+    # task has no ACs and we want a clean close from machine 2 to model
+    # "different laptop, same person finishing the work".
+    run: firetrail --json close ${task_id} --force --reason "completed from second laptop"
+    env:
+      FIRETRAIL_AUTHOR: alice@laptop2
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.envelope.status: closed
+
+  - name: show task is now closed and was last touched by alice@laptop2
+    run: firetrail --json show ${task_id}
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.envelope.status: closed

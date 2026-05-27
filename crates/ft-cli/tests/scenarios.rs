@@ -252,3 +252,52 @@ fn m4_merge_driver() {
 fn m4_force_push_detection() {
     run_scenario_with_budget("m4-force-push-detection.yml", M4_BUDGET);
 }
+
+// ---------------------------------------------------------------------------
+// M5 scenarios — the M5 end-to-end suite (roadmap §M5). Five scenarios:
+//
+//   - m5-multi-scope-incident   : incident in apps/checkout with a finding
+//                                  scoped to apps/payment; payment side can
+//                                  discover the finding via memory list and
+//                                  list --scope.
+//   - m5-external-mode          : two code repos point at one bare data repo
+//                                  via `--storage-mode external`; sync
+//                                  propagates records across workspaces.
+//   - m5-multi-machine-engineer : one engineer with two laptop emails maps
+//                                  to one canonical identity in the registry.
+//   - m5-offboarding            : `identity offboard --sweep-claims` releases
+//                                  every live claim the identity held.
+//   - m5-pilot-rollout          : `enabled_scopes` parses today; the
+//                                  ft-pr-side pilot filter is a follow-up
+//                                  (PENDING note documented in the YAML).
+//
+// Per-scenario budget is 15s (each may run git init/clone + multiple commits);
+// the suite-wide cap is well under 90s.
+// ---------------------------------------------------------------------------
+
+const M5_BUDGET: std::time::Duration = std::time::Duration::from_secs(15);
+
+#[test]
+fn m5_multi_scope_incident() {
+    run_scenario_with_budget("m5-multi-scope-incident.yml", M5_BUDGET);
+}
+
+#[test]
+fn m5_external_mode() {
+    run_scenario_with_budget("m5-external-mode.yml", M5_BUDGET);
+}
+
+#[test]
+fn m5_multi_machine_engineer() {
+    run_scenario_with_budget("m5-multi-machine-engineer.yml", M5_BUDGET);
+}
+
+#[test]
+fn m5_offboarding() {
+    run_scenario_with_budget("m5-offboarding.yml", M5_BUDGET);
+}
+
+#[test]
+fn m5_pilot_rollout() {
+    run_scenario_with_budget("m5-pilot-rollout.yml", M5_BUDGET);
+}

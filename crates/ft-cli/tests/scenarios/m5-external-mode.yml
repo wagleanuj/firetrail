@@ -1,0 +1,131 @@
+name: m5-external-mode
+description: |
+  M5 success criterion #2 — external storage mode shared between two code
+  repos.
+
+  Topology:
+    - One bare git repo at `$root/data-repo.git` holds records.
+    - Workspace A (the scenario's TestRepo) inits with
+      `--storage-mode external --data-repo-url file://…/data-repo.git`,
+      creates work-graph records (tasks), and runs `firetrail sync`.
+    - Workspace B (`ws2/`) inits against the same data-repo URL and
+      `firetrail sync`s; the records authored by A then appear in B's
+      clone, and `firetrail show` finds them.
+
+  Why tasks (not memory records)
+  ------------------------------
+  Work-graph writes (`task create`, `claim`, etc.) flow through
+  `WorkCtx::save_record`, which routes through `ExternalStorage::write`
+  in external mode and auto-commits the record into the clone — so
+  `sync` has something to push. Memory writes
+  (`incident/finding create`) currently bypass that path and write
+  directly through the embedded view on the clone; the files exist on
+  disk but are not committed, so the cross-workspace propagation is not
+  observable until a separate follow-up wires `write_with_create`
+  through ExternalStorage. The scenario therefore exercises tasks to
+  pin down the cross-repo guarantee. (See follow-up issue filed in
+  beads.)
+
+  Locks in the "two code repos → one shared memory" ADR-0006 guarantee.
+
+setup:
+  config:
+    storage_mode: embedded
+    strict_identity: false
+    author_email: alice@example.com
+    author_name: Alice Tester
+
+steps:
+  # ── Set up the shared bare data repo ──────────────────────────────────────
+  - name: scrub the auto-init workspace; we want to drive `init` ourselves
+    run: rm -rf .firetrail
+    expect:
+      exit: 0
+
+  - name: create the bare data repo under the scenario root
+    run: git init --bare --initial-branch=main data-repo.git
+    expect:
+      exit: 0
+
+  - name: seed the bare repo with an empty initial commit on main
+    # ExternalStorage::pull does `git merge --ff-only origin/main` and
+    # therefore requires the remote to have at least one commit on main.
+    # We create that commit by cloning the bare repo into a throwaway
+    # working tree and pushing back an empty root commit.
+    run: >-
+      sh -c 'git clone -q file://$(pwd)/data-repo.git seed && cd seed && git checkout -q -b main && git commit --allow-empty -q -m "seed" && git push -q origin main'
+    expect:
+      exit: 0
+
+  - name: capture data-repo URL
+    run: sh -c 'printf "file://%s/data-repo.git" "$(pwd)"'
+    expect:
+      exit: 0
+    capture:
+      data_url: stdout
+
+  # ── Workspace A: author records and sync ──────────────────────────────────
+  - name: init workspace A in external mode
+    run: firetrail init --json --no-hooks --no-agents --storage-mode external --data-repo-url ${data_url}
+    expect:
+      exit: 0
+
+  - name: workspace A — create a task in external storage
+    run: firetrail --json task create "Cross-repo task"
+    expect:
+      exit: 0
+    capture:
+      task_id: stdout_field=data.record.envelope.id
+
+  - name: workspace A — create a second task
+    run: firetrail --json task create "Another cross-repo task"
+    expect:
+      exit: 0
+    capture:
+      task_id_2: stdout_field=data.record.envelope.id
+
+  - name: workspace A — sync pushes both tasks to the bare repo
+    run: firetrail --json sync
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.pulled: true
+        data.pushed: true
+
+  # ── Workspace B: clone & verify visibility ───────────────────────────────
+  - name: prepare workspace B as a fresh git repo
+    run: >-
+      sh -c 'mkdir -p ws2 && cd ws2 && git init -q -b main && git config user.email alice@example.com && git config user.name Alice && git commit -q --allow-empty -m "seed ws2"'
+    expect:
+      exit: 0
+
+  - name: workspace B — init against the same data-repo URL
+    run: firetrail init --json --no-hooks --no-agents --storage-mode external --data-repo-url ${data_url}
+    cwd: ws2
+    expect:
+      exit: 0
+
+  - name: workspace B — sync pulls records from the shared data repo
+    run: firetrail --json sync
+    cwd: ws2
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.pulled: true
+
+  - name: workspace B — show finds task #1 authored from A
+    run: firetrail --json show ${task_id}
+    cwd: ws2
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.envelope.id: ${task_id}
+        data.record.envelope.kind: task
+
+  - name: workspace B — show finds task #2 authored from A
+    run: firetrail --json show ${task_id_2}
+    cwd: ws2
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.envelope.id: ${task_id_2}

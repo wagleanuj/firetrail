@@ -51,11 +51,18 @@ pub fn run(args: &GraphArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliE
         v.sort_by(|a, b| (a.kind.clone(), a.id.clone()).cmp(&(b.kind.clone(), b.id.clone())));
     }
 
+    let reason = if children.is_empty() {
+        Some("no relations involve this record".to_string())
+    } else {
+        None
+    };
+
     Ok(CommandOutcome::Graph(GraphOutcome {
         root: root.as_str().to_string(),
         depth: args.depth,
         direction: format!("{:?}", args.direction).to_lowercase(),
         edges: children,
+        reason,
         warnings,
     }))
 }
@@ -74,6 +81,10 @@ pub struct GraphOutcome {
     pub direction: String,
     /// `parent_id -> [(kind, child_id, depth)]`.
     pub edges: BTreeMap<String, Vec<GraphNode>>,
+    /// Self-describing reason when `edges` is empty. Disambiguates "no
+    /// relations exist" from a query bug, per firetrail-1sg.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub reason: Option<String>,
     /// Non-fatal warnings (e.g. index auto-rebuild on open).
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub warnings: Vec<String>,
@@ -90,6 +101,10 @@ impl GraphOutcome {
         let mut visited = std::collections::HashSet::new();
         visited.insert(self.root.clone());
         self.render(&self.root, &mut s, "", &mut visited);
+        if let Some(reason) = &self.reason {
+            use std::fmt::Write as _;
+            let _ = write!(s, "\n_{reason}_\n");
+        }
         s
     }
 

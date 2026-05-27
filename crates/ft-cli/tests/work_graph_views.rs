@@ -77,6 +77,34 @@ fn graph_walks_parent_child_edges() {
     assert!(out.success(), "graph failed: {}", out.stderr);
     let v = parse_json(&out);
     assert_eq!(v["data"]["root"], epic);
+    // Regression for firetrail-1sg: parent-of edges must be present, not empty.
+    let edges = v["data"]["edges"].as_object().expect("edges is an object");
+    assert!(!edges.is_empty(), "expected non-empty edges, got {edges:?}");
+    let from_epic = edges
+        .get(epic.as_str())
+        .and_then(|v| v.as_array())
+        .expect("edges keyed by epic root");
+    assert!(from_epic.iter().any(|n| n["kind"] == "parent-of"));
+}
+
+#[test]
+fn graph_empty_edges_carries_reason() {
+    // Regression for firetrail-1sg: an empty edges map must be
+    // self-describing so callers can distinguish "no relations" from a
+    // query bug.
+    let tr = fresh_repo();
+    let lone = id_from_create(&run_firetrail(
+        tr.root(),
+        &["--json", "task", "create", "no relations"],
+    ));
+    let out = run_firetrail(tr.root(), &["--json", "graph", &lone]);
+    assert!(out.success(), "graph failed: {}", out.stderr);
+    let v = parse_json(&out);
+    assert!(v["data"]["edges"].as_object().unwrap().is_empty());
+    assert!(
+        v["data"]["reason"].as_str().is_some(),
+        "expected `reason` field when edges is empty"
+    );
 }
 
 #[test]

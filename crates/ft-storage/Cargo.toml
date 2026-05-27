@@ -16,9 +16,11 @@ ft-git = { path = "../ft-git", version = "0.0.0" }
 ft-history = { path = "../ft-history", version = "0.0.0" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+serde_yaml = { workspace = true }
 thiserror = { workspace = true }
 chrono = { workspace = true }
 walkdir = { workspace = true }
+regex = { workspace = true }
 
 [dev-dependencies]
 ft-testkit = { path = "../ft-testkit", version = "0.0.0" }

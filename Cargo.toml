@@ -62,6 +62,9 @@ gix = { version = "0.66", default-features = false }
 # Filesystem traversal
 walkdir = "2.5"
 
+# Glob matching (paths → patterns)
+globset = "0.4"
+
 # Async runtime (embedding daemon, added in M3)
 tokio = { version = "1", features = ["full"] }
 

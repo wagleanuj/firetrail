@@ -4,9 +4,11 @@
 //! environment, return the canonical [`Identity`] that should be stamped on
 //! the next record write.
 //!
-//! M1 ships the resolution path only — the registry, capabilities, kinds,
-//! on-behalf-of, and offboarding sweep described in ADR-0008 are deferred to
-//! M5. The trait shape is forward compatible with the M5 additions.
+//! M1 shipped the resolution path; M5 layers a full identity registry on top
+//! ([`registry`], [`capabilities`], [`claim`], [`trailers`], [`sweep`]).
+//! The resolver still answers "who is the current actor?" by reading the four
+//! sources below; the registry then answers "what can that actor do, and what
+//! aliases / co-authors / on-behalf-of relationships does it carry?".
 //!
 //! ## Resolution order
 //!
@@ -48,6 +50,20 @@ use ft_core::{CoreError, Identity};
 use serde::Deserialize;
 use thiserror::Error;
 
+pub mod capabilities;
+pub mod claim;
+pub mod registry;
+pub mod sweep;
+pub mod trailers;
+
+pub use capabilities::{CapabilityMatrix, IdentityKind, IdentityStatus};
+pub use claim::{ClaimInfo, can_take_over, is_claim_expired};
+pub use registry::{
+    IdentityRegistry, PartialCapabilityMatrix, REGISTRY_FILENAME, RegisteredIdentity, load_registry,
+};
+pub use sweep::find_live_claims_for;
+pub use trailers::{co_authors, parse_on_behalf_of};
+
 // ---------------------------------------------------------------------------
 // Errors
 // ---------------------------------------------------------------------------
@@ -84,6 +100,14 @@ pub enum IdentityError {
     /// `ft-core` rejected the validated value when constructing [`Identity`].
     #[error("core: {0}")]
     Core(#[from] CoreError),
+
+    /// Failed to parse a registry / config file.
+    #[error("parse: {0}")]
+    Parse(String),
+
+    /// Failed to serialize the registry back to YAML.
+    #[error("serialize: {0}")]
+    Serialize(String),
 }
 
 // ---------------------------------------------------------------------------

@@ -14,10 +14,10 @@ workspace = true
 thiserror = { workspace = true }
 chrono = { workspace = true }
 gix = { workspace = true, features = ["revision", "blob-diff", "max-performance-safe"] }
-globset = "0.4"
+globset = { workspace = true }
 
 [dev-dependencies]
 ft-testkit = { path = "../ft-testkit", version = "0.0.0" }
 tempfile = { workspace = true }
 proptest = { workspace = true }
-globset = "0.4"
+globset = { workspace = true }

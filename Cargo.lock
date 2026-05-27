@@ -735,6 +735,7 @@ dependencies = [
 name = "ft-identity"
 version = "0.0.0"
 dependencies = [
+ "chrono",
  "ft-core",
  "ft-testkit",
  "proptest",
@@ -803,7 +804,12 @@ dependencies = [
 name = "ft-scope"
 version = "0.0.0"
 dependencies = [
+ "chrono",
+ "ft-core",
+ "globset",
  "serde",
+ "serde_yaml",
+ "tempfile",
  "thiserror 2.0.18",
 ]
 
@@ -834,8 +840,10 @@ dependencies = [
  "ft-history",
  "ft-testkit",
  "proptest",
+ "regex",
  "serde",
  "serde_json",
+ "serde_yaml",
  "tempfile",
  "thiserror 2.0.18",
  "walkdir",

@@ -708,6 +708,7 @@ dependencies = [
  "chrono",
  "ft-core",
  "ft-git",
+ "ft-history",
  "ft-testkit",
  "proptest",
  "serde",

@@ -24,15 +24,25 @@
 //! - ADR-0015 — Hash-based record IDs (lowercase filenames)
 //! - ADR-0017 — Audit-chain integrity (`state_hash` verification on write)
 
+mod change;
+mod compact;
 mod embedded;
 mod error;
 mod filter;
+mod history;
 mod storage;
+mod validate;
 
+pub use change::{
+    ChangeClass, classify_change, is_memory_kind, is_memory_only_change, records_kind_subpath,
+};
+pub use compact::{compact_changed_in_pr, compact_record};
 pub use embedded::EmbeddedStorage;
 pub use error::StorageError;
 pub use filter::StorageFilter;
+pub use history::write_with_history;
 pub use storage::Storage;
+pub use validate::{PathReport, PreCommitReport, validate_pre_commit};
 
 /// Relative path of the records directory under the repo root.
 pub const RECORDS_DIR: &str = ".firetrail/records";

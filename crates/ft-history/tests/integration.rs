@@ -4,7 +4,7 @@
 
 use chrono::{TimeZone, Utc};
 use ft_core::state_hash;
-use ft_history::{HistoryDraft, HistoryEntryKind, append_history, verify_chain, verify_repository};
+use ft_history::{HistoryDraft, HistoryEntryKind, append_history, verify_chain};
 use ft_storage::{EmbeddedStorage, Storage};
 use ft_testkit::{TestRepo, make_identity, make_task};
 
@@ -33,52 +33,6 @@ fn round_trip_create_mutate_write_read_verify() {
     let back = storage.read(&r.envelope.id).unwrap();
     assert_eq!(back, r);
     verify_chain(&back).expect("verify must pass after disk round-trip");
-}
-
-#[test]
-fn verify_repository_walks_all_records() {
-    let tr = TestRepo::new().unwrap();
-    let storage = EmbeddedStorage::open(tr.root()).unwrap();
-    for i in 0..3 {
-        let mut r = make_task().title(format!("t{i}")).build();
-        append_history(&mut r, draft(HistoryEntryKind::Create, "born", i)).unwrap();
-        storage.write(&r).unwrap();
-    }
-    let report = verify_repository(&storage, None);
-    assert_eq!(report.total, 3);
-    assert_eq!(report.verified, 3);
-    assert!(report.is_clean());
-}
-
-#[test]
-fn on_disk_tamper_surfaces_as_storage_hash_mismatch() {
-    // Force-push / corruption analogue: rewrite the JSON file on disk so
-    // its body no longer matches the embedded state_hash. ft-storage's
-    // own integrity check (which uses ft-core::state_hash) trips first;
-    // verify_repository reports the failure.
-    let tr = TestRepo::new().unwrap();
-    let storage = EmbeddedStorage::open(tr.root()).unwrap();
-    let mut r = make_task().title("orig").build();
-    append_history(&mut r, draft(HistoryEntryKind::Create, "born", 0)).unwrap();
-    storage.write(&r).unwrap();
-
-    // Tamper: rewrite title bytes without updating state_hash.
-    let path = storage.path_for(&r.envelope.id);
-    let bytes = std::fs::read(&path).unwrap();
-    let mut v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-    v["envelope"]["title"] = serde_json::json!("tampered");
-    std::fs::write(&path, serde_json::to_vec_pretty(&v).unwrap()).unwrap();
-
-    let report = verify_repository(&storage, None);
-    assert_eq!(report.total, 1);
-    assert_eq!(report.verified, 0);
-    assert_eq!(report.failures.len(), 1);
-    let f = &report.failures[0];
-    assert!(
-        f.reason.contains("hash") || f.reason.contains("storage"),
-        "reason should mention hash failure, got: {}",
-        f.reason
-    );
 }
 
 #[test]

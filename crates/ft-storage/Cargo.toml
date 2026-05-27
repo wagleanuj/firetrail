@@ -13,6 +13,7 @@ workspace = true
 [dependencies]
 ft-core = { path = "../ft-core", version = "0.0.0" }
 ft-git = { path = "../ft-git", version = "0.0.0" }
+ft-history = { path = "../ft-history", version = "0.0.0" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

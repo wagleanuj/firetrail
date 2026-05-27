@@ -1,0 +1,40 @@
+# cargo-deny configuration
+# See: https://embarkstudios.github.io/cargo-deny/
+
+[advisories]
+version = 2
+yanked = "warn"
+ignore = [
+    # gix-path: Non-utf8 String via TimeBuf::as_str. Tracked in followup; awaiting gix upstream fix.
+    "RUSTSEC-2025-0140",
+    # sha1-collisiondetection / gix transitive: SHA-1 collision attacks not detected. Low practical
+    # risk at M1 (no untrusted commit ingestion yet); revisit before PR import / E-M1-10.
+    "RUSTSEC-2025-0021",
+]
+
+[licenses]
+version = 2
+allow = [
+    "MIT",
+    "MIT-0",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-DFS-2016",
+    "Unicode-3.0",
+    "Zlib",
+    "MPL-2.0",
+    "CC0-1.0",
+]
+confidence-threshold = 0.8
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

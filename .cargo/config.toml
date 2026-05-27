@@ -1,0 +1,18 @@
+# Workspace build settings.
+#
+# On Linux, prefer the mold linker if it is installed. This shaves ~30% off
+# link time per ADR-0016. macOS uses the default linker; Windows likewise.
+
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+[target.aarch64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+[build]
+# Reasonable defaults; nothing project-specific yet.
+
+[term]
+color = "auto"

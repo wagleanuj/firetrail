@@ -1,0 +1,15 @@
+[package]
+name = "ft-search"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Hybrid vector + lexical search with ranking over Firetrail records."
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }

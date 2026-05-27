@@ -1,0 +1,15 @@
+[package]
+name = "ft-import"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Markdown, Jira, and Confluence importers with quarantine."
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }

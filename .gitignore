@@ -3,3 +3,13 @@
 .dolt/
 *.db
 .beads-credential-key
+
+# Rust build artifacts
+/target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# IDE / OS
+.DS_Store
+.vscode/
+.idea/

@@ -1,0 +1,98 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/ft-core",
+    "crates/ft-storage",
+    "crates/ft-index",
+    "crates/ft-embed",
+    "crates/ft-identity",
+    "crates/ft-scope",
+    "crates/ft-trust",
+    "crates/ft-history",
+    "crates/ft-search",
+    "crates/ft-prime",
+    "crates/ft-pr",
+    "crates/ft-import",
+    "crates/ft-git",
+    "crates/ft-cli",
+    "crates/ft-testkit",
+]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/firetrail/firetrail"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+# Allow some pedantic lints that produce too much noise during scaffolding.
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+must_use_candidate = "allow"
+
+[workspace.dependencies]
+# Record marshalling
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+# Errors
+thiserror = "2.0"
+anyhow = "1.0"
+
+# CLI
+clap = { version = "4.5", features = ["derive"] }
+
+# Storage / index
+rusqlite = { version = "0.32", features = ["bundled"] }
+sqlite-vec = "0.1"
+
+# Git reads
+gix = { version = "0.66", default-features = false }
+
+# Async runtime (embedding daemon, added in M3)
+tokio = { version = "1", features = ["full"] }
+
+# Testing
+proptest = "1.5"
+insta = "1.40"
+tempfile = "3.13"
+assert_cmd = "2.0"
+
+# ML runtime (ONNX), added in M3
+ort = "2.0.0-rc.5"
+
+# Schema / records
+jsonschema = "0.26"
+schemars = { version = "0.8", features = ["chrono"] }
+
+# Hashing
+hex = "0.4"
+sha2 = "0.10"
+
+# Random (record id minting)
+rand = "0.8"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Diagnostics
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.dev]
+# Reasonable dev defaults; keep compile times fast.
+debug = 1
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

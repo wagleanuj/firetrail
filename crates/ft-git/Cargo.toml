@@ -1,0 +1,23 @@
+[package]
+name = "ft-git"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Git operations wrapper around gix and shell git."
+
+[lints]
+workspace = true
+
+[dependencies]
+thiserror = { workspace = true }
+chrono = { workspace = true }
+gix = { workspace = true, features = ["revision", "blob-diff", "max-performance-safe"] }
+globset = "0.4"
+
+[dev-dependencies]
+ft-testkit = { path = "../ft-testkit", version = "0.0.0" }
+tempfile = { workspace = true }
+proptest = { workspace = true }
+globset = "0.4"

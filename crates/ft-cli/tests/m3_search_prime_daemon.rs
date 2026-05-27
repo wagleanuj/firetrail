@@ -55,6 +55,36 @@ fn search_returns_relevant_hit() {
 }
 
 #[test]
+fn search_common_word_returns_all_matching_titles() {
+    // Regression for firetrail-m1y: searching for a common word ("task")
+    // against a corpus of N task records whose titles all contain that
+    // word must yield N hits, not 1.
+    let tr = fresh_repo();
+    let titles = [
+        "task alpha",
+        "task beta",
+        "third task",
+        "task in the middle",
+        "another task entry",
+        "final task wrap",
+    ];
+    for t in titles {
+        let out = run_firetrail(tr.root(), &["task", "create", t, "--json"]);
+        assert!(out.success(), "task create failed: {}", out.stderr);
+    }
+    let out = run_firetrail(tr.root(), &["search", "task", "--json"]);
+    assert!(out.success(), "search failed: {}", out.stderr);
+    let v = parse_json(&out);
+    let hits = v["data"]["hits"].as_array().expect("hits array");
+    assert!(
+        hits.len() >= titles.len(),
+        "expected >= {} hits for `task`; got {} hits: {hits:#?}",
+        titles.len(),
+        hits.len(),
+    );
+}
+
+#[test]
 fn search_trust_filter_drops_drafts() {
     let tr = fresh_repo();
     // Memory records default to Draft. Filtering by Reviewed should drop

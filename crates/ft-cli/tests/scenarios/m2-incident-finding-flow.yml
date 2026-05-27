@@ -1,0 +1,114 @@
+name: m2-incident-finding-flow
+description: |
+  M2 success criterion #1 — incident → finding workflow on a feature branch.
+
+  Walks the canonical capture path:
+    1. Create an incident on `feature/login-outage`.
+    2. Create a finding linked to that incident (--incident <id>).
+    3. Commit the JSON files.
+    4. Assert finding.incident == incident.id.
+    5. Assert `firetrail verify` reports clean chains for both records.
+    6. Assert `firetrail show <incident-id>` returns the incident envelope.
+
+  Notes
+  -----
+  At M2 the `findings[]` array on the incident body is NOT mutated by
+  `finding create --incident <id>` (deferred to ft-pr's JSON merge driver in
+  M4 — firetrail-939 family). The user-visible "related findings" check is
+  therefore expressed as `finding.incident == incident.id` plus the finding
+  surfacing in `list --type finding`. The CLI's `show` subcommand exposes
+  only the structural `relations` log (`.firetrail/relations.jsonl`) plus
+  the record envelope; the back-reference is a body-level pointer, not a
+  relation. This scenario locks in the contract the M4 merge driver work
+  will tighten.
+
+setup:
+  config:
+    storage_mode: embedded
+    strict_identity: false
+    author_email: alice@example.com
+    author_name: Alice Tester
+
+steps:
+  - name: init repo on main
+    run: firetrail init --json --no-agents
+    expect:
+      exit: 0
+      stdout_json_path:
+        command: init
+
+  - name: commit baseline workspace
+    run: git add -A
+    expect:
+      exit: 0
+  - name: baseline commit
+    run: git commit -q -m "baseline"
+    expect:
+      exit: 0
+
+  - name: switch to feature branch
+    run: git checkout -q -b feature/login-outage
+    expect:
+      exit: 0
+
+  - name: create incident on feature branch
+    run: firetrail --json incident create "Login outage during deploy" --severity sev2 --services auth,gateway
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.envelope.kind: incident
+    capture:
+      incident_id: stdout_field=data.record.envelope.id
+
+  - name: create finding linked to the incident
+    run: firetrail --json finding create "Token cache TTL too aggressive" --incident ${incident_id} --details "Auth tokens evicted under load; renewal storm followed."
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.envelope.kind: finding
+        data.record.body.incident: ${incident_id}
+    capture:
+      finding_id: stdout_field=data.record.envelope.id
+
+  - name: stage the new records
+    run: git add -A
+    expect:
+      exit: 0
+  - name: commit incident + finding
+    run: git commit -q -m "capture login-outage incident + finding"
+    expect:
+      exit: 0
+
+  - name: incident JSON file exists at canonical path
+    run: sh -c 'ls .firetrail/records/incident/*.json | head -1'
+    expect:
+      exit: 0
+      stdout_contains: ".firetrail/records/incident/"
+
+  - name: finding JSON file exists at canonical path
+    run: sh -c 'ls .firetrail/records/finding/*.json | head -1'
+    expect:
+      exit: 0
+      stdout_contains: ".firetrail/records/finding/"
+
+  - name: verify reports clean hash chains for both records
+    run: firetrail --json verify
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.failures: 0
+
+  - name: show incident returns the incident envelope (back-ref is body-side at M2)
+    run: firetrail --json show ${incident_id}
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.envelope.id: ${incident_id}
+        data.record.envelope.kind: incident
+
+  - name: finding surfaces in memory list with the right kind
+    run: firetrail --json memory list --kind finding
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.rows.0.kind: finding

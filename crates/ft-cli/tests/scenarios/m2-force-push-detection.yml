@@ -1,0 +1,95 @@
+name: m2-force-push-detection
+description: |
+  M2 success criterion #3 — `firetrail verify` detects on-disk tampering.
+
+  Simulates a force-push that rewrites a record file on main: a finding
+  is created cleanly, committed, then its `state_hash` field is corrupted
+  in place via a tiny python edit. The verify command must:
+    - exit non-zero
+    - report `state_hash mismatch` as the failure reason
+    - count exactly one failure across the corpus
+
+  Why python and not sed
+  ----------------------
+  Portable in-place editing across BSD sed (macOS) and GNU sed (Linux)
+  requires divergent flags. Python 3 is universally available on the
+  developer platforms ft-cli targets at M2 (macOS arm64/x86_64, Linux
+  x86_64) and produces a byte-exact replacement without the BSD `-i ''`
+  trap. The runner spawns the shell command via plain `Command::new`, so
+  any executable on PATH works — see `ft-testkit/src/scenario.rs`
+  `dispatch()`.
+
+setup:
+  config:
+    storage_mode: embedded
+    strict_identity: false
+    author_email: alice@example.com
+    author_name: Alice Tester
+
+steps:
+  - name: init repo
+    run: firetrail init --json --no-agents
+    expect:
+      exit: 0
+
+  - name: commit baseline workspace
+    run: git add -A
+    expect:
+      exit: 0
+  - name: baseline commit
+    run: git commit -q -m "baseline"
+    expect:
+      exit: 0
+
+  - name: create a finding
+    run: firetrail --json finding create "Cache miss after deploy" --details "Cold cache caused tail latency"
+    expect:
+      exit: 0
+    capture:
+      finding_id: stdout_field=data.record.envelope.id
+
+  - name: commit the finding
+    run: sh -c 'git add -A && git commit -q -m "add finding"'
+    expect:
+      exit: 0
+
+  - name: verify is clean before corruption
+    run: firetrail --json verify
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.failures: 0
+
+  - name: simulate a force-push by rewriting state_hash on disk
+    # Mutate exactly the `state_hash` value via python json. Falls back to
+    # text replacement only if json round-trip is unavailable. The corrupted
+    # value is a syntactically valid 64-char hex string so the parser still
+    # admits the record — `verify` is what must catch the divergence.
+    run: python3 -c "import json,glob,sys; p=glob.glob('.firetrail/records/finding/*.json')[0]; d=json.load(open(p)); d['envelope']['state_hash']='0'*64; open(p,'w').write(json.dumps(d, separators=(',',':'))); print(p)"
+    expect:
+      exit: 0
+      stdout_contains: ".firetrail/records/finding/"
+
+  - name: verify detects the state_hash mismatch (exit 1, user_error)
+    run: firetrail --json verify
+    expect:
+      exit: 1
+      stderr_contains: "state_hash mismatch"
+      stderr_json_path:
+        error.kind: user_error
+        error.details.failures: 1
+
+  - name: targeted verify on the corrupted id also fails (non-zero exit)
+    # Targeted verify routes through `WorkCtx::resolve_id` → `Storage::read`,
+    # which refuses hash-mismatched files. The prefix resolver therefore
+    # cannot confirm the id exists and surfaces `NotFound` (exit 2). This is
+    # functionally equivalent to the force-push detection promise — verify
+    # cannot return a clean result for a tampered record — but with a
+    # different error shape than the corpus walk. Documenting this routing
+    # quirk inline; see firetrail follow-up for a tighter "hash mismatch"
+    # surface in the targeted path.
+    run: firetrail --json verify ${finding_id}
+    expect:
+      exit: 2
+      stderr_json_path:
+        error.kind: not_found

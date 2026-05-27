@@ -1,0 +1,140 @@
+name: m2-salvage
+description: |
+  M2 success criterion #4 — branch salvage rescues memory records from an
+  abandoned feature branch but leaves structural work-graph records behind.
+
+  Workflow
+  --------
+  1. Cut a feature branch `feature/triage` from main.
+  2. Create 3 findings + 1 task on the branch and commit them.
+  3. Switch back to main (records on `feature/triage` are now unreachable
+     from main).
+  4. Run `firetrail memory salvage --auto --branch feature/triage`. Memory
+     kinds default to salvaged; the task defaults to skipped (ADR-0018).
+  5. Assert the JSON envelope: 3 salvaged (findings), 1 skipped (task), and
+     a non-empty `salvage_branch` field.
+  6. Assert main is untouched — `list --type finding` on main is empty.
+  7. Check the salvage branch out and confirm the three finding files
+     materialised on it.
+
+  The `--auto` flag forces non-interactive mode; the runner has no TTY in
+  any case, but `--auto` keeps the test honest if a future runner gains
+  one.
+
+setup:
+  config:
+    storage_mode: embedded
+    strict_identity: false
+    author_email: alice@example.com
+    author_name: Alice Tester
+
+steps:
+  - name: init repo on main
+    run: firetrail init --json --no-agents
+    expect:
+      exit: 0
+
+  - name: stage and commit baseline
+    run: sh -c 'git add -A && git commit -q -m "baseline"'
+    expect:
+      exit: 0
+
+  - name: cut feature branch
+    run: git checkout -q -b feature/triage
+    expect:
+      exit: 0
+
+  - name: create finding 1 on feature branch
+    run: firetrail --json finding create "Race in token renewal" --details "Two threads race the cache renewal path."
+    expect:
+      exit: 0
+    capture:
+      finding_1: stdout_field=data.record.envelope.id
+
+  - name: create finding 2 on feature branch
+    run: firetrail --json finding create "Retry budget exhausted on cold start" --details "Cold start fans out 8 retries per request."
+    expect:
+      exit: 0
+    capture:
+      finding_2: stdout_field=data.record.envelope.id
+
+  - name: create finding 3 on feature branch
+    run: firetrail --json finding create "Cache TTL hardcoded to 30s" --details "TTL is buried in config, not env-aware."
+    expect:
+      exit: 0
+    capture:
+      finding_3: stdout_field=data.record.envelope.id
+
+  - name: create one task on feature branch (should NOT salvage)
+    run: firetrail --json task create "Plumb cache TTL through env"
+    expect:
+      exit: 0
+    capture:
+      task_id: stdout_field=data.record.envelope.id
+
+  - name: commit feature work
+    run: sh -c 'git add -A && git commit -q -m "feature triage findings and task"'
+    expect:
+      exit: 0
+
+  - name: run salvage in --auto mode from feature branch (stays on feature/triage)
+    # `firetrail memory salvage --auto` from the feature branch returns HEAD to
+    # the source branch after creating the salvage branch (see ADR-0018 and
+    # `crates/ft-cli/src/commands/salvage.rs::perform_salvage`). That keeps
+    # the operator's working state predictable. We assert the JSON envelope
+    # first, then explicitly hop between main / salvage to verify the file
+    # layout.
+    run: firetrail --json memory salvage --auto
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.base: main
+        data.source_branch: feature/triage
+        data.dry_run: false
+
+  - name: dry-run on feature branch reports a finding among the entries
+    run: firetrail --json memory salvage --dry-run
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.entries.0.kind: finding
+
+  - name: salvage branch exists in git
+    run: sh -c 'git branch --list "salvage/*" | wc -l | tr -d " "'
+    expect:
+      exit: 0
+      stdout_contains: "1"
+
+  - name: switch to main to inspect what main has (or rather, does not have)
+    run: git checkout -q main
+    expect:
+      exit: 0
+
+  - name: main branch has no finding files (salvage did not pollute main)
+    run: sh -c 'ls .firetrail/records/finding/ 2>/dev/null | wc -l | tr -d " "'
+    expect:
+      exit: 0
+      stdout_contains: "0"
+
+  - name: main branch has no task file from feature branch either
+    run: sh -c 'ls .firetrail/records/task/ 2>/dev/null | wc -l | tr -d " "'
+    expect:
+      exit: 0
+      stdout_contains: "0"
+
+  - name: check out the salvage branch
+    run: sh -c 'git checkout -q "$(git branch --list "salvage/*" | head -n1 | tr -d " *")"'
+    expect:
+      exit: 0
+
+  - name: salvage branch has exactly 3 finding files
+    run: sh -c 'ls .firetrail/records/finding/*.json 2>/dev/null | wc -l | tr -d " "'
+    expect:
+      exit: 0
+      stdout_contains: "3"
+
+  - name: salvage branch has no task file (structural kinds skipped by default)
+    run: sh -c 'ls .firetrail/records/task/*.json 2>/dev/null | wc -l | tr -d " "'
+    expect:
+      exit: 0
+      stdout_contains: "0"

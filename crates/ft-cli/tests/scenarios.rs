@@ -45,6 +45,13 @@ fn scenario_path(name: &str) -> PathBuf {
 /// Run a single scenario and panic with a structured diagnostic if any step
 /// failed. The diagnostic is designed to make CI failure logs actionable.
 fn run_scenario(name: &str) {
+    run_scenario_with_budget(name, std::time::Duration::from_secs(5));
+}
+
+/// Variant that takes an explicit per-scenario runtime budget. M2 scenarios
+/// drive more git operations than M1 and are sized to the M2 plan's 10s
+/// cap; the M1 surface stays pinned at 5s.
+fn run_scenario_with_budget(name: &str, budget: std::time::Duration) {
     let path = scenario_path(name);
     assert!(path.exists(), "scenario file missing: {}", path.display());
     let opts = runner_options();
@@ -84,11 +91,11 @@ fn run_scenario(name: &str) {
         report.name, report.steps_passed, report.steps_run, report.elapsed,
     );
 
-    // Per spec, each scenario must stay under 5 seconds locally.
     assert!(
-        report.elapsed.as_secs() < 5,
-        "scenario `{}` exceeded 5s budget: {:?}",
+        report.elapsed < budget,
+        "scenario `{}` exceeded {:?} budget: {:?}",
         report.name,
+        budget,
         report.elapsed,
     );
 }
@@ -116,4 +123,33 @@ fn m1_index_rebuild() {
 #[test]
 fn m1_clean_clone() {
     run_scenario("m1-clean-clone.yml");
+}
+
+// ---------------------------------------------------------------------------
+// M2 scenarios — incident memory, trust transitions, force-push detection,
+// branch salvage. Each is allowed up to 10s (M2 plan) because git commits
+// and branch checkouts add unavoidable per-step overhead vs the M1 happy
+// paths. The total scenario suite target is well under 60s.
+// ---------------------------------------------------------------------------
+
+const M2_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
+
+#[test]
+fn m2_incident_finding_flow() {
+    run_scenario_with_budget("m2-incident-finding-flow.yml", M2_BUDGET);
+}
+
+#[test]
+fn m2_trust_transitions() {
+    run_scenario_with_budget("m2-trust-transitions.yml", M2_BUDGET);
+}
+
+#[test]
+fn m2_force_push_detection() {
+    run_scenario_with_budget("m2-force-push-detection.yml", M2_BUDGET);
+}
+
+#[test]
+fn m2_salvage() {
+    run_scenario_with_budget("m2-salvage.yml", M2_BUDGET);
 }

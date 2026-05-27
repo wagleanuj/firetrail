@@ -1,0 +1,113 @@
+name: m2-trust-transitions
+description: |
+  M2 success criterion #2 — trust state machine end-to-end (ADR-0013).
+
+  Author `alice` creates a high-stakes finding. Reviewer `bob` walks it
+  draft → reviewed. The scenario then exercises every refusal path the
+  state machine enforces before reviewer `carol` finally promotes to
+  verified with evidence:
+
+    - DuplicateReviewer: bob tries to promote after his own review.
+    - EvidenceRequired: carol (a distinct human) promotes a high-stakes
+      record without an evidence URL.
+    - Success: carol promotes with `--evidence-url`.
+
+  Final state assertions:
+    - body.trust == verified
+    - history has ≥3 trust transition entries
+
+  Skipped step
+  ------------
+  ADR-0013 also forbids `Origin::Agent` actors from promoting to verified
+  (`TrustError::AgentCannotPromote`). The M2 CLI does NOT expose an
+  origin flag or env var on `memory promote`; `crates/ft-cli/src/commands/
+  trust.rs` hardcodes `Origin::Human` when constructing the
+  `TrustTransition`. That refusal path is therefore covered exhaustively in
+  `crates/ft-trust/tests/state_machine.rs` (`agent_cannot_promote_*`) but
+  cannot be reached from a YAML scenario today. Filed as a follow-up
+  (`firetrail memory promote --origin agent` or `FIRETRAIL_ORIGIN=agent`)
+  so the M2 spec text can be honoured end-to-end without forking the
+  binary.
+
+setup:
+  config:
+    storage_mode: embedded
+    strict_identity: false
+    author_email: alice@example.com
+    author_name: Alice Tester
+
+steps:
+  - name: init repo
+    run: firetrail init --json --no-agents
+    expect:
+      exit: 0
+
+  - name: alice creates a high-stakes finding (author=alice)
+    run: firetrail --json finding create "Auth bypass via expired token" --details "Tokens past TTL accepted under load." --risk-class security
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.envelope.kind: finding
+        data.record.body.trust: draft
+    capture:
+      finding_id: stdout_field=data.record.envelope.id
+
+  - name: bob reviews the finding (draft → reviewed)
+    run: firetrail --json memory review ${finding_id} --reason "looked at log evidence"
+    env:
+      FIRETRAIL_AUTHOR: bob@example.com
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.body.trust: reviewed
+
+  - name: bob cannot promote (DuplicateReviewer — bob already participated)
+    run: firetrail --json memory promote ${finding_id} --reason "self promote attempt"
+    env:
+      FIRETRAIL_AUTHOR: bob@example.com
+    expect:
+      exit: 1
+      stderr_contains: "already promoted"
+      stderr_json_path:
+        error.kind: user_error
+
+  - name: carol cannot promote a high-stakes finding without evidence (EvidenceRequired)
+    run: firetrail --json memory promote ${finding_id} --reason "looks fine"
+    env:
+      FIRETRAIL_AUTHOR: carol@example.com
+    expect:
+      exit: 1
+      stderr_contains: "high-stakes"
+      stderr_json_path:
+        error.kind: user_error
+
+  - name: carol promotes with evidence — reviewed → verified
+    run: firetrail --json memory promote ${finding_id} --reason "validated by load test" --evidence-url "https://ci.example.com/runs/42"
+    env:
+      FIRETRAIL_AUTHOR: carol@example.com
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.body.trust: verified
+
+  - name: chain still verifies after three trust transitions
+    run: firetrail --json verify ${finding_id}
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.failures: 0
+
+  - name: history records create + bob's review + carol's verification
+    # Failed transitions (DuplicateReviewer, EvidenceRequired) deliberately
+    # do NOT append history entries — the trust state machine validates
+    # before `write_with_history` runs. So the final chain is exactly:
+    #   [0] create (alice)
+    #   [1] trust-transition draft→reviewed (bob)
+    #   [2] trust-transition reviewed→verified (carol, with evidence)
+    run: firetrail --json show ${finding_id}
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.envelope.history.0.primary_actor: alice@example.com
+        data.record.envelope.history.1.primary_actor: bob@example.com
+        data.record.envelope.history.2.primary_actor: carol@example.com

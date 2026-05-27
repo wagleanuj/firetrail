@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "firetrail",
+  "project_id": "0d2f55ec-44e5-49b4-b480-3b60e057cb82"
+}

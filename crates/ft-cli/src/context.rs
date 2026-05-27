@@ -33,7 +33,7 @@ use ft_core::{Identity, Record, RecordId, Relation, state_hash};
 use ft_identity::{DefaultResolver, IdentityResolver};
 use ft_index::Index;
 use ft_search::SearchEngine;
-use ft_storage::{EmbeddedStorage, Storage as _, StorageFilter};
+use ft_storage::{EmbeddedStorage, ExternalStorage, Storage as _, StorageFilter, StorageMode};
 
 use crate::error::CliError;
 use crate::workspace::{self, Workspace};
@@ -42,8 +42,14 @@ use crate::workspace::{self, Workspace};
 pub struct WorkCtx {
     /// Resolved workspace.
     pub ws: Workspace,
-    /// On-disk record store.
+    /// On-disk record store. Rooted on the workspace in embedded mode, or on
+    /// the data-repo clone path in external mode — either way every consumer
+    /// reads/writes via the same `EmbeddedStorage` API.
     pub storage: EmbeddedStorage,
+    /// External storage handle (Some when storage mode is external). The
+    /// auto-commit semantics of `ExternalStorage::write` are layered on top
+    /// of the embedded write in [`WorkCtx::save_record`].
+    pub external: Option<ExternalStorage>,
     /// Index handle.
     pub index: Index,
     /// Non-fatal warnings to surface in the JSON envelope.
@@ -65,10 +71,36 @@ impl WorkCtx {
     /// emitted so the recovery is observable via the JSON envelope.
     pub fn open(command: &str, override_path: Option<&Path>) -> Result<Self, CliError> {
         let ws = workspace::require_initialised(command, override_path)?;
-        let storage = EmbeddedStorage::open(&ws.root)
-            .map_err(|e| CliError::internal(command, format!("open storage: {e}")))?;
 
         let mut warnings = Vec::new();
+
+        // Resolve storage mode from `.firetrail/config.yml`. External mode
+        // opens (clones) the data repo and roots the EmbeddedStorage view on
+        // the clone path; auto-pull is best-effort.
+        let (storage, external) = match StorageMode::from_workspace(&ws.root) {
+            Ok(StorageMode::Embedded { root }) => {
+                let s = EmbeddedStorage::open(&root)
+                    .map_err(|e| CliError::internal(command, format!("open storage: {e}")))?;
+                (s, None)
+            }
+            Ok(StorageMode::External { config, .. }) => {
+                let ext = ExternalStorage::open(&ws.root, &config).map_err(|e| {
+                    CliError::internal(command, format!("open external storage: {e}"))
+                })?;
+                if let Err(e) = ext.pull() {
+                    warnings.push(format!("external storage auto-pull failed: {e}"));
+                }
+                let s = EmbeddedStorage::open(ext.clone_path())
+                    .map_err(|e| CliError::internal(command, format!("open clone storage: {e}")))?;
+                (s, Some(ext))
+            }
+            Err(e) => {
+                return Err(CliError::internal(
+                    command,
+                    format!("read storage config: {e}"),
+                ));
+            }
+        };
         let db_path = ws.index_db_path();
         let needs_rebuild = !db_path.exists();
         let mut index = match Index::open(&ws.root) {
@@ -101,6 +133,7 @@ impl WorkCtx {
         Ok(Self {
             ws,
             storage,
+            external,
             index,
             warnings,
             actor: None,
@@ -153,10 +186,18 @@ impl WorkCtx {
             .map_err(|e| CliError::internal(&self.command, format!("hash: {e}")))?;
         record.envelope.state_hash = new_hash;
 
-        let path = self
-            .storage
-            .write(record)
-            .map_err(|e| CliError::internal(&self.command, format!("write: {e}")))?;
+        // In external mode, route the write through ExternalStorage so the
+        // record is auto-committed in the data-repo clone. Both views
+        // (embedded view on the clone path, and the external handle) share
+        // the same underlying files.
+        let path = if let Some(ext) = &self.external {
+            ext.write(record)
+                .map_err(|e| CliError::internal(&self.command, format!("write (external): {e}")))?
+        } else {
+            self.storage
+                .write(record)
+                .map_err(|e| CliError::internal(&self.command, format!("write: {e}")))?
+        };
 
         // The index may have changed shape (status, claim, AC, …); a targeted
         // refresh is cheap and avoids rebuilds.

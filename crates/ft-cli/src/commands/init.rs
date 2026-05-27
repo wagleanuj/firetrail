@@ -89,6 +89,7 @@ impl InitReport {
 }
 
 /// Entry point.
+#[allow(clippy::too_many_lines)]
 pub fn run(args: &InitArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
     let ws = workspace::locate(COMMAND, global.workspace.as_deref())?;
     let fresh = !ws.firetrail_dir().exists();
@@ -102,13 +103,17 @@ pub fn run(args: &InitArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliEr
         warnings: Vec::new(),
     };
 
-    if matches!(args.storage_mode, StorageModeArg::External) {
-        report
-            .warnings
-            .push("external storage mode is not yet available; falling back to embedded".into());
+    let external = matches!(args.storage_mode, StorageModeArg::External);
+    if external && args.data_repo_url.is_none() {
+        return Err(CliError::user(
+            COMMAND,
+            "--storage-mode external requires --data-repo-url <url>",
+        ));
     }
 
-    // 1. Records layout.
+    // 1. Records layout (always provisioned locally; in external mode the
+    // canonical records live in the data-repo clone, but the workspace
+    // skeleton is still useful for tooling that checks the layout).
     EmbeddedStorage::init(&ws.root).map_err(|e| CliError::internal(COMMAND, e))?;
     track(&mut report, &ws.firetrail_dir(), ".firetrail/", fresh);
     track(
@@ -123,9 +128,35 @@ pub fn run(args: &InitArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliEr
     if config_path.exists() {
         report.preserved.push(".firetrail/config.yml".into());
     } else {
-        std::fs::write(&config_path, default_config_yaml(args.strict_identity))
-            .map_err(|e| CliError::internal(COMMAND, e))?;
+        let yaml = if external {
+            external_config_yaml(
+                args.strict_identity,
+                args.data_repo_url.as_deref().unwrap_or(""),
+            )
+        } else {
+            default_config_yaml(args.strict_identity)
+        };
+        std::fs::write(&config_path, yaml).map_err(|e| CliError::internal(COMMAND, e))?;
         report.created.push(".firetrail/config.yml".into());
+    }
+
+    // 2b. scopes.yaml — write a `enabled_scopes` pilot list if requested and
+    // the file does not yet exist. The user is expected to fill in the
+    // actual scope entries; we only seed the pilot filter.
+    if let Some(pilot) = &args.pilot {
+        let scopes_path = ws.firetrail_dir().join("scopes.yaml");
+        if scopes_path.exists() {
+            report.preserved.push(".firetrail/scopes.yaml".into());
+        } else {
+            let pilot_list: Vec<String> = pilot
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            let yaml = scopes_pilot_yaml(&pilot_list);
+            std::fs::write(&scopes_path, yaml).map_err(|e| CliError::internal(COMMAND, e))?;
+            report.created.push(".firetrail/scopes.yaml".into());
+        }
     }
 
     // 3. identity.yml stub — only if absent.
@@ -269,6 +300,28 @@ fn default_config_yaml(strict_identity: bool) -> String {
          identity:\n  strict: {strict}\n\
          claim:\n  default_duration: 7d\n"
     )
+}
+
+fn external_config_yaml(strict_identity: bool, data_repo_url: &str) -> String {
+    let strict = if strict_identity { "true" } else { "false" };
+    format!(
+        "# Firetrail workspace config (external mode)\n\
+         format_version: 1\n\
+         storage:\n  mode: external\n  data_repo_url: {data_repo_url}\n  default_branch: main\n  sync_policy: loose\n\
+         identity:\n  strict: {strict}\n\
+         claim:\n  default_duration: 7d\n"
+    )
+}
+
+fn scopes_pilot_yaml(pilot: &[String]) -> String {
+    use std::fmt::Write as _;
+    let mut s = String::from("# Firetrail scopes registry (seeded by `init --pilot`).\n");
+    s.push_str("scopes: []\n");
+    s.push_str("enabled_scopes:\n");
+    for id in pilot {
+        let _ = writeln!(s, "  - {id}");
+    }
+    s
 }
 
 fn default_identity_yaml() -> String {

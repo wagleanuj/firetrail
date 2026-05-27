@@ -649,6 +649,7 @@ dependencies = [
  "ft-index",
  "ft-pr",
  "ft-prime",
+ "ft-scope",
  "ft-search",
  "ft-storage",
  "ft-testkit",

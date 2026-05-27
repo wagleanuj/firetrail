@@ -17,6 +17,7 @@ pub mod diff;
 pub mod doctor;
 pub mod graph;
 pub mod hook;
+pub mod identity;
 pub mod index_cmd;
 pub mod init;
 pub mod link;
@@ -28,9 +29,11 @@ pub mod merge_driver;
 pub mod prime;
 pub mod review;
 pub mod salvage;
+pub mod scope;
 pub mod search;
 pub mod server_hooks;
 pub mod show;
+pub mod sync_cmd;
 pub mod trust;
 pub mod update;
 pub mod verify;
@@ -158,6 +161,24 @@ pub enum CommandOutcome {
     IndexAction(index_cmd::IndexActionOutcome),
     /// `firetrail daemon {start,stop,status}`.
     Daemon(daemon_cmd::DaemonOutcome),
+    /// `firetrail identity register`.
+    IdentityRegister(identity::IdentityRegisterOutcome),
+    /// `firetrail identity list`.
+    IdentityList(identity::IdentityListOutcome),
+    /// `firetrail identity show`.
+    IdentityShow(identity::IdentityShowOutcome),
+    /// `firetrail identity offboard`.
+    IdentityOffboard(identity::IdentityOffboardOutcome),
+    /// `firetrail scope list`.
+    ScopeList(scope::ScopeListOutcome),
+    /// `firetrail scope show`.
+    ScopeShow(scope::ScopeShowOutcome),
+    /// `firetrail scope aliases`.
+    ScopeAliases(scope::ScopeAliasesOutcome),
+    /// `firetrail scope owners`.
+    ScopeOwners(scope::ScopeOwnersOutcome),
+    /// `firetrail sync`.
+    Sync(sync_cmd::SyncOutcome),
 }
 
 impl CommandOutcome {
@@ -190,6 +211,15 @@ impl CommandOutcome {
             Self::Prime(_) => "prime",
             Self::IndexAction(i) => i.command,
             Self::Daemon(d) => d.command,
+            Self::IdentityRegister(r) => r.command,
+            Self::IdentityList(r) => r.command,
+            Self::IdentityShow(r) => r.command,
+            Self::IdentityOffboard(r) => r.command,
+            Self::ScopeList(r) => r.command,
+            Self::ScopeShow(r) => r.command,
+            Self::ScopeAliases(r) => r.command,
+            Self::ScopeOwners(r) => r.command,
+            Self::Sync(r) => r.command,
         }
     }
 
@@ -224,6 +254,15 @@ impl CommandOutcome {
             Self::Prime(p) => p.markdown(),
             Self::IndexAction(i) => i.markdown(),
             Self::Daemon(d) => d.markdown(),
+            Self::IdentityRegister(r) => r.markdown(),
+            Self::IdentityList(r) => r.markdown(),
+            Self::IdentityShow(r) => r.markdown(),
+            Self::IdentityOffboard(r) => r.markdown(),
+            Self::ScopeList(r) => r.markdown(),
+            Self::ScopeShow(r) => r.markdown(),
+            Self::ScopeAliases(r) => r.markdown(),
+            Self::ScopeOwners(r) => r.markdown(),
+            Self::Sync(r) => r.markdown(),
         }
     }
 
@@ -258,6 +297,15 @@ impl CommandOutcome {
             Self::Prime(p) => p.quiet_line(),
             Self::IndexAction(i) => i.quiet_line(),
             Self::Daemon(d) => d.quiet_line(),
+            Self::IdentityRegister(r) => r.quiet_line(),
+            Self::IdentityList(r) => r.quiet_line(),
+            Self::IdentityShow(r) => r.quiet_line(),
+            Self::IdentityOffboard(r) => r.quiet_line(),
+            Self::ScopeList(r) => r.quiet_line(),
+            Self::ScopeShow(r) => r.quiet_line(),
+            Self::ScopeAliases(r) => r.quiet_line(),
+            Self::ScopeOwners(r) => r.quiet_line(),
+            Self::Sync(r) => r.quiet_line(),
         }
     }
 
@@ -294,6 +342,15 @@ impl CommandOutcome {
             Self::Prime(p) => p.json_data(),
             Self::IndexAction(i) => serde_json::to_value(i).unwrap_or(Value::Null),
             Self::Daemon(d) => serde_json::to_value(d).unwrap_or(Value::Null),
+            Self::IdentityRegister(r) => serde_json::to_value(r).unwrap_or(Value::Null),
+            Self::IdentityList(r) => serde_json::to_value(r).unwrap_or(Value::Null),
+            Self::IdentityShow(r) => serde_json::to_value(r).unwrap_or(Value::Null),
+            Self::IdentityOffboard(r) => serde_json::to_value(r).unwrap_or(Value::Null),
+            Self::ScopeList(r) => serde_json::to_value(r).unwrap_or(Value::Null),
+            Self::ScopeShow(r) => serde_json::to_value(r).unwrap_or(Value::Null),
+            Self::ScopeAliases(r) => serde_json::to_value(r).unwrap_or(Value::Null),
+            Self::ScopeOwners(r) => serde_json::to_value(r).unwrap_or(Value::Null),
+            Self::Sync(r) => serde_json::to_value(r).unwrap_or(Value::Null),
         }
     }
 
@@ -328,6 +385,15 @@ impl CommandOutcome {
             Self::Prime(p) => p.warnings.clone(),
             Self::IndexAction(i) => i.warnings.clone(),
             Self::Daemon(d) => d.warnings.clone(),
+            Self::IdentityRegister(r) => r.warnings.clone(),
+            Self::IdentityList(r) => r.warnings.clone(),
+            Self::IdentityShow(r) => r.warnings.clone(),
+            Self::IdentityOffboard(r) => r.warnings.clone(),
+            Self::ScopeList(r) => r.warnings.clone(),
+            Self::ScopeShow(r) => r.warnings.clone(),
+            Self::ScopeAliases(r) => r.warnings.clone(),
+            Self::ScopeOwners(r) => r.warnings.clone(),
+            Self::Sync(r) => r.warnings.clone(),
         }
     }
 }

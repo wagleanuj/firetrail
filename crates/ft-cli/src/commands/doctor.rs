@@ -191,6 +191,12 @@ pub fn run(args: &DoctorArgs, global: &GlobalOpts) -> Result<CommandOutcome, Cli
     check_daemon_liveness(&ws, &mut checks);
     check_search_schema(&ws, &mut checks);
 
+    // M5: registry / scope / claim-consistency / external-sync checks.
+    check_identity_registry(&ws, &mut checks);
+    check_scope_registry(&ws, &mut checks);
+    check_claim_consistency(&ws, &mut checks);
+    check_external_sync(&ws, &mut checks);
+
     let clean = checks.iter().all(|c| c.status == CheckStatus::Ok);
     let _ = global;
 
@@ -510,6 +516,136 @@ fn check_daemon_liveness(ws: &workspace::Workspace, checks: &mut Vec<CheckResult
             format!("socket exists but did not respond: {}", socket.display()),
             "run `firetrail daemon stop` then `firetrail daemon start`",
         )),
+    }
+}
+
+fn check_identity_registry(ws: &workspace::Workspace, checks: &mut Vec<CheckResult>) {
+    match ft_identity::load_registry(&ws.root) {
+        Ok(reg) => checks.push(CheckResult::ok(
+            "identity.registry",
+            "Identity registry",
+            format!("{} identities registered", reg.identities.len()),
+        )),
+        Err(e) => checks.push(CheckResult::fail(
+            "identity.registry",
+            "Identity registry",
+            format!("failed to load `.firetrail/identities.yaml`: {e}"),
+            "edit or remove `.firetrail/identities.yaml` to restore valid YAML",
+        )),
+    }
+}
+
+fn check_scope_registry(ws: &workspace::Workspace, checks: &mut Vec<CheckResult>) {
+    match ft_scope::load(&ws.root) {
+        Ok(reg) => checks.push(CheckResult::ok(
+            "scope.registry",
+            "Scope registry",
+            format!("{} scopes configured", reg.scopes().len()),
+        )),
+        Err(e) => checks.push(CheckResult::fail(
+            "scope.registry",
+            "Scope registry",
+            format!("failed to load `.firetrail/scopes.yaml`: {e}"),
+            "edit `.firetrail/scopes.yaml` to restore valid YAML / globs",
+        )),
+    }
+}
+
+/// Walk every record once and flag any claim whose `claim_expires_at` is in
+/// the past. Expired live claims should be released (or taken over).
+fn check_claim_consistency(ws: &workspace::Workspace, checks: &mut Vec<CheckResult>) {
+    use chrono::Utc;
+    use ft_core::RecordBody;
+    use ft_storage::{Storage, StorageFilter};
+
+    let Ok(storage) = ft_storage::EmbeddedStorage::open(&ws.root) else {
+        return;
+    };
+    let Ok(ids) = storage.list(&StorageFilter::default()) else {
+        return;
+    };
+    let now = Utc::now();
+    let mut expired: Vec<String> = Vec::new();
+    for id in &ids {
+        let Ok(rec) = storage.read(id) else { continue };
+        let claim = match &rec.body {
+            RecordBody::Task(t) => t.claim.as_ref(),
+            RecordBody::Subtask(s) => s.claim.as_ref(),
+            RecordBody::Bug(b) => b.claim.as_ref(),
+            _ => None,
+        };
+        if let Some(c) = claim {
+            if now >= c.claim_expires_at {
+                expired.push(id.as_str().to_string());
+            }
+        }
+    }
+    if expired.is_empty() {
+        checks.push(CheckResult::ok(
+            "claim.consistency",
+            "Claim consistency",
+            "no expired-but-active claims",
+        ));
+    } else {
+        checks.push(CheckResult::warn(
+            "claim.consistency",
+            "Claim consistency",
+            format!(
+                "{} expired claim(s) still attached: {:?}",
+                expired.len(),
+                expired
+            ),
+            "use `firetrail claim-takeover <id>` to release each",
+        ));
+    }
+}
+
+fn check_external_sync(ws: &workspace::Workspace, checks: &mut Vec<CheckResult>) {
+    match ft_storage::StorageMode::from_workspace(&ws.root) {
+        Ok(ft_storage::StorageMode::Embedded { .. }) => {
+            checks.push(CheckResult::ok(
+                "storage.mode",
+                "Storage mode",
+                "embedded",
+            ));
+        }
+        Ok(ft_storage::StorageMode::External { config, .. }) => {
+            match ft_storage::ExternalStorage::open(&ws.root, &config) {
+                Ok(ext) => match ft_storage::sync_status(&ext) {
+                    Ok(st) => {
+                        let msg = format!(
+                            "external ahead={} behind={} dirty={}",
+                            st.ahead, st.behind, st.dirty
+                        );
+                        if st.behind > 0 || st.dirty {
+                            checks.push(CheckResult::warn(
+                                "storage.mode",
+                                "Storage mode",
+                                msg,
+                                "run `firetrail sync` to reconcile",
+                            ));
+                        } else {
+                            checks.push(CheckResult::ok("storage.mode", "Storage mode", msg));
+                        }
+                    }
+                    Err(e) => checks.push(CheckResult::warn(
+                        "storage.mode",
+                        "Storage mode",
+                        format!("external sync_status failed: {e}"),
+                        "run `firetrail sync` and inspect the clone at `.firetrail/cache/data-repo`",
+                    )),
+                },
+                Err(e) => checks.push(CheckResult::fail(
+                    "storage.mode",
+                    "Storage mode",
+                    format!("could not open external storage: {e}"),
+                    "verify `storage.data_repo_url` in `.firetrail/config.yml` and run `firetrail sync`",
+                )),
+            }
+        }
+        Err(_) => {
+            // The config.* check already flagged this; nothing more to add.
+        }
     }
 }
 

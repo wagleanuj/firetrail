@@ -20,7 +20,7 @@ use std::path::PathBuf;
 use chrono::{Duration, Utc};
 use ft_core::{Claim, RecordBody, RecordKind};
 
-use crate::cli::{ClaimArgs, GlobalOpts, UnclaimArgs};
+use crate::cli::{ClaimArgs, ClaimTakeoverArgs, GlobalOpts, UnclaimArgs};
 use crate::commands::{CommandOutcome, RecordOutcome};
 use crate::context::WorkCtx;
 use crate::error::CliError;
@@ -28,6 +28,7 @@ use crate::workspace::Workspace;
 
 const COMMAND_CLAIM: &str = "claim";
 const COMMAND_UNCLAIM: &str = "unclaim";
+const COMMAND_TAKEOVER: &str = "claim-takeover";
 
 /// Default claim duration when neither `--expires` nor workspace config
 /// overrides it.
@@ -134,6 +135,82 @@ pub fn unclaim(args: &UnclaimArgs, global: &GlobalOpts) -> Result<CommandOutcome
     ))
 }
 
+/// `firetrail claim-takeover` (M5).
+///
+/// Rewrites the active claim atomically. Two policy gates:
+///
+/// - Default: only succeeds when the existing claim is expired (anyone may
+///   pick up an abandoned claim).
+/// - With `--force`: also succeeds when the caller has the `can_force_push`
+///   admin capability in the identity registry. The check is delegated to
+///   [`ft_identity::can_take_over`].
+pub fn takeover(args: &ClaimTakeoverArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
+    use ft_identity::{ClaimInfo, can_take_over, is_claim_expired, load_registry};
+
+    let mut ctx = WorkCtx::open(COMMAND_TAKEOVER, global.workspace.as_deref())?;
+    let id = ctx.resolve_id(&args.id)?;
+    if !claim_supported(id.kind()) {
+        return Err(CliError::user(
+            COMMAND_TAKEOVER,
+            format!("{:?} records do not support claims", id.kind()),
+        ));
+    }
+    let actor = ctx.actor()?;
+    let registry = load_registry(&ctx.ws.root)
+        .map_err(|e| CliError::internal(COMMAND_TAKEOVER, format!("load registry: {e}")))?;
+
+    let lock_path = lock_path(&ctx.ws, &id);
+    let _lock = LockHandle::acquire_for(&lock_path, COMMAND_TAKEOVER)?;
+
+    let mut record = ctx.read_record(&id)?;
+    let existing = existing_claim(&record.body).cloned().ok_or_else(|| {
+        CliError::user(COMMAND_TAKEOVER, "record has no active claim to take over")
+    })?;
+
+    let info = ClaimInfo {
+        actor: existing.claimed_by.clone(),
+        claim_expires_at: existing.claim_expires_at,
+        on_behalf_of: None,
+    };
+    let now = Utc::now();
+    let expired = is_claim_expired(&info, now);
+    if !expired {
+        if !args.force {
+            return Err(CliError::Conflict {
+                command: COMMAND_TAKEOVER.into(),
+                message: format!(
+                    "claim on {id} is live (held by `{}` until {}); pass --force when you hold admin capability",
+                    existing.claimed_by,
+                    existing.claim_expires_at.to_rfc3339()
+                ),
+            });
+        }
+        if !can_take_over(&info, &actor, &registry, now) {
+            return Err(CliError::Conflict {
+                command: COMMAND_TAKEOVER.into(),
+                message: format!(
+                    "caller `{actor}` lacks the admin capability to force-take a live claim"
+                ),
+            });
+        }
+    }
+
+    let new_claim = Claim {
+        claimed_by: actor.clone(),
+        claimed_at: now,
+        claim_source: "cli-takeover".to_string(),
+        claim_expires_at: now + DEFAULT_CLAIM_DURATION,
+    };
+    set_claim(&mut record.body, Some(new_claim));
+    record.envelope.owner = Some(actor);
+    record.envelope.updated_at = now;
+    ctx.save_record(&mut record)?;
+
+    Ok(CommandOutcome::Claimed(
+        RecordOutcome::new(COMMAND_TAKEOVER, record).with_warnings(ctx.warnings.clone()),
+    ))
+}
+
 fn claim_supported(kind: RecordKind) -> bool {
     matches!(
         kind,
@@ -173,20 +250,21 @@ struct LockHandle {
 
 impl LockHandle {
     fn acquire(path: &PathBuf) -> Result<Self, CliError> {
+        Self::acquire_for(path, COMMAND_CLAIM)
+    }
+
+    fn acquire_for(path: &PathBuf, command: &'static str) -> Result<Self, CliError> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)
-                .map_err(|e| CliError::internal(COMMAND_CLAIM, format!("locks dir: {e}")))?;
+                .map_err(|e| CliError::internal(command, format!("locks dir: {e}")))?;
         }
         match OpenOptions::new().write(true).create_new(true).open(path) {
             Ok(_f) => Ok(Self { path: path.clone() }),
             Err(e) if e.kind() == ErrorKind::AlreadyExists => Err(CliError::Conflict {
-                command: COMMAND_CLAIM.into(),
+                command: command.into(),
                 message: "another claim is in-flight for this record".into(),
             }),
-            Err(e) => Err(CliError::internal(
-                COMMAND_CLAIM,
-                format!("lockfile error: {e}"),
-            )),
+            Err(e) => Err(CliError::internal(command, format!("lockfile error: {e}"))),
         }
     }
 }

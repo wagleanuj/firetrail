@@ -97,6 +97,10 @@ pub enum Command {
     /// Claim a record (mints a Claim).
     Claim(ClaimArgs),
 
+    /// Take over another actor's claim (M5).
+    #[command(name = "claim-takeover")]
+    ClaimTakeover(ClaimTakeoverArgs),
+
     /// Release the active claim on a record.
     Unclaim(UnclaimArgs),
 
@@ -205,6 +209,149 @@ pub enum Command {
     /// Embedding daemon control.
     #[command(subcommand)]
     Daemon(DaemonCmd),
+
+    /// Identity registry management (M5).
+    #[command(subcommand)]
+    Identity(IdentityCmd),
+
+    /// Scope registry queries (M5).
+    #[command(subcommand)]
+    Scope(ScopeCmd),
+
+    /// Synchronise the external data repository (M5).
+    Sync(SyncArgs),
+}
+
+/// `firetrail identity …`
+#[derive(Debug, Subcommand)]
+pub enum IdentityCmd {
+    /// Register a new identity.
+    Register(IdentityRegisterArgs),
+    /// List all registered identities.
+    List(IdentityListArgs),
+    /// Show a single identity.
+    Show(IdentityShowArgs),
+    /// Mark an identity as offboarded.
+    Offboard(IdentityOffboardArgs),
+}
+
+/// Identity kind selector.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[clap(rename_all = "lower")]
+pub enum IdentityKindArg {
+    /// Real person.
+    Human,
+    /// Service / bot account.
+    Bot,
+    /// CI runner.
+    Ci,
+}
+
+impl IdentityKindArg {
+    /// Convert into [`ft_identity::IdentityKind`].
+    #[must_use]
+    pub fn to_core(self) -> ft_identity::IdentityKind {
+        match self {
+            Self::Human => ft_identity::IdentityKind::Human,
+            Self::Bot => ft_identity::IdentityKind::Bot,
+            Self::Ci => ft_identity::IdentityKind::Ci,
+        }
+    }
+}
+
+/// Identity-status filter for `identity list`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[clap(rename_all = "lower")]
+pub enum IdentityStatusArg {
+    /// Active member.
+    Active,
+    /// Offboarded.
+    Offboarded,
+}
+
+/// `firetrail identity register` args.
+#[derive(Debug, Args)]
+pub struct IdentityRegisterArgs {
+    /// Canonical short id (e.g. `alice`, `bot-claude`).
+    pub id: String,
+    /// Human-readable display name.
+    #[arg(long)]
+    pub name: String,
+    /// Comma-separated email aliases.
+    #[arg(long)]
+    pub emails: String,
+    /// Identity kind.
+    #[arg(long, value_enum)]
+    pub kind: IdentityKindArg,
+    /// Comma-separated machine hostnames.
+    #[arg(long)]
+    pub machines: Option<String>,
+    /// `key=value` capability override (repeatable).
+    #[arg(long = "capability", value_name = "KEY=VALUE")]
+    pub capabilities: Vec<String>,
+}
+
+/// `firetrail identity list` args.
+#[derive(Debug, Args)]
+pub struct IdentityListArgs {
+    /// Filter by status.
+    #[arg(long, value_enum)]
+    pub status: Option<IdentityStatusArg>,
+}
+
+/// `firetrail identity show` args.
+#[derive(Debug, Args)]
+pub struct IdentityShowArgs {
+    /// Identity id.
+    pub id: String,
+}
+
+/// `firetrail identity offboard` args.
+#[derive(Debug, Args)]
+pub struct IdentityOffboardArgs {
+    /// Identity id.
+    pub id: String,
+    /// Release every live claim held by this identity.
+    #[arg(long)]
+    pub sweep_claims: bool,
+}
+
+/// `firetrail scope …`
+#[derive(Debug, Subcommand)]
+pub enum ScopeCmd {
+    /// List configured scopes.
+    List,
+    /// Show a single scope.
+    Show(ScopeShowArgs),
+    /// List every alias and the scope it resolves to.
+    Aliases,
+    /// Resolve CODEOWNERS for a repo-relative path.
+    Owners(ScopeOwnersArgs),
+}
+
+/// `firetrail scope show` args.
+#[derive(Debug, Args)]
+pub struct ScopeShowArgs {
+    /// Scope id or alias.
+    pub id: String,
+}
+
+/// `firetrail scope owners` args.
+#[derive(Debug, Args)]
+pub struct ScopeOwnersArgs {
+    /// Repo-relative path to resolve.
+    pub path: PathBuf,
+}
+
+/// `firetrail sync` args.
+#[derive(Debug, Args)]
+pub struct SyncArgs {
+    /// Skip the push step (pull only).
+    #[arg(long)]
+    pub pull_only: bool,
+    /// Skip the pull step (push only).
+    #[arg(long, conflicts_with = "pull_only")]
+    pub push_only: bool,
 }
 
 /// `firetrail search` mode selector.
@@ -1102,10 +1249,19 @@ pub struct ServerHooksInstallArgs {
 /// Arguments for `firetrail init`.
 #[derive(Debug, Args)]
 pub struct InitArgs {
-    /// Storage backend. M1 enforces embedded; `external` falls through with a
-    /// warning. See ADR-0006.
+    /// Storage backend. See ADR-0006.
     #[arg(long, value_enum, default_value_t = StorageModeArg::Embedded)]
     pub storage_mode: StorageModeArg,
+
+    /// Data repository URL for external storage mode (file://, ssh, https).
+    /// Required when `--storage-mode external`.
+    #[arg(long)]
+    pub data_repo_url: Option<String>,
+
+    /// Pilot rollout: enable only this comma-separated list of scope ids in
+    /// `.firetrail/scopes.yaml`.
+    #[arg(long)]
+    pub pilot: Option<String>,
 
     /// Reject identities not present in the registry. Persists as
     /// `identity.strict: true` in `config.yml`.
@@ -1482,6 +1638,17 @@ pub struct ClaimArgs {
     /// Human-readable duration override (e.g. `7d`, `12h`).
     #[arg(long)]
     pub expires: Option<String>,
+}
+
+/// `firetrail claim-takeover <id> [--force]`
+#[derive(Debug, Args)]
+pub struct ClaimTakeoverArgs {
+    /// Record id.
+    pub id: String,
+    /// Skip the "claim is expired" check when the caller has the admin
+    /// (`can_force_push`) capability.
+    #[arg(long)]
+    pub force: bool,
 }
 
 /// `firetrail unclaim <id>`

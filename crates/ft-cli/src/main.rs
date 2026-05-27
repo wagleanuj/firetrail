@@ -63,11 +63,12 @@ fn main() -> ExitCode {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn dispatch(cli: &Cli) -> Result<commands::CommandOutcome, CliError> {
     use crate::cli::{
         BugCmd, CheckCmd, CriteriaCmd, DaemonCmd, DecisionCmd, DepCmd, EpicCmd, FindingCmd,
-        GotchaCmd, HookCmd, IncidentCmd, IndexCmd, LintCmd, MemoryCmd, RunbookCmd, RunbookStepCmd,
-        ServerHooksCmd, SubtaskCmd, TaskCmd,
+        GotchaCmd, HookCmd, IdentityCmd, IncidentCmd, IndexCmd, LintCmd, MemoryCmd, RunbookCmd,
+        RunbookStepCmd, ScopeCmd, ServerHooksCmd, SubtaskCmd, TaskCmd,
     };
     match &cli.command {
         Command::Init(args) => commands::init::run(args, &cli.global),
@@ -161,5 +162,23 @@ fn dispatch(cli: &Cli) -> Result<commands::CommandOutcome, CliError> {
         Command::Daemon(DaemonCmd::Start(args)) => commands::daemon_cmd::start(args, &cli.global),
         Command::Daemon(DaemonCmd::Stop) => commands::daemon_cmd::stop(&cli.global),
         Command::Daemon(DaemonCmd::Status) => commands::daemon_cmd::status(&cli.global),
+
+        Command::ClaimTakeover(args) => commands::claim::takeover(args, &cli.global),
+
+        Command::Identity(IdentityCmd::Register(args)) => {
+            commands::identity::register(args, &cli.global)
+        }
+        Command::Identity(IdentityCmd::List(args)) => commands::identity::list(args, &cli.global),
+        Command::Identity(IdentityCmd::Show(args)) => commands::identity::show(args, &cli.global),
+        Command::Identity(IdentityCmd::Offboard(args)) => {
+            commands::identity::offboard(args, &cli.global)
+        }
+
+        Command::Scope(ScopeCmd::List) => commands::scope::list(&cli.global),
+        Command::Scope(ScopeCmd::Show(args)) => commands::scope::show(args, &cli.global),
+        Command::Scope(ScopeCmd::Aliases) => commands::scope::aliases(&cli.global),
+        Command::Scope(ScopeCmd::Owners(args)) => commands::scope::owners(args, &cli.global),
+
+        Command::Sync(args) => commands::sync_cmd::run(args, &cli.global),
     }
 }

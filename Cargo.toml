@@ -58,6 +58,9 @@ sqlite-vec = "0.1"
 # Git reads
 gix = { version = "0.66", default-features = false }
 
+# Filesystem traversal
+walkdir = "2.5"
+
 # Async runtime (embedding daemon, added in M3)
 tokio = { version = "1", features = ["full"] }
 

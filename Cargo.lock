@@ -652,9 +652,16 @@ dependencies = [
 name = "ft-storage"
 version = "0.0.0"
 dependencies = [
+ "chrono",
+ "ft-core",
+ "ft-git",
+ "ft-testkit",
+ "proptest",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.18",
+ "walkdir",
 ]
 
 [[package]]

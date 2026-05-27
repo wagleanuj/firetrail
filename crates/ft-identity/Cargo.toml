@@ -1,0 +1,23 @@
+[package]
+name = "ft-identity"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Identity registry, resolution, and capabilities."
+
+[lints]
+workspace = true
+
+[dependencies]
+ft-core = { path = "../ft-core", version = "0.0.0" }
+serde = { workspace = true }
+serde_yaml = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+ft-testkit = { path = "../ft-testkit", version = "0.0.0" }
+proptest = { workspace = true }
+tempfile = { workspace = true }
+serde_yaml = { workspace = true }

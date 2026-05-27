@@ -37,8 +37,11 @@ pub mod embedder;
 pub mod error;
 pub mod service;
 
-pub use cache::{CacheError, EmbeddingCache, IntegrityIssue, IntegrityReport};
+pub use cache::{
+    CacheError, EmbeddingCache, IntegrityIssue, IntegrityReport, SampleRow, repo_cache_dir,
+    repo_cache_dir_under, repo_identity,
+};
 pub use daemon::{DaemonStatus, EmbedRequest, EmbedResponse};
 pub use embedder::{Embedder, MockEmbedder, OnnxEmbedder};
 pub use error::EmbedError;
-pub use service::{EmbedService, content_hash, record_text};
+pub use service::{DriftIssue, DriftReport, EmbedService, content_hash, cosine, record_text};

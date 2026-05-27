@@ -38,6 +38,10 @@ fn runner_options() -> RunnerOptions {
     // target; we plumb it through the runner so YAML steps can reference it
     // as `$FIRETRAIL_MERGE_DRIVER_BIN` from `sh -c`.
     let merge_driver = env!("CARGO_BIN_EXE_firetrail-merge-driver");
+    // ADR-0007 cache is machine-local; without an override every scenario
+    // would scribble under the developer's real `~/.cache/firetrail/`. Pin
+    // it under cargo's per-test-binary tmp dir so tests stay hermetic.
+    let cache_home = env!("CARGO_TARGET_TMPDIR");
     RunnerOptions::default()
         .with_firetrail_bin(bin)
         // Pin identity so the scenario is host-agnostic.
@@ -48,6 +52,7 @@ fn runner_options() -> RunnerOptions {
         // the literal `firetrail` head argv when it dispatches directly).
         .with_env("FIRETRAIL_BIN", bin)
         .with_env("FIRETRAIL_MERGE_DRIVER_BIN", merge_driver)
+        .with_env("FIRETRAIL_CACHE_HOME", cache_home)
 }
 
 fn scenario_path(name: &str) -> PathBuf {

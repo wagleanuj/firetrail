@@ -449,12 +449,31 @@ fn check_storage_parity(ws: &workspace::Workspace, checks: &mut Vec<CheckResult>
 }
 
 fn check_cache_integrity(ws: &workspace::Workspace, checks: &mut Vec<CheckResult>) {
-    let cache_db = ws.cache_dir().join("embeddings.db");
+    // Cache lives **machine-local** under `~/.cache/firetrail/<repo-hash>/`
+    // (or `$FIRETRAIL_CACHE_HOME/firetrail/<repo-hash>/`) so multiple
+    // worktrees of the same repo share it (ADR-0007). We probe that path,
+    // not the workspace-local `.firetrail/cache/`.
+    let cache_db = match ft_embed::repo_cache_dir(&ws.root) {
+        Ok(dir) => dir.join("embeddings.db"),
+        Err(e) => {
+            checks.push(CheckResult::warn(
+                "embed.cache",
+                "Embedding cache",
+                format!("could not resolve cache directory: {e}"),
+                "set $FIRETRAIL_CACHE_HOME or ensure $HOME is set",
+            ));
+            return;
+        }
+    };
+    let hint_remove = format!(
+        "remove `{}` to force a rebuild",
+        cache_db.display()
+    );
     if !cache_db.exists() {
         checks.push(CheckResult::ok(
             "embed.cache",
             "Embedding cache",
-            "no cache yet (will be created on first use)",
+            format!("no cache yet at {} (will be created on first use)", cache_db.display()),
         ));
         return;
     }
@@ -465,7 +484,7 @@ fn check_cache_integrity(ws: &workspace::Workspace, checks: &mut Vec<CheckResult
                     checks.push(CheckResult::ok(
                         "embed.cache",
                         "Embedding cache",
-                        format!("{} rows clean", report.scanned),
+                        format!("{} rows clean ({})", report.scanned, cache_db.display()),
                     ));
                 } else {
                     checks.push(CheckResult::fail(
@@ -476,7 +495,7 @@ fn check_cache_integrity(ws: &workspace::Workspace, checks: &mut Vec<CheckResult
                             report.scanned,
                             report.bad.len()
                         ),
-                        "remove `.firetrail/cache/embeddings.db` to force a rebuild",
+                        &hint_remove,
                     ));
                 }
             }
@@ -484,14 +503,14 @@ fn check_cache_integrity(ws: &workspace::Workspace, checks: &mut Vec<CheckResult
                 "embed.cache",
                 "Embedding cache",
                 format!("verify_integrity failed: {e}"),
-                "remove `.firetrail/cache/embeddings.db` if the cache is corrupt",
+                &hint_remove,
             )),
         },
         Err(e) => checks.push(CheckResult::warn(
             "embed.cache",
             "Embedding cache",
             format!("could not open cache: {e}"),
-            "verify filesystem permissions for `.firetrail/cache/`",
+            "verify filesystem permissions on the machine-local cache directory",
         )),
     }
 }

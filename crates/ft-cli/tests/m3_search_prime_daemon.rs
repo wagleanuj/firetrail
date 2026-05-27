@@ -288,6 +288,44 @@ fn daemon_status_reports_stopped_when_no_socket() {
 }
 
 #[test]
+fn search_hybrid_with_dead_daemon_reports_lexical_mode() {
+    // firetrail-urq: when --mode=hybrid is requested but the daemon is
+    // unreachable, the result MUST honestly report `mode: lexical` rather
+    // than echoing back the requested mode.
+    let tr = fresh_repo();
+    let _ = create_two_records(tr.root());
+
+    let out = run_firetrail(
+        tr.root(),
+        &[
+            "search",
+            "payment",
+            "--mode",
+            "hybrid",
+            "--embedder",
+            "daemon",
+            "--json",
+        ],
+    );
+    assert!(out.success(), "search failed: {}", out.stderr);
+    let v = parse_json(&out);
+    assert_eq!(
+        v["data"]["mode"].as_str().unwrap(),
+        "lexical",
+        "expected mode to degrade to lexical when daemon is down, got {}",
+        v["data"]["mode"]
+    );
+    let warnings = v["data"]["warnings"].as_array().expect("warnings array");
+    assert!(
+        warnings
+            .iter()
+            .filter_map(|w| w.as_str())
+            .any(|w| w.contains("daemon embedder unavailable")),
+        "expected a daemon-unavailable warning, got {warnings:?}"
+    );
+}
+
+#[test]
 fn doctor_includes_m3_checks() {
     let tr = fresh_repo();
     let out = run_firetrail(tr.root(), &["doctor", "--json"]);

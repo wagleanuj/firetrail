@@ -9,6 +9,39 @@ use crate::cache::EmbeddingCache;
 use crate::embedder::Embedder;
 use crate::error::EmbedError;
 
+/// Outcome of [`EmbedService::detect_drift`]: how many sampled rows were
+/// re-embedded, and which ones diverged beyond the cosine tolerance.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DriftReport {
+    /// Rows sampled from the cache.
+    pub sampled: usize,
+    /// Rows actually re-embedded (sample minus skips).
+    pub compared: usize,
+    /// Rows skipped because their text was unavailable to the caller, or
+    /// because their `model_id`/`model_version` does not match the live
+    /// embedder.
+    pub skipped: usize,
+    /// Rows whose cosine similarity vs the re-embedded vector fell below
+    /// the configured tolerance.
+    pub drifted: Vec<DriftIssue>,
+    /// Cosine-similarity floor used during the run (e.g. `0.999`).
+    pub tolerance: f32,
+}
+
+/// One row that drifted: cached vs newly-embedded cosine similarity below
+/// tolerance.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DriftIssue {
+    /// Model id of the drifted row.
+    pub model_id: String,
+    /// Model version of the drifted row.
+    pub model_version: String,
+    /// Content hash of the drifted row.
+    pub content_hash: String,
+    /// Cosine similarity between cached and re-embedded vectors.
+    pub cosine: f32,
+}
+
 /// Combine an [`Embedder`] with an [`EmbeddingCache`].
 #[derive(Debug)]
 pub struct EmbedService<E: Embedder> {
@@ -35,8 +68,8 @@ impl<E: Embedder> EmbedService<E> {
     /// Embed a raw text blob, going through the cache.
     ///
     /// Computes `content_hash(text)`, looks it up under
-    /// `self.embedder.model_id()`, and on miss runs the embedder and caches
-    /// the result.
+    /// `(self.embedder.model_id(), self.embedder.model_version())`, and on
+    /// miss runs the embedder and caches the result.
     pub fn embed_text(&self, text: &str) -> Result<Vec<f32>, EmbedError> {
         let hash = content_hash(text);
         self.embed_text_with_hash(text, &hash)
@@ -50,7 +83,8 @@ impl<E: Embedder> EmbedService<E> {
         content_hash: &str,
     ) -> Result<Vec<f32>, EmbedError> {
         let model_id = self.embedder.model_id();
-        if let Some(v) = self.cache.lookup(model_id, content_hash)? {
+        let model_version = self.embedder.model_version();
+        if let Some(v) = self.cache.lookup(model_id, model_version, content_hash)? {
             return Ok(v);
         }
         let v = self.embedder.embed(text)?;
@@ -60,7 +94,8 @@ impl<E: Embedder> EmbedService<E> {
                 actual: v.len(),
             });
         }
-        self.cache.insert(model_id, content_hash, &v)?;
+        self.cache
+            .insert(model_id, model_version, content_hash, &v)?;
         Ok(v)
     }
 
@@ -69,6 +104,80 @@ impl<E: Embedder> EmbedService<E> {
         let text = record_text(record);
         self.embed_text(&text)
     }
+
+    /// Sample up to `n` cached rows, re-embed them via `text_for_hash`
+    /// (caller-supplied: maps a content hash back to the original source
+    /// text, typically by reading the index/storage), and compare cosine
+    /// similarity to the cached vector. Rows whose hash has no known text,
+    /// or whose `(model_id, model_version)` doesn't match the live
+    /// embedder, are counted as skipped.
+    ///
+    /// `tolerance` is the cosine-similarity floor — sampled rows with
+    /// `cosine < tolerance` are reported as drift. A reasonable starting
+    /// value for `bge-small-en-v1.5` is `0.999` (deterministic ONNX
+    /// inference should round-trip far closer than that).
+    pub fn detect_drift(
+        &self,
+        n: usize,
+        tolerance: f32,
+        text_for_hash: impl Fn(&str) -> Option<String>,
+    ) -> Result<DriftReport, EmbedError> {
+        let sample = self.cache.sample_for_reembed(n)?;
+        let sampled = sample.len();
+        let mut compared = 0usize;
+        let mut skipped = 0usize;
+        let mut drifted = Vec::new();
+        for row in sample {
+            if row.model_id != self.embedder.model_id()
+                || row.model_version != self.embedder.model_version()
+            {
+                skipped += 1;
+                continue;
+            }
+            let Some(text) = text_for_hash(&row.content_hash) else {
+                skipped += 1;
+                continue;
+            };
+            let recomputed = self.embedder.embed(&text)?;
+            compared += 1;
+            let cos = cosine(&row.embedding, &recomputed);
+            if cos < tolerance {
+                drifted.push(DriftIssue {
+                    model_id: row.model_id,
+                    model_version: row.model_version,
+                    content_hash: row.content_hash,
+                    cosine: cos,
+                });
+            }
+        }
+        Ok(DriftReport {
+            sampled,
+            compared,
+            skipped,
+            drifted,
+            tolerance,
+        })
+    }
+}
+
+/// Cosine similarity between two equal-length vectors. Returns `0.0` for
+/// length mismatch or zero-norm inputs (defensive — drift detection treats
+/// degenerate vectors as "skip", not "drift").
+#[must_use]
+pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
+    if a.len() != b.len() {
+        return 0.0;
+    }
+    let mut dot = 0.0_f32;
+    let mut na = 0.0_f32;
+    let mut nb = 0.0_f32;
+    for (x, y) in a.iter().zip(b) {
+        dot += x * y;
+        na += x * x;
+        nb += y * y;
+    }
+    let denom = na.sqrt() * nb.sqrt();
+    if denom == 0.0 { 0.0 } else { dot / denom }
 }
 
 /// BLAKE3 content hash of `text`, hex-encoded.
@@ -186,8 +295,6 @@ mod tests {
         let a = content_hash("firetrail");
         let b = content_hash("firetrail");
         assert_eq!(a, b);
-        // Stability: BLAKE3 of "firetrail" — keeping the assertion loose
-        // (length + hex) so we don't accidentally pin to a non-stable choice.
         assert_eq!(a.len(), 64);
         assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
         assert_ne!(a, content_hash("not-firetrail"));
@@ -205,20 +312,88 @@ mod tests {
 
     #[test]
     fn service_partitions_cache_by_model_id() {
-        let (_dir, cache_dir) = tempdir()
-            .map(|d| {
-                let p = d.path().join("e.db");
-                (d, p)
-            })
-            .unwrap();
-        let cache_a = EmbeddingCache::open(&cache_dir).unwrap();
+        let dir = tempdir().unwrap();
+        let cache_path = dir.path().join("e.db");
+        let cache_a = EmbeddingCache::open(&cache_path).unwrap();
         let svc_a = EmbedService::new(MockEmbedder::new(1, 8), cache_a);
         let svc_b = EmbedService::new(
             MockEmbedder::new(2, 8),
-            EmbeddingCache::open(&cache_dir).unwrap(),
+            EmbeddingCache::open(&cache_path).unwrap(),
         );
         let a = svc_a.embed_text("x").unwrap();
         let b = svc_b.embed_text("x").unwrap();
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn detect_drift_reports_no_drift_for_pristine_cache() {
+        let (_dir, cache) = open_cache();
+        let svc = EmbedService::new(MockEmbedder::new(0, 16), cache);
+        // Populate.
+        let texts = ["alpha", "beta", "gamma"];
+        for t in texts {
+            svc.embed_text(t).unwrap();
+        }
+        let map: std::collections::HashMap<String, String> = texts
+            .iter()
+            .map(|t| (content_hash(t), (*t).to_string()))
+            .collect();
+        let r = svc
+            .detect_drift(10, 0.999, |h| map.get(h).cloned())
+            .unwrap();
+        assert_eq!(r.compared, 3);
+        assert_eq!(r.skipped, 0);
+        assert!(r.drifted.is_empty(), "{r:?}");
+    }
+
+    #[test]
+    fn detect_drift_flags_silent_drift() {
+        let (_dir, cache) = open_cache();
+        let svc = EmbedService::new(MockEmbedder::new(0, 16), cache);
+        svc.embed_text("alpha").unwrap();
+        // Replace the cached vector with something orthogonal-ish and
+        // re-checksum so integrity_check still passes — the only way to
+        // catch this is to re-embed and compare.
+        let h = content_hash("alpha");
+        let model_id = svc.embedder().model_id().to_string();
+        let model_version = svc.embedder().model_version().to_string();
+        let mut fake = vec![0.0_f32; 16];
+        fake[0] = 1.0;
+        svc.cache()
+            .drift_for_test(&model_id, &model_version, &h, &fake)
+            .unwrap();
+
+        let map: std::collections::HashMap<String, String> =
+            [(h.clone(), "alpha".to_string())].into_iter().collect();
+        let r = svc
+            .detect_drift(10, 0.999, |h| map.get(h).cloned())
+            .unwrap();
+        assert_eq!(r.compared, 1);
+        assert_eq!(r.drifted.len(), 1, "{r:?}");
+        assert_eq!(r.drifted[0].content_hash, h);
+        assert!(r.drifted[0].cosine < 0.999);
+    }
+
+    #[test]
+    fn detect_drift_skips_rows_for_other_models() {
+        let (_dir, cache) = open_cache();
+        // Pre-populate the cache via a different embedder identity.
+        cache.insert("other-model", "1", "h", &[1.0; 16]).unwrap();
+        let svc = EmbedService::new(MockEmbedder::new(0, 16), cache);
+        let r = svc.detect_drift(10, 0.999, |_| Some("alpha".to_string())).unwrap();
+        assert_eq!(r.sampled, 1);
+        assert_eq!(r.compared, 0);
+        assert_eq!(r.skipped, 1);
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)]
+    fn cosine_handles_degenerate_inputs() {
+        // These cases produce exact-zero outputs by construction (early
+        // return on length mismatch / zero norm), so an exact compare is
+        // intentional here.
+        assert_eq!(cosine(&[1.0], &[1.0, 2.0]), 0.0);
+        assert_eq!(cosine(&[0.0, 0.0], &[1.0, 0.0]), 0.0);
+        assert!((cosine(&[1.0, 0.0], &[1.0, 0.0]) - 1.0).abs() < 1e-6);
     }
 }

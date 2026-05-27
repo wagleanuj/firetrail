@@ -31,6 +31,18 @@ pub trait Embedder: Send + Sync {
     /// Stable identifier (e.g. `"bge-small-en-v1.5"` or
     /// `"mock-384-seed42"`) used as a cache partition key.
     fn model_id(&self) -> &str;
+
+    /// Stable version tag for the underlying model weights. Cache rows are
+    /// partitioned by `(model_id, model_version, content_hash)`, so bumping
+    /// the version cleanly invalidates prior entries without colliding with
+    /// new ones (ADR-0007 §"Integrity verification"). Defaults to `"1"`.
+    ///
+    /// The return type is tied to `&self` so concrete implementations may
+    /// return owned-string fields (mirrors [`Self::model_id`]).
+    #[allow(clippy::unnecessary_literal_bound)]
+    fn model_version(&self) -> &str {
+        "1"
+    }
 }
 
 /// Deterministic, dependency-free embedder used by tests and as a degraded

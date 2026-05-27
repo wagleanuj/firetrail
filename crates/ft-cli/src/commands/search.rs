@@ -54,9 +54,19 @@ pub fn search(args: &SearchArgs, global: &GlobalOpts) -> Result<CommandOutcome, 
         None
     };
 
+    // ADR-0007 lexical fallback: if the caller asked for Vector or Hybrid
+    // but we could not obtain an embedding (mock failed, daemon down), the
+    // actual ranking degrades to lexical-only. Reflect that in both the
+    // engine query and the outcome `mode` field so callers see what really
+    // happened (firetrail-urq).
+    let resolved_mode = match (mode, embedding.is_some()) {
+        (SearchMode::Vector | SearchMode::Hybrid, false) => SearchMode::Lexical,
+        (m, _) => m,
+    };
+
     let mut query = SearchQuery {
         text: args.query.clone(),
-        mode,
+        mode: resolved_mode,
         embedding,
         limit: args.limit.max(1),
         ..SearchQuery::default()
@@ -104,7 +114,7 @@ pub fn search(args: &SearchArgs, global: &GlobalOpts) -> Result<CommandOutcome, 
     Ok(CommandOutcome::Search(SearchOutcome {
         command: CMD_SEARCH,
         query: args.query.clone(),
-        mode: mode_label(mode),
+        mode: mode_label(resolved_mode),
         hits: hit_views,
         warnings,
     }))

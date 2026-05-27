@@ -12,15 +12,19 @@ pub mod close;
 pub mod compact;
 pub mod create;
 pub mod criteria;
+pub mod daemon_cmd;
 pub mod doctor;
 pub mod graph;
 pub mod hook;
+pub mod index_cmd;
 pub mod init;
 pub mod link;
 pub mod list;
 pub mod memory_create;
 pub mod memory_views;
+pub mod prime;
 pub mod salvage;
+pub mod search;
 pub mod show;
 pub mod trust;
 pub mod update;
@@ -129,6 +133,14 @@ pub enum CommandOutcome {
     MemorySalvage(salvage::SalvageOutcome),
     /// `firetrail _hook on-checkout` / `_hook on-merge`.
     Hook(hook::HookOutcome),
+    /// `firetrail search` / `firetrail similar`.
+    Search(search::SearchOutcome),
+    /// `firetrail prime`.
+    Prime(prime::PrimeOutcome),
+    /// `firetrail index rebuild` / `firetrail index refresh`.
+    IndexAction(index_cmd::IndexActionOutcome),
+    /// `firetrail daemon {start,stop,status}`.
+    Daemon(daemon_cmd::DaemonOutcome),
 }
 
 impl CommandOutcome {
@@ -151,6 +163,10 @@ impl CommandOutcome {
             Self::MemoryShow(_) => "memory show",
             Self::MemorySalvage(_) => "memory salvage",
             Self::Hook(h) => h.command,
+            Self::Search(s) => s.command,
+            Self::Prime(_) => "prime",
+            Self::IndexAction(i) => i.command,
+            Self::Daemon(d) => d.command,
         }
     }
 
@@ -175,6 +191,10 @@ impl CommandOutcome {
             Self::MemoryShow(s) => s.markdown(),
             Self::MemorySalvage(s) => s.markdown(),
             Self::Hook(h) => h.markdown(),
+            Self::Search(s) => s.markdown(),
+            Self::Prime(p) => p.markdown(),
+            Self::IndexAction(i) => i.markdown(),
+            Self::Daemon(d) => d.markdown(),
         }
     }
 
@@ -199,6 +219,10 @@ impl CommandOutcome {
             Self::MemoryShow(s) => s.quiet_line(),
             Self::MemorySalvage(s) => s.quiet_line(),
             Self::Hook(h) => h.quiet_line(),
+            Self::Search(s) => s.quiet_line(),
+            Self::Prime(p) => p.quiet_line(),
+            Self::IndexAction(i) => i.quiet_line(),
+            Self::Daemon(d) => d.quiet_line(),
         }
     }
 
@@ -225,6 +249,10 @@ impl CommandOutcome {
             Self::MemoryShow(s) => serde_json::to_value(s).unwrap_or(Value::Null),
             Self::MemorySalvage(s) => serde_json::to_value(s).unwrap_or(Value::Null),
             Self::Hook(h) => serde_json::to_value(h).unwrap_or(Value::Null),
+            Self::Search(s) => serde_json::to_value(s).unwrap_or(Value::Null),
+            Self::Prime(p) => p.json_data(),
+            Self::IndexAction(i) => serde_json::to_value(i).unwrap_or(Value::Null),
+            Self::Daemon(d) => serde_json::to_value(d).unwrap_or(Value::Null),
         }
     }
 
@@ -249,6 +277,10 @@ impl CommandOutcome {
             Self::MemoryShow(s) => s.warnings.clone(),
             Self::MemorySalvage(s) => s.warnings.clone(),
             Self::Hook(h) => h.warnings.clone(),
+            Self::Search(s) => s.warnings.clone(),
+            Self::Prime(p) => p.warnings.clone(),
+            Self::IndexAction(i) => i.warnings.clone(),
+            Self::Daemon(d) => d.warnings.clone(),
         }
     }
 }

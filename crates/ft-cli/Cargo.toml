@@ -32,11 +32,15 @@ ft-identity = { path = "../ft-identity", version = "0.0.0" }
 ft-git = { path = "../ft-git", version = "0.0.0" }
 ft-trust = { path = "../ft-trust", version = "0.0.0" }
 ft-history = { path = "../ft-history", version = "0.0.0" }
+ft-search = { path = "../ft-search", version = "0.0.0" }
+ft-prime = { path = "../ft-prime", version = "0.0.0" }
+ft-embed = { path = "../ft-embed", version = "0.0.0" }
 humantime = { workspace = true }
 fs2 = { workspace = true }
 
 [dev-dependencies]
 ft-testkit = { path = "../ft-testkit", version = "0.0.0" }
+ft-embed = { path = "../ft-embed", version = "0.0.0" }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
 insta = { workspace = true, features = ["filters"] }

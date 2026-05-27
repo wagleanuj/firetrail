@@ -65,8 +65,9 @@ fn main() -> ExitCode {
 
 fn dispatch(cli: &Cli) -> Result<commands::CommandOutcome, CliError> {
     use crate::cli::{
-        BugCmd, CheckCmd, CriteriaCmd, DecisionCmd, DepCmd, EpicCmd, FindingCmd, GotchaCmd,
-        HookCmd, IncidentCmd, MemoryCmd, RunbookCmd, RunbookStepCmd, SubtaskCmd, TaskCmd,
+        BugCmd, CheckCmd, CriteriaCmd, DaemonCmd, DecisionCmd, DepCmd, EpicCmd, FindingCmd,
+        GotchaCmd, HookCmd, IncidentCmd, IndexCmd, MemoryCmd, RunbookCmd, RunbookStepCmd,
+        SubtaskCmd, TaskCmd,
     };
     match &cli.command {
         Command::Init(args) => commands::init::run(args, &cli.global),
@@ -143,5 +144,14 @@ fn dispatch(cli: &Cli) -> Result<commands::CommandOutcome, CliError> {
 
         Command::Hook(HookCmd::OnCheckout(args)) => commands::hook::on_checkout(args, &cli.global),
         Command::Hook(HookCmd::OnMerge(args)) => commands::hook::on_merge(args, &cli.global),
+
+        Command::Search(args) => commands::search::search(args, &cli.global),
+        Command::Similar(args) => commands::search::similar(args, &cli.global),
+        Command::Prime(args) => commands::prime::run(args, &cli.global),
+        Command::Index(IndexCmd::Rebuild) => commands::index_cmd::rebuild(&cli.global),
+        Command::Index(IndexCmd::Refresh) => commands::index_cmd::refresh(&cli.global),
+        Command::Daemon(DaemonCmd::Start(args)) => commands::daemon_cmd::start(args, &cli.global),
+        Command::Daemon(DaemonCmd::Stop) => commands::daemon_cmd::stop(&cli.global),
+        Command::Daemon(DaemonCmd::Status) => commands::daemon_cmd::status(&cli.global),
     }
 }

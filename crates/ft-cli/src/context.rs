@@ -32,6 +32,7 @@ use std::path::{Path, PathBuf};
 use ft_core::{Identity, Record, RecordId, Relation, state_hash};
 use ft_identity::{DefaultResolver, IdentityResolver};
 use ft_index::Index;
+use ft_search::SearchEngine;
 use ft_storage::{EmbeddedStorage, Storage as _, StorageFilter};
 
 use crate::error::CliError;
@@ -51,6 +52,9 @@ pub struct WorkCtx {
     actor: Option<Identity>,
     /// Command name for error framing.
     command: String,
+    /// Lazy search engine — opened on first request and reused. Each opening
+    /// runs `ensure_schema` exactly once per invocation.
+    search: Option<SearchEngine>,
 }
 
 impl WorkCtx {
@@ -101,7 +105,24 @@ impl WorkCtx {
             warnings,
             actor: None,
             command: command.to_string(),
+            search: None,
         })
+    }
+
+    /// Open (lazily) the [`SearchEngine`] backed by the same `index.db`.
+    ///
+    /// `ensure_schema` is idempotent and is run on the first open.
+    pub fn search_engine(&mut self) -> Result<&SearchEngine, CliError> {
+        if self.search.is_none() {
+            let db = self.index.db_path().to_path_buf();
+            let engine = SearchEngine::open(&db)
+                .map_err(|e| CliError::internal(&self.command, format!("open search: {e}")))?;
+            engine.ensure_schema().map_err(|e| {
+                CliError::internal(&self.command, format!("ensure search schema: {e}"))
+            })?;
+            self.search = Some(engine);
+        }
+        Ok(self.search.as_ref().expect("just set"))
     }
 
     /// Resolve and cache the identity of the actor.
@@ -142,7 +163,35 @@ impl WorkCtx {
         self.index
             .refresh(&self.storage, std::slice::from_ref(&path), &[])
             .map_err(|e| CliError::internal(&self.command, format!("refresh: {e}")))?;
+
+        // M3: upsert into the search index alongside the SQL index so search
+        // results stay current with every write. Vector indexing is opt-in
+        // and depends on a running daemon — at lexical-only level we still
+        // get a usable `firetrail search`.
+        self.upsert_search_lexical(record);
+
         Ok(path)
+    }
+
+    /// Best-effort lexical upsert into the search index. Failures are
+    /// recorded as warnings rather than propagated so a search-layer hiccup
+    /// never blocks a write.
+    fn upsert_search_lexical(&mut self, record: &Record) {
+        let cmd = self.command.clone();
+        match self.search_engine() {
+            Ok(engine) => {
+                if let Err(e) = engine.upsert_lexical(record) {
+                    tracing::warn!(error = %e, command = %cmd, "search upsert failed");
+                    self.warnings
+                        .push(format!("search index upsert skipped: {e}"));
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, command = %cmd, "search engine unavailable");
+                self.warnings
+                    .push(format!("search engine unavailable: {e}"));
+            }
+        }
     }
 
     /// Read a record by id from storage.

@@ -186,6 +186,11 @@ pub fn run(args: &DoctorArgs, global: &GlobalOpts) -> Result<CommandOutcome, Cli
     // Storage / index record count parity.
     check_storage_parity(&ws, &mut checks);
 
+    // M3: embedding-related checks.
+    check_cache_integrity(&ws, &mut checks);
+    check_daemon_liveness(&ws, &mut checks);
+    check_search_schema(&ws, &mut checks);
+
     let clean = checks.iter().all(|c| c.status == CheckStatus::Ok);
     let _ = global;
 
@@ -435,4 +440,104 @@ fn check_storage_parity(ws: &workspace::Workspace, checks: &mut Vec<CheckResult>
         "Storage records",
         format!("{on_disk} records on disk"),
     ));
+}
+
+fn check_cache_integrity(ws: &workspace::Workspace, checks: &mut Vec<CheckResult>) {
+    let cache_db = ws.cache_dir().join("embeddings.db");
+    if !cache_db.exists() {
+        checks.push(CheckResult::ok(
+            "embed.cache",
+            "Embedding cache",
+            "no cache yet (will be created on first use)",
+        ));
+        return;
+    }
+    match ft_embed::EmbeddingCache::open_under(&ws.root) {
+        Ok(cache) => match cache.verify_integrity() {
+            Ok(report) => {
+                if report.bad.is_empty() {
+                    checks.push(CheckResult::ok(
+                        "embed.cache",
+                        "Embedding cache",
+                        format!("{} rows clean", report.scanned),
+                    ));
+                } else {
+                    checks.push(CheckResult::fail(
+                        "embed.cache",
+                        "Embedding cache",
+                        format!(
+                            "{} rows scanned, {} with bad integrity checksum",
+                            report.scanned,
+                            report.bad.len()
+                        ),
+                        "remove `.firetrail/cache/embeddings.db` to force a rebuild",
+                    ));
+                }
+            }
+            Err(e) => checks.push(CheckResult::warn(
+                "embed.cache",
+                "Embedding cache",
+                format!("verify_integrity failed: {e}"),
+                "remove `.firetrail/cache/embeddings.db` if the cache is corrupt",
+            )),
+        },
+        Err(e) => checks.push(CheckResult::warn(
+            "embed.cache",
+            "Embedding cache",
+            format!("could not open cache: {e}"),
+            "verify filesystem permissions for `.firetrail/cache/`",
+        )),
+    }
+}
+
+fn check_daemon_liveness(ws: &workspace::Workspace, checks: &mut Vec<CheckResult>) {
+    let socket = ws.daemon_socket_path();
+    let status = ft_embed::daemon::status(&socket);
+    match status {
+        ft_embed::DaemonStatus::Running => checks.push(CheckResult::ok(
+            "embed.daemon",
+            "Embedding daemon",
+            format!("running at {}", socket.display()),
+        )),
+        ft_embed::DaemonStatus::Stopped => checks.push(CheckResult::ok(
+            "embed.daemon",
+            "Embedding daemon",
+            "not running (search falls back to lexical-only mode)",
+        )),
+        ft_embed::DaemonStatus::Unreachable => checks.push(CheckResult::warn(
+            "embed.daemon",
+            "Embedding daemon",
+            format!("socket exists but did not respond: {}", socket.display()),
+            "run `firetrail daemon stop` then `firetrail daemon start`",
+        )),
+    }
+}
+
+fn check_search_schema(ws: &workspace::Workspace, checks: &mut Vec<CheckResult>) {
+    let db = ws.index_db_path();
+    if !db.exists() {
+        // index.integrity check above will already have flagged this.
+        return;
+    }
+    match ft_search::SearchEngine::open(&db) {
+        Ok(engine) => match engine.ensure_schema() {
+            Ok(()) => checks.push(CheckResult::ok(
+                "search.schema",
+                "Search schema",
+                "FTS5 schema present and current",
+            )),
+            Err(e) => checks.push(CheckResult::fail(
+                "search.schema",
+                "Search schema",
+                format!("ensure_schema failed: {e}"),
+                "firetrail index rebuild",
+            )),
+        },
+        Err(e) => checks.push(CheckResult::fail(
+            "search.schema",
+            "Search schema",
+            format!("could not open search engine: {e}"),
+            "firetrail index rebuild",
+        )),
+    }
 }

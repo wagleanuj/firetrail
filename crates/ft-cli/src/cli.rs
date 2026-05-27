@@ -170,6 +170,200 @@ pub enum Command {
     /// is unstable and not documented for direct use.
     #[command(name = "_hook", hide = true, subcommand)]
     Hook(HookCmd),
+
+    /// Lexical / hybrid / vector search over the records.
+    Search(SearchArgs),
+
+    /// Find records similar to the given record id.
+    Similar(SimilarArgs),
+
+    /// Build a context pack (priming) for a task or query.
+    Prime(PrimeArgs),
+
+    /// Index maintenance: rebuild / refresh.
+    #[command(subcommand)]
+    Index(IndexCmd),
+
+    /// Embedding daemon control.
+    #[command(subcommand)]
+    Daemon(DaemonCmd),
+}
+
+/// `firetrail search` mode selector.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[clap(rename_all = "lower")]
+pub enum SearchModeArg {
+    /// Engine picks the best signal mix.
+    Auto,
+    /// FTS5 lexical only.
+    Lexical,
+    /// Combine lexical + vector signals.
+    Hybrid,
+    /// Vector-only.
+    Vector,
+}
+
+impl SearchModeArg {
+    /// Convert to `ft_search::SearchMode`.
+    #[must_use]
+    pub fn to_core(self) -> ft_search::SearchMode {
+        match self {
+            Self::Auto => ft_search::SearchMode::Auto,
+            Self::Lexical => ft_search::SearchMode::Lexical,
+            Self::Hybrid => ft_search::SearchMode::Hybrid,
+            Self::Vector => ft_search::SearchMode::Vector,
+        }
+    }
+}
+
+/// Embedder selection for `firetrail search`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[clap(rename_all = "lower")]
+pub enum EmbedderArg {
+    /// Use the deterministic in-process `MockEmbedder` (M3 default).
+    Mock,
+    /// Forward embed requests to the running daemon.
+    Daemon,
+}
+
+/// All record-kind selector covering work + memory kinds (for search/prime
+/// filters which apply to every record kind).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[clap(rename_all = "lower")]
+pub enum AnyKindArg {
+    /// Epic.
+    Epic,
+    /// Task.
+    Task,
+    /// Subtask.
+    Subtask,
+    /// Bug.
+    Bug,
+    /// Incident.
+    Incident,
+    /// Finding.
+    Finding,
+    /// Runbook.
+    Runbook,
+    /// Decision.
+    Decision,
+    /// Gotcha.
+    Gotcha,
+    /// Generic memory note.
+    Memory,
+}
+
+impl AnyKindArg {
+    /// Convert to `ft_core::RecordKind`.
+    #[must_use]
+    pub fn to_core(self) -> ft_core::RecordKind {
+        match self {
+            Self::Epic => ft_core::RecordKind::Epic,
+            Self::Task => ft_core::RecordKind::Task,
+            Self::Subtask => ft_core::RecordKind::Subtask,
+            Self::Bug => ft_core::RecordKind::Bug,
+            Self::Incident => ft_core::RecordKind::Incident,
+            Self::Finding => ft_core::RecordKind::Finding,
+            Self::Runbook => ft_core::RecordKind::Runbook,
+            Self::Decision => ft_core::RecordKind::Decision,
+            Self::Gotcha => ft_core::RecordKind::Gotcha,
+            Self::Memory => ft_core::RecordKind::Memory,
+        }
+    }
+}
+
+/// `firetrail search` arguments.
+#[derive(Debug, Args)]
+pub struct SearchArgs {
+    /// Free-text query string.
+    pub query: String,
+    /// Mode: lexical / hybrid / vector / auto.
+    #[arg(long, value_enum, default_value_t = SearchModeArg::Auto)]
+    pub mode: SearchModeArg,
+    /// Minimum trust floor (e.g. `reviewed`, `verified`).
+    #[arg(long, value_enum)]
+    pub trust: Option<TrustStateArg>,
+    /// Restrict to a record kind. Repeatable.
+    #[arg(long = "kind", value_enum)]
+    pub kinds: Vec<AnyKindArg>,
+    /// Restrict to owning scope.
+    #[arg(long)]
+    pub scope: Option<String>,
+    /// Cap the number of hits.
+    #[arg(long, default_value_t = 20)]
+    pub limit: usize,
+    /// Which embedder to use for hybrid/vector mode at the CLI layer.
+    ///
+    /// M3 limitation: ONNX is not wired up. Default is `mock` (deterministic).
+    /// Use `daemon` to forward embed requests to a running embedding daemon.
+    #[arg(long, value_enum, default_value_t = EmbedderArg::Mock)]
+    pub embedder: EmbedderArg,
+}
+
+/// `firetrail similar` arguments.
+#[derive(Debug, Args)]
+pub struct SimilarArgs {
+    /// Source record id (full or unambiguous prefix).
+    pub id: String,
+    /// Cap the number of hits.
+    #[arg(long, default_value_t = 10)]
+    pub limit: usize,
+}
+
+/// `firetrail prime` arguments.
+#[derive(Debug, Args)]
+pub struct PrimeArgs {
+    /// Target task id. Mutually exclusive with `--query`.
+    #[arg(long, conflicts_with = "query")]
+    pub task: Option<String>,
+    /// Free-form query string. Mutually exclusive with `--task`.
+    #[arg(long, conflicts_with = "task")]
+    pub query: Option<String>,
+    /// Token budget for the pack.
+    #[arg(long, default_value_t = 8000)]
+    pub max_tokens: usize,
+    /// Minimum trust floor.
+    #[arg(long, value_enum)]
+    pub min_trust: Option<TrustStateArg>,
+    /// Restrict to record kinds.
+    #[arg(long = "kind", value_enum)]
+    pub kinds: Vec<AnyKindArg>,
+    /// Restrict to owning scope.
+    #[arg(long)]
+    pub scope: Option<String>,
+}
+
+/// `firetrail index …` subcommands.
+#[derive(Debug, Subcommand)]
+pub enum IndexCmd {
+    /// Drop and rebuild the SQL index (and search FTS table) from storage.
+    Rebuild,
+    /// Incrementally refresh the SQL index and search FTS table.
+    Refresh,
+}
+
+/// `firetrail daemon …` subcommands.
+#[derive(Debug, Subcommand)]
+pub enum DaemonCmd {
+    /// Start the embedding daemon.
+    Start(DaemonStartArgs),
+    /// Stop the embedding daemon.
+    Stop,
+    /// Probe the embedding daemon's status.
+    Status,
+}
+
+/// `firetrail daemon start` arguments.
+#[derive(Debug, Args)]
+pub struct DaemonStartArgs {
+    /// Run the daemon in the foreground (do not spawn). Tests use this.
+    #[arg(long)]
+    pub foreground: bool,
+
+    /// Override the default socket path
+    /// (`.firetrail/sockets/embedd.sock`). Useful for tests.
+    #[arg(long)]
+    pub socket: Option<PathBuf>,
 }
 
 /// Internal `_hook …` dispatcher.

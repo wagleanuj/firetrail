@@ -40,6 +40,24 @@ impl Workspace {
         self.firetrail_dir().join("index.db")
     }
 
+    /// Absolute path to `.firetrail/sockets/`.
+    #[must_use]
+    pub fn sockets_dir(&self) -> PathBuf {
+        self.firetrail_dir().join("sockets")
+    }
+
+    /// Default embedding daemon socket path.
+    #[must_use]
+    pub fn daemon_socket_path(&self) -> PathBuf {
+        self.sockets_dir().join("embedd.sock")
+    }
+
+    /// Absolute path to `.firetrail/cache/`.
+    #[must_use]
+    pub fn cache_dir(&self) -> PathBuf {
+        self.firetrail_dir().join("cache")
+    }
+
     /// Whether the workspace has been initialised (the marker is
     /// `.firetrail/config.yml`).
     #[must_use]

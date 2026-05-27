@@ -149,6 +149,13 @@ pub fn run(args: &InitArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliEr
         fresh,
     );
 
+    // 4b. Sockets / cache dirs (M3): ensure they exist so the daemon can bind
+    // immediately and the embedding cache has a parent on first use.
+    std::fs::create_dir_all(ws.sockets_dir()).map_err(|e| CliError::internal(COMMAND, e))?;
+    track(&mut report, &ws.sockets_dir(), ".firetrail/sockets/", fresh);
+    std::fs::create_dir_all(ws.cache_dir()).map_err(|e| CliError::internal(COMMAND, e))?;
+    track(&mut report, &ws.cache_dir(), ".firetrail/cache/", fresh);
+
     // 5. .gitignore additions.
     update_gitignore(&ws.root, &mut report)?;
 

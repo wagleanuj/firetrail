@@ -1,0 +1,25 @@
+[package]
+name = "ft-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Firetrail record types, schema, and hash chain primitives."
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
+hex = { workspace = true }
+sha2 = { workspace = true }
+jsonschema = { workspace = true }
+schemars = { workspace = true }
+rand = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

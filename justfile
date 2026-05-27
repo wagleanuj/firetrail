@@ -46,6 +46,10 @@ ci:
 hooks:
     ./scripts/install-hooks.sh
 
+# Export the ft-core Record JSON Schema to docs/schema/.
+schema:
+    cargo run -p ft-core --example export_schema --quiet -- docs/schema/firetrail-record-v1.json
+
 # Clean target/ and incremental caches.
 clean:
     cargo clean

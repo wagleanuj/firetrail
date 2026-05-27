@@ -153,6 +153,12 @@ impl Index {
             "INSERT OR REPLACE INTO schema_meta(key, value) VALUES('last_rebuild_at', ?1);",
             params![Utc::now().to_rfc3339()],
         )?;
+        if let Some(sha) = current_head_sha(&self.db_path) {
+            tx.execute(
+                "INSERT OR REPLACE INTO schema_meta(key, value) VALUES('last_indexed_commit', ?1);",
+                params![sha],
+            )?;
+        }
         tx.commit()?;
 
         report.elapsed = start.elapsed();
@@ -235,9 +241,31 @@ impl Index {
             insert_relation(&tx, edge)?;
         }
 
+        if let Some(sha) = current_head_sha(&self.db_path) {
+            tx.execute(
+                "INSERT OR REPLACE INTO schema_meta(key, value) VALUES('last_indexed_commit', ?1);",
+                params![sha],
+            )?;
+        }
         tx.commit()?;
         report.elapsed = start.elapsed();
         Ok(report)
+    }
+
+    /// SHA of the git HEAD at the time of the most recent rebuild or refresh.
+    ///
+    /// Returns `None` if the workspace was never indexed inside a git repo, or
+    /// if the index predates the `last_indexed_commit` `schema_meta` write.
+    pub fn last_indexed_commit(&self) -> Option<String> {
+        self.conn
+            .query_row(
+                "SELECT value FROM schema_meta WHERE key = 'last_indexed_commit'",
+                [],
+                |r| r.get::<_, String>(0),
+            )
+            .optional()
+            .ok()
+            .flatten()
     }
 
     // ── Reads ───────────────────────────────────────────────────────────────
@@ -1108,6 +1136,18 @@ fn id_from_path(path: &Path) -> Result<RecordId, IndexError> {
 /// The path is derived from [`Storage::records_root`] (which is always
 /// `<root>/.firetrail/records/`) so the helper works for any backend that
 /// honours the canonical layout.
+/// Resolve the git HEAD SHA for the workspace this index lives in.
+///
+/// `db_path` is `<workspace_root>/.firetrail/index.db`. Walks two levels up
+/// and tries to open the workspace as a git repo. Returns `None` if the index
+/// is not inside a git repo or the head cannot be resolved — populating
+/// `last_indexed_commit` is best-effort.
+fn current_head_sha(db_path: &Path) -> Option<String> {
+    let root = db_path.parent()?.parent()?;
+    let repo = ft_git::Repo::open(root.to_path_buf()).ok()?;
+    repo.head().ok().map(|h| h.commit_sha)
+}
+
 fn relations_log_path_for(storage: &dyn Storage) -> PathBuf {
     let root = storage.records_root();
     // records_root() points at `.firetrail/records/`; the relations log sits

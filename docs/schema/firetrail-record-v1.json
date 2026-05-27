@@ -1,0 +1,1508 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "AcStatus": {
+      "description": "Status of a single acceptance criterion.",
+      "oneOf": [
+        {
+          "description": "Not yet satisfied.",
+          "enum": [
+            "unchecked"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Satisfied, with evidence attached.",
+          "enum": [
+            "checked"
+          ],
+          "type": "string"
+        }
+      ]
+    },
+    "AcceptanceCriterion": {
+      "description": "An acceptance criterion attached to a Task / Subtask / Bug.",
+      "properties": {
+        "checked_at": {
+          "description": "Timestamp the criterion was marked `Checked`.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "checked_by": {
+          "description": "Identity that flipped `status` to `Checked`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "created_at": {
+          "description": "Creation timestamp.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "evidence_url": {
+          "description": "URL pointing to evidence backing the `Checked` state.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "Local stable id within the parent record (`ac-01`, `ac-02`, …).",
+          "type": "string"
+        },
+        "proposed": {
+          "description": "Set to `true` for agent-proposed criteria pending human confirmation (ADR-0013).",
+          "type": "boolean"
+        },
+        "status": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/AcStatus"
+            }
+          ],
+          "description": "Whether the criterion is currently satisfied."
+        },
+        "text": {
+          "description": "Human-readable criterion text.",
+          "type": "string"
+        },
+        "updated_at": {
+          "description": "Last-update timestamp.",
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "created_at",
+        "id",
+        "proposed",
+        "status",
+        "text",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "Claim": {
+      "description": "A claim of ownership over a record (ADR-0008).",
+      "properties": {
+        "claim_expires_at": {
+          "description": "When the claim auto-releases (mandatory per ADR-0008).",
+          "format": "date-time",
+          "type": "string"
+        },
+        "claim_source": {
+          "description": "Free-form provenance (`cli`, `agent:claude-code`, …).",
+          "type": "string"
+        },
+        "claimed_at": {
+          "description": "When the claim was filed.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "claimed_by": {
+          "description": "Identity that currently owns the work.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "claim_expires_at",
+        "claim_source",
+        "claimed_at",
+        "claimed_by"
+      ],
+      "type": "object"
+    },
+    "DecisionStatus": {
+      "description": "Lifecycle status of an architectural decision record.\n\nDistinct from the broader [`TrustState`] in that it describes the *content posture* of a decision (still being proposed, accepted, replaced) rather than its review state.",
+      "oneOf": [
+        {
+          "description": "Drafted and under discussion.",
+          "enum": [
+            "proposed"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Accepted and current.",
+          "enum": [
+            "accepted"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Replaced by a successor decision (see `superseded_by`).",
+          "enum": [
+            "superseded"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "No longer applicable but kept for audit.",
+          "enum": [
+            "deprecated"
+          ],
+          "type": "string"
+        }
+      ]
+    },
+    "Evidence": {
+      "description": "A piece of evidence attached to a record (acceptance criterion or finding).",
+      "properties": {
+        "commit_sha": {
+          "description": "Optional commit SHA the evidence was captured at.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "content_hash": {
+          "description": "Optional content hash of the linked artefact.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "created_at": {
+          "description": "Creation timestamp.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "created_by": {
+          "description": "Identity that attached this evidence.",
+          "type": "string"
+        },
+        "description": {
+          "description": "Optional free-form description.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "Local id within the parent record (`ev-01`, …).",
+          "type": "string"
+        },
+        "kind": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/EvidenceKind"
+            }
+          ],
+          "description": "Artefact classification."
+        },
+        "symbol_name": {
+          "description": "Optional code symbol the evidence references.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "url": {
+          "description": "Canonical URL of the evidence.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "created_at",
+        "created_by",
+        "id",
+        "kind",
+        "url"
+      ],
+      "type": "object"
+    },
+    "EvidenceKind": {
+      "description": "What kind of artefact a piece of evidence references.",
+      "oneOf": [
+        {
+          "description": "External incident report.",
+          "enum": [
+            "incident_report"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "A pull request URL.",
+          "enum": [
+            "pull_request"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "A specific commit.",
+          "enum": [
+            "commit"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Operational dashboard.",
+          "enum": [
+            "dashboard"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Saved log query.",
+          "enum": [
+            "log_query"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Test run output.",
+          "enum": [
+            "test_result"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "A Jira ticket.",
+          "enum": [
+            "jira_ticket"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "A Confluence page.",
+          "enum": [
+            "confluence_page"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Free-form note added manually.",
+          "enum": [
+            "manual_note"
+          ],
+          "type": "string"
+        }
+      ]
+    },
+    "HistoryEntry": {
+      "description": "A compacted per-PR history entry (ADR-0003).\n\n`ft-core` declares the type; population and compaction live in `ft-history` from M2. M1 records ship with an empty `history` vector.",
+      "properties": {
+        "contributors": {
+          "description": "Co-authors / reviewers / additional contributors.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "from_hash": {
+          "description": "Prior `state_hash` at the start of this batch.",
+          "type": "string"
+        },
+        "merged_via_pr": {
+          "description": "PR number that merged this batch of changes.",
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "ops_count": {
+          "description": "Total number of operations in the compacted batch.",
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "ops_summary": {
+          "description": "One-line operation summaries.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "primary_actor": {
+          "description": "Primary actor on the PR.",
+          "type": "string"
+        },
+        "timestamp": {
+          "description": "Merge timestamp.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "to_hash": {
+          "description": "New `state_hash` at the end of this batch.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "contributors",
+        "from_hash",
+        "ops_count",
+        "ops_summary",
+        "primary_actor",
+        "timestamp",
+        "to_hash"
+      ],
+      "type": "object"
+    },
+    "Label": {
+      "description": "Free-form `key=value` label.",
+      "properties": {
+        "key": {
+          "description": "Label key.",
+          "type": "string"
+        },
+        "value": {
+          "description": "Label value.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "value"
+      ],
+      "type": "object"
+    },
+    "Origin": {
+      "description": "Provenance of a record (ADR-0013).",
+      "oneOf": [
+        {
+          "description": "Created by a human author.",
+          "enum": [
+            "human"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Created by an agent on behalf of a human.",
+          "enum": [
+            "agent"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Imported from an external system.",
+          "enum": [
+            "imported"
+          ],
+          "type": "string"
+        }
+      ]
+    },
+    "Priority": {
+      "description": "Priority class. `P0` is critical; `P4` is backlog. Mirrors `bd`.",
+      "oneOf": [
+        {
+          "description": "Critical, top-of-queue.",
+          "enum": [
+            "p0"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "High priority.",
+          "enum": [
+            "p1"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Normal priority.",
+          "enum": [
+            "p2"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Low priority.",
+          "enum": [
+            "p3"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Backlog.",
+          "enum": [
+            "p4"
+          ],
+          "type": "string"
+        }
+      ]
+    },
+    "RecordBody": {
+      "description": "Kind-specific body for a [`Record`].",
+      "oneOf": [
+        {
+          "description": "Epic body.",
+          "properties": {
+            "child_ids": {
+              "description": "Denormalized child record ids for fast reads.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "description": {
+              "description": "Free-form description.",
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "epic"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "child_ids",
+            "description",
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Task body.",
+          "properties": {
+            "acceptance_criteria": {
+              "description": "Acceptance criteria.",
+              "items": {
+                "$ref": "#/definitions/AcceptanceCriterion"
+              },
+              "type": "array"
+            },
+            "claim": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Claim"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Active claim, if any."
+            },
+            "description": {
+              "description": "Free-form description.",
+              "type": "string"
+            },
+            "evidence": {
+              "description": "Attached evidence.",
+              "items": {
+                "$ref": "#/definitions/Evidence"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "enum": [
+                "task"
+              ],
+              "type": "string"
+            },
+            "parent_epic": {
+              "description": "Optional parent epic.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "acceptance_criteria",
+            "description",
+            "evidence",
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Subtask body.",
+          "properties": {
+            "acceptance_criteria": {
+              "description": "Acceptance criteria.",
+              "items": {
+                "$ref": "#/definitions/AcceptanceCriterion"
+              },
+              "type": "array"
+            },
+            "claim": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Claim"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Active claim, if any."
+            },
+            "description": {
+              "description": "Free-form description.",
+              "type": "string"
+            },
+            "evidence": {
+              "description": "Attached evidence.",
+              "items": {
+                "$ref": "#/definitions/Evidence"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "enum": [
+                "subtask"
+              ],
+              "type": "string"
+            },
+            "parent_task": {
+              "description": "Required parent task.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "acceptance_criteria",
+            "description",
+            "evidence",
+            "kind",
+            "parent_task"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Bug body.",
+          "properties": {
+            "acceptance_criteria": {
+              "description": "Acceptance criteria for the fix.",
+              "items": {
+                "$ref": "#/definitions/AcceptanceCriterion"
+              },
+              "type": "array"
+            },
+            "claim": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Claim"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Active claim, if any."
+            },
+            "description": {
+              "description": "Free-form description.",
+              "type": "string"
+            },
+            "evidence": {
+              "description": "Attached evidence.",
+              "items": {
+                "$ref": "#/definitions/Evidence"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "enum": [
+                "bug"
+              ],
+              "type": "string"
+            },
+            "service": {
+              "description": "Affected service identifier.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "severity": {
+              "description": "Severity classification (free-form string at M1).",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "acceptance_criteria",
+            "description",
+            "evidence",
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Incident body (memory kind, writable from M2).",
+          "properties": {
+            "findings": {
+              "description": "Findings created from this incident.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "enum": [
+                "incident"
+              ],
+              "type": "string"
+            },
+            "resolved_at": {
+              "description": "Wall-clock time the incident was resolved, if known.",
+              "format": "date-time",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "risk_class": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/RiskClass"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional risk classification (ADR-0013)."
+            },
+            "root_cause": {
+              "description": "Root-cause analysis, when one is known.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "runbooks_invoked": {
+              "description": "Runbooks invoked while responding.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "services_affected": {
+              "description": "Service / surface names impacted by the incident.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "severity": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Severity"
+                }
+              ],
+              "default": "sev3",
+              "description": "Severity classification. Defaults to [`Severity::Sev3`]."
+            },
+            "started_at": {
+              "description": "Wall-clock time the incident began.",
+              "format": "date-time",
+              "type": "string"
+            },
+            "summary": {
+              "description": "One-line summary of what happened.",
+              "type": "string"
+            },
+            "trust": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TrustState"
+                }
+              ],
+              "default": "draft",
+              "description": "Trust state. Declared here; state machine lives in `ft-trust`."
+            }
+          },
+          "required": [
+            "kind",
+            "started_at",
+            "summary"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Finding body (memory kind, writable from M2).",
+          "properties": {
+            "affected_paths": {
+              "description": "File paths the finding applies to.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "details": {
+              "default": "",
+              "description": "Long-form details (markdown body).",
+              "type": "string"
+            },
+            "incident": {
+              "description": "Originating incident, if any.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "enum": [
+                "finding"
+              ],
+              "type": "string"
+            },
+            "risk_class": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/RiskClass"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional risk classification (ADR-0013)."
+            },
+            "summary": {
+              "description": "One-line summary of the finding.",
+              "type": "string"
+            },
+            "superseded_by": {
+              "description": "Pointer to the record that replaced this one, if superseded.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "trust": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TrustState"
+                }
+              ],
+              "default": "draft",
+              "description": "Trust state. Declared here; state machine lives in `ft-trust`."
+            }
+          },
+          "required": [
+            "kind",
+            "summary"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Runbook body (memory kind, writable from M2).",
+          "properties": {
+            "applies_to": {
+              "description": "Service names / system tags this runbook applies to.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "enum": [
+                "runbook"
+              ],
+              "type": "string"
+            },
+            "risk_class": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/RiskClass"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional risk classification (ADR-0013)."
+            },
+            "steps": {
+              "description": "Ordered procedure steps.",
+              "items": {
+                "$ref": "#/definitions/RunbookStep"
+              },
+              "type": "array"
+            },
+            "summary": {
+              "description": "One-line summary of when to use this runbook.",
+              "type": "string"
+            },
+            "title": {
+              "description": "Short title.",
+              "type": "string"
+            },
+            "trust": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TrustState"
+                }
+              ],
+              "default": "draft",
+              "description": "Trust state. Declared here; state machine lives in `ft-trust`."
+            }
+          },
+          "required": [
+            "kind",
+            "summary",
+            "title"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Decision body (memory kind, writable from M2).",
+          "properties": {
+            "alternatives_considered": {
+              "description": "Alternative options the team weighed.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "consequences": {
+              "default": "",
+              "description": "Consequences of taking this decision.",
+              "type": "string"
+            },
+            "context": {
+              "default": "",
+              "description": "Background / problem statement (markdown).",
+              "type": "string"
+            },
+            "decision": {
+              "description": "The decision text itself.",
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "decision"
+              ],
+              "type": "string"
+            },
+            "risk_class": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/RiskClass"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional risk classification (ADR-0013)."
+            },
+            "status": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/DecisionStatus"
+                }
+              ],
+              "default": "proposed",
+              "description": "Content lifecycle status of the decision itself."
+            },
+            "superseded_by": {
+              "description": "Pointer to the record that replaced this one, if superseded.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "title": {
+              "description": "Short title (e.g. \"Use ONNX runtime for embeddings\").",
+              "type": "string"
+            },
+            "trust": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TrustState"
+                }
+              ],
+              "default": "draft",
+              "description": "Trust state. Declared here; state machine lives in `ft-trust`."
+            }
+          },
+          "required": [
+            "decision",
+            "kind",
+            "title"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Gotcha body (memory kind, writable from M2).",
+          "properties": {
+            "affected_paths": {
+              "description": "File paths the gotcha applies to.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "details": {
+              "default": "",
+              "description": "Long-form details (markdown).",
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "gotcha"
+              ],
+              "type": "string"
+            },
+            "risk_class": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/RiskClass"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional risk classification (ADR-0013)."
+            },
+            "summary": {
+              "description": "One-line summary of the gotcha.",
+              "type": "string"
+            },
+            "trust": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TrustState"
+                }
+              ],
+              "default": "draft",
+              "description": "Trust state. Declared here; state machine lives in `ft-trust`."
+            }
+          },
+          "required": [
+            "kind",
+            "summary"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Memory body (memory kind, writable from M2).",
+          "properties": {
+            "body": {
+              "default": "",
+              "description": "Markdown body.",
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "memory"
+              ],
+              "type": "string"
+            },
+            "related": {
+              "description": "Related records.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "risk_class": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/RiskClass"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional risk classification (ADR-0013)."
+            },
+            "tags": {
+              "description": "Free-form tags for indexing.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": {
+              "description": "Short title.",
+              "type": "string"
+            },
+            "trust": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TrustState"
+                }
+              ],
+              "default": "draft",
+              "description": "Trust state. Declared here; state machine lives in `ft-trust`."
+            }
+          },
+          "required": [
+            "kind",
+            "title"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "RecordEnvelope": {
+      "description": "Fields shared by every record kind.\n\nField order is fixed by the struct declaration; serde derives produce a deterministic key order in `serde_json`'s output, which underpins the canonical-JSON hashing performed by [`crate::hash::state_hash`].",
+      "properties": {
+        "affected_scopes": {
+          "description": "Other scopes the record affects.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "applies_to": {
+          "description": "Files / services the record applies to.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "closed_at": {
+          "description": "Close timestamp, if `status == Closed`.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "created_at": {
+          "description": "Creation timestamp.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "created_by": {
+          "description": "Identity that created the record.",
+          "type": "string"
+        },
+        "history": {
+          "description": "Per-PR compacted history (ADR-0003). Always empty in M1; populated by `ft-history` from M2.",
+          "items": {
+            "$ref": "#/definitions/HistoryEntry"
+          },
+          "type": "array"
+        },
+        "id": {
+          "description": "Canonical record identifier (ADR-0015).",
+          "type": "string"
+        },
+        "kind": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/RecordKind"
+            }
+          ],
+          "description": "Discriminator for the contained body."
+        },
+        "labels": {
+          "description": "Free-form labels.",
+          "items": {
+            "$ref": "#/definitions/Label"
+          },
+          "type": "array"
+        },
+        "origin": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/Origin"
+            }
+          ],
+          "description": "Provenance flag (ADR-0013)."
+        },
+        "owner": {
+          "description": "Current owner of the record, if claimed.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "owning_scope": {
+          "description": "Scope that owns the record (ADR-0004).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "prev_state_hash": {
+          "description": "`state_hash` of the prior version on the main branch (ADR-0017). Always `None` through M1; populated by `ft-history` from M2.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "priority": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/Priority"
+            }
+          ],
+          "description": "Priority class."
+        },
+        "state_hash": {
+          "description": "Hash of canonical body+envelope, excluding the two hash fields themselves (ADR-0017).",
+          "type": "string"
+        },
+        "status": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/Status"
+            }
+          ],
+          "description": "Workflow status."
+        },
+        "title": {
+          "description": "Short human-readable title.",
+          "type": "string"
+        },
+        "updated_at": {
+          "description": "Last-update timestamp.",
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "affected_scopes",
+        "applies_to",
+        "created_at",
+        "created_by",
+        "history",
+        "id",
+        "kind",
+        "labels",
+        "origin",
+        "priority",
+        "state_hash",
+        "status",
+        "title",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "RecordKind": {
+      "description": "Every record type Firetrail supports.\n\nM1 implements all listed variants; M2 enables `RecordBuilder` for the memory kinds (`Incident`, `Finding`, `Runbook`, `Decision`, `Gotcha`, `Memory`). All variants round-trip through serde at M1.",
+      "oneOf": [
+        {
+          "description": "Long-lived effort grouping tasks.",
+          "enum": [
+            "epic"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "A unit of planned work.",
+          "enum": [
+            "task"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "A child of a task.",
+          "enum": [
+            "subtask"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "A defect record.",
+          "enum": [
+            "bug"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Incident report (memory kind, writable from M2).",
+          "enum": [
+            "incident"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Investigative finding (memory kind, writable from M2).",
+          "enum": [
+            "finding"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Operational runbook (memory kind, writable from M2).",
+          "enum": [
+            "runbook"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Architectural / design decision (memory kind, writable from M2).",
+          "enum": [
+            "decision"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Recurring footgun (memory kind, writable from M2).",
+          "enum": [
+            "gotcha"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Generic memory note (memory kind, writable from M2).",
+          "enum": [
+            "memory"
+          ],
+          "type": "string"
+        }
+      ]
+    },
+    "RiskClass": {
+      "description": "Risk classification of a memory-kind record (ADR-0013).\n\nThe first four variants (`Security`, `Availability`, `DataLoss`, `Compliance`) are *high-stakes* — records carrying them require `verified` trust before appearing in default `prime` output and need 180-day re-validation. The remaining variants (`Performance`, `Correctness`) are low-stakes and follow the standard trust rules.",
+      "oneOf": [
+        {
+          "description": "Security risk.",
+          "enum": [
+            "security"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Availability risk.",
+          "enum": [
+            "availability"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Data-loss risk.",
+          "enum": [
+            "data_loss"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Regulatory / compliance risk.",
+          "enum": [
+            "compliance"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Performance risk.",
+          "enum": [
+            "performance"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Correctness risk.",
+          "enum": [
+            "correctness"
+          ],
+          "type": "string"
+        }
+      ]
+    },
+    "RunbookStep": {
+      "description": "A single step in a [`Runbook`].",
+      "properties": {
+        "command": {
+          "description": "Optional shell command (or other actionable invocation) for the step.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "description": {
+          "description": "Human-readable description of what the step accomplishes.",
+          "type": "string"
+        },
+        "expected_outcome": {
+          "description": "What the operator should observe when the step succeeds.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "description",
+        "expected_outcome"
+      ],
+      "type": "object"
+    },
+    "Severity": {
+      "description": "Severity classification for an [`crate::record::Incident`].\n\n`Sev1` is the most severe (customer-impacting outage class), `Sev4` is the least severe (minor / informational). Mirrors common SRE conventions.",
+      "oneOf": [
+        {
+          "description": "Critical, customer-impacting outage.",
+          "enum": [
+            "sev1"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Major degradation; some users affected.",
+          "enum": [
+            "sev2"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Minor impact; partial degradation.",
+          "enum": [
+            "sev3"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Informational; no user-visible impact.",
+          "enum": [
+            "sev4"
+          ],
+          "type": "string"
+        }
+      ]
+    },
+    "Status": {
+      "description": "Workflow status for a work-tracking record.",
+      "oneOf": [
+        {
+          "description": "Created but not triaged.",
+          "enum": [
+            "open"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Triaged; available to be claimed.",
+          "enum": [
+            "ready"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Actively being worked.",
+          "enum": [
+            "in_progress"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Awaiting review.",
+          "enum": [
+            "review"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Blocked on something external.",
+          "enum": [
+            "blocked"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Done and accepted.",
+          "enum": [
+            "closed"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Postponed without commitment.",
+          "enum": [
+            "deferred"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Closed for historical purposes only.",
+          "enum": [
+            "archived"
+          ],
+          "type": "string"
+        }
+      ]
+    },
+    "TrustState": {
+      "description": "Trust state for memory-kind records (declared at M1; enforced in M2 by `ft-trust`).",
+      "oneOf": [
+        {
+          "description": "Newly authored, unreviewed.",
+          "enum": [
+            "draft"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Reviewed by a human.",
+          "enum": [
+            "reviewed"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Independently verified.",
+          "enum": [
+            "verified"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Content has aged past its freshness window.",
+          "enum": [
+            "stale"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Marked as no longer best-practice.",
+          "enum": [
+            "deprecated"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Closed for historical reference only.",
+          "enum": [
+            "archived"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Replaced by another record.",
+          "enum": [
+            "superseded"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Rejected during review.",
+          "enum": [
+            "rejected"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Content removed for compliance.",
+          "enum": [
+            "redacted"
+          ],
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "description": "A complete Firetrail record: envelope + body.",
+  "properties": {
+    "body": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/RecordBody"
+        }
+      ],
+      "description": "Kind-specific body."
+    },
+    "envelope": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/RecordEnvelope"
+        }
+      ],
+      "description": "Common envelope fields."
+    }
+  },
+  "required": [
+    "body",
+    "envelope"
+  ],
+  "title": "Record",
+  "type": "object"
+}

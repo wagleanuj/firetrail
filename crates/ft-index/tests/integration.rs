@@ -19,7 +19,7 @@ use ft_core::{Claim, Identity, Priority, Record, RecordBody, RecordId, Status};
 use ft_index::{
     Index, ListQuery, OrderBy, ReadyQuery, Storage, StorageError, StorageFilter, WalkDirection,
 };
-use ft_testkit::{make_bug, make_epic, make_identity_named, make_subtask, make_task};
+use ft_testkit::{TestRepo, make_bug, make_epic, make_identity_named, make_subtask, make_task};
 use tempfile::TempDir;
 
 // ─── Minimal in-memory storage backend for tests ────────────────────────────
@@ -149,6 +149,42 @@ fn rebuild_from_empty_storage_succeeds() {
     assert_eq!(report.records_indexed, 0);
     assert_eq!(report.relations_indexed, 0);
     assert_eq!(idx.list(&ListQuery::default()).unwrap().len(), 0);
+}
+
+#[test]
+fn last_indexed_commit_unset_outside_git_repo() {
+    // TempDir-only fixtures (no `.git`) leave the meta row absent.
+    let (_d, mut idx, storage) = fresh_index();
+    idx.rebuild_from(&storage).unwrap();
+    assert_eq!(idx.last_indexed_commit(), None);
+}
+
+#[test]
+fn last_indexed_commit_populated_inside_git_repo() {
+    // TestRepo initializes a git repo with an initial commit. Index lives
+    // under <root>/.firetrail/index.db, so current_head_sha walks two levels
+    // up and resolves HEAD.
+    let tr = TestRepo::new().unwrap();
+    let root = tr.root();
+    std::fs::create_dir_all(root.join(".firetrail").join("records")).unwrap();
+    let mut idx = Index::open(root).unwrap();
+    let storage = MemStorage::new(root.to_path_buf());
+
+    idx.rebuild_from(&storage).unwrap();
+    let sha = idx
+        .last_indexed_commit()
+        .expect("rebuild inside git repo should populate last_indexed_commit");
+    assert_eq!(sha.len(), 40, "expected full 40-char hex sha, got {sha:?}");
+    assert!(
+        sha.chars().all(|c| c.is_ascii_hexdigit()),
+        "sha must be hex, got {sha:?}"
+    );
+
+    // refresh() should also update the meta row.
+    let report = idx.refresh(&storage, &[], &[]).unwrap();
+    assert_eq!(report.records_added, 0);
+    let sha2 = idx.last_indexed_commit().unwrap();
+    assert_eq!(sha, sha2, "no new commits, sha should be unchanged");
 }
 
 #[test]

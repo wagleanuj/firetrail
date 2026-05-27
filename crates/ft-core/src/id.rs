@@ -269,6 +269,21 @@ mod tests {
         }
     }
 
+    /// ADR-0015 acceptance: 16M+ unique IDs should not collide.
+    /// Ignored by default; run via `cargo test -p ft-core -- --ignored mint_is_unique_at_scale`
+    /// in nightly CI.
+    #[test]
+    #[ignore = "nightly stress test; ~16M mints, runs minutes"]
+    fn mint_is_unique_at_scale() {
+        let alice = alice();
+        let n: usize = 16 * 1024 * 1024;
+        let mut set = std::collections::HashSet::with_capacity(n);
+        for _ in 0..n {
+            let id = RecordId::mint(RecordKind::Task, &alice);
+            assert!(set.insert(id), "duplicate id minted within {n} samples");
+        }
+    }
+
     #[test]
     fn from_string_roundtrips() {
         let id = RecordId::mint(RecordKind::Bug, &alice());

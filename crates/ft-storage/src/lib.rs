@@ -39,7 +39,9 @@ mod validate;
 pub use change::{
     ChangeClass, classify_change, is_memory_kind, is_memory_only_change, records_kind_subpath,
 };
-pub use compact::{compact_changed_in_pr, compact_record};
+pub use compact::{
+    CompactRunReport, SkipReason, SkippedPath, compact_changed_in_pr, compact_record,
+};
 pub use config::{StorageMode, open_for_workspace};
 pub use embedded::EmbeddedStorage;
 pub use error::StorageError;
@@ -50,7 +52,9 @@ pub use filter::StorageFilter;
 pub use history::write_with_history;
 pub use refs::{ExternalRefViolation, validate_external_references};
 pub use storage::Storage;
-pub use validate::{PathReport, PreCommitReport, validate_pre_commit};
+pub use validate::{
+    PathReport, PathStatus, PreCommitReport, validate_pre_commit, validate_pre_commit_diff,
+};
 
 /// Relative path of the records directory under the repo root.
 pub const RECORDS_DIR: &str = ".firetrail/records";

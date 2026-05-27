@@ -215,7 +215,6 @@ fn read_frame<T: for<'de> Deserialize<'de>>(r: &mut impl Read) -> Result<T, Embe
 #[cfg(test)]
 mod tests {
     use std::thread;
-    use std::time::Duration;
 
     use tempfile::tempdir;
 
@@ -240,32 +239,23 @@ mod tests {
         let dir = tempdir().unwrap();
         let sock = dir.path().join("ft-embed.sock");
 
+        // Bind on the main thread so the socket file is guaranteed to exist
+        // before the client connects. Previously the server thread did the
+        // bind and the main thread polled `sock.exists()` — under parallel
+        // test load the server could be starved long enough for the poll to
+        // time out (Unreachable vs Running flake, firetrail-8g8).
+        let listener = UnixListener::bind(&sock).unwrap();
+
         let service_dir = dir.path().to_path_buf();
-        let sock_for_server = sock.clone();
         let server = thread::spawn(move || {
             let svc = build_service(&service_dir);
-            // serve() loops on incoming; we run one accept manually so the
-            // thread exits cleanly.
-            if sock_for_server.exists() {
-                std::fs::remove_file(&sock_for_server).unwrap();
-            }
-            let listener = UnixListener::bind(&sock_for_server).unwrap();
             for _ in 0..2 {
                 let (mut s, _) = listener.accept().unwrap();
                 handle_connection(&mut s, &svc).unwrap();
             }
         });
 
-        // Wait for the socket to appear (server thread is starting up).
-        for _ in 0..50 {
-            if sock.exists() {
-                break;
-            }
-            thread::sleep(Duration::from_millis(20));
-        }
-        assert!(sock.exists(), "server did not bind socket in time");
-
-        // Round-trip: ping + embed.
+        // Round-trip: ping + embed. Socket is bound, server is in accept().
         assert_eq!(status(&sock), DaemonStatus::Running);
         let v = send_embed(&sock, "hello daemon").unwrap();
         assert_eq!(v.len(), 16);

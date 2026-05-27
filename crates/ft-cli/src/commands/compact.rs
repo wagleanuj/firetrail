@@ -38,7 +38,8 @@ pub fn run(args: &CompactArgs, global: &GlobalOpts) -> Result<CommandOutcome, Cl
                 .map_err(|e| CliError::internal(COMMAND, format!("open git: {e}")))?;
             let raw = compact_changed_in_pr(&ctx.storage, &git, &base, &head, &policy)
                 .map_err(|e| CliError::internal(COMMAND, format!("compact pr: {e}")))?;
-            raw.into_iter()
+            raw.compacted
+                .into_iter()
                 .map(|(id, rep)| CompactRow::from_report(id.as_str(), &rep))
                 .collect()
         }

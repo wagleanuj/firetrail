@@ -97,8 +97,8 @@ pub fn paths(args: &CheckPathsArgs, global: &GlobalOpts) -> Result<CommandOutcom
         .map(|p| CheckRow {
             path: p.path.display().to_string(),
             class: class_label(&p.class).to_string(),
-            ok: p.failure.is_none(),
-            reason: p.failure.clone(),
+            ok: !p.is_failure(),
+            reason: p.failure().map(str::to_owned),
         })
         .collect();
 

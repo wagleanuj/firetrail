@@ -12,25 +12,53 @@ use crate::change::{ChangeClass, classify_change};
 use crate::embedded::EmbeddedStorage;
 use crate::storage::Storage;
 
-/// Per-path verdict produced by [`validate_pre_commit`].
+/// Per-path verdict status.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PathStatus {
+    /// Path is not a record file (Config or Other) — pass-through.
+    Skipped,
+    /// Record file loaded and chain verified cleanly.
+    Clean,
+    /// Record path the caller signalled as deleted in this commit.
+    /// Legitimate redaction or removal — not a failure (firetrail-ff0).
+    Deleted,
+    /// Record file failed to load or failed [`verify_chain`].
+    Failure(String),
+}
+
+/// Per-path verdict produced by [`validate_pre_commit`] /
+/// [`validate_pre_commit_diff`].
 #[derive(Debug, Clone)]
 pub struct PathReport {
     /// Path the verdict applies to (echoed from the input slice).
     pub path: PathBuf,
     /// Coarse classification of the path.
     pub class: ChangeClass,
-    /// `None` if the path is not a record file, or if the record file
-    /// loaded and verified cleanly. `Some(reason)` describes the first
-    /// integrity failure.
-    pub failure: Option<String>,
+    /// Verdict status for this path.
+    pub status: PathStatus,
 }
 
 impl PathReport {
-    /// `true` iff the path is a record file that failed to load or
-    /// failed [`verify_chain`].
+    /// `true` iff the path failed to load or verify.
+    /// Deletions and skipped paths are not failures.
     #[must_use]
     pub fn is_failure(&self) -> bool {
-        self.failure.is_some()
+        matches!(self.status, PathStatus::Failure(_))
+    }
+
+    /// Failure reason if this report is a [`PathStatus::Failure`], else `None`.
+    #[must_use]
+    pub fn failure(&self) -> Option<&str> {
+        match &self.status {
+            PathStatus::Failure(r) => Some(r.as_str()),
+            _ => None,
+        }
+    }
+
+    /// `true` iff this path was signalled as a deletion.
+    #[must_use]
+    pub fn is_deleted(&self) -> bool {
+        matches!(self.status, PathStatus::Deleted)
     }
 }
 
@@ -84,29 +112,68 @@ impl PreCommitReport {
 /// participate in the chain invariant and are pass-through.
 ///
 /// Paths whose record file does not exist on disk are reported as a
-/// failure ("missing"); the typical cause is a deletion that the
-/// caller should remove from the commit if it would orphan a chain.
+/// failure ("missing"). Use [`validate_pre_commit_diff`] to signal
+/// legitimate deletions and avoid that false-positive (firetrail-ff0).
 #[must_use]
 pub fn validate_pre_commit<P: AsRef<Path>>(
     storage: &EmbeddedStorage,
     changed_paths: &[P],
 ) -> PreCommitReport {
+    validate_pre_commit_diff::<P, &Path>(storage, changed_paths, &[])
+}
+
+/// Diff-aware variant of [`validate_pre_commit`].
+///
+/// `changed_paths` are added/modified record files. `deleted_paths` are
+/// record files removed in this commit — they are surfaced as
+/// [`PathStatus::Deleted`] reports and do not trip [`PreCommitReport::is_clean`].
+///
+/// Non-record deletions (Config / Other) are silently dropped: nothing in
+/// `validate_pre_commit`'s contract applies to them, and the chain integrity
+/// check is not relevant.
+#[must_use]
+pub fn validate_pre_commit_diff<P, D>(
+    storage: &EmbeddedStorage,
+    changed_paths: &[P],
+    deleted_paths: &[D],
+) -> PreCommitReport
+where
+    P: AsRef<Path>,
+    D: AsRef<Path>,
+{
     let mut out = PreCommitReport::default();
     for p in changed_paths {
         let path = p.as_ref().to_path_buf();
         let class = classify_change(&path);
 
-        let failure = match &class {
+        let status = match &class {
             ChangeClass::Memory(_) | ChangeClass::Structural(_) => {
-                check_record_file(storage, &path)
+                match check_record_file(storage, &path) {
+                    None => PathStatus::Clean,
+                    Some(reason) => PathStatus::Failure(reason),
+                }
             }
-            ChangeClass::Config | ChangeClass::Other => None,
+            ChangeClass::Config | ChangeClass::Other => PathStatus::Skipped,
         };
 
         out.paths.push(PathReport {
             path,
             class,
-            failure,
+            status,
+        });
+    }
+    for p in deleted_paths {
+        let path = p.as_ref().to_path_buf();
+        let class = classify_change(&path);
+        // Only surface record-file deletions — non-record deletions are
+        // irrelevant to chain integrity and would clutter the report.
+        if !matches!(class, ChangeClass::Memory(_) | ChangeClass::Structural(_)) {
+            continue;
+        }
+        out.paths.push(PathReport {
+            path,
+            class,
+            status: PathStatus::Deleted,
         });
     }
     out
@@ -197,12 +264,42 @@ mod tests {
         assert_eq!(failures.len(), 1);
         assert!(
             failures[0]
-                .failure
-                .as_deref()
+                .failure()
                 .is_some_and(|r| r.contains("read failed") || r.contains("hash")),
             "got: {:?}",
-            failures[0].failure
+            failures[0].failure()
         );
+    }
+
+    #[test]
+    fn validate_pre_commit_diff_treats_deletion_as_non_failure() {
+        let tr = TestRepo::new().unwrap();
+        let storage = open(&tr);
+        // Synthesize a deleted record-file path — no need to write it
+        // first, the diff signal is the source of truth.
+        let deleted: std::path::PathBuf = ".firetrail/records/task/task-abc.json".into();
+
+        let changed: [std::path::PathBuf; 0] = [];
+        let report = validate_pre_commit_diff(&storage, &changed, std::slice::from_ref(&deleted));
+        assert!(report.is_clean(), "deletion must not be a failure");
+        assert_eq!(report.paths.len(), 1);
+        assert!(report.paths[0].is_deleted());
+        assert_eq!(report.paths[0].path, deleted);
+    }
+
+    #[test]
+    fn validate_pre_commit_diff_drops_non_record_deletions() {
+        let tr = TestRepo::new().unwrap();
+        let storage = open(&tr);
+        let deleted = [
+            std::path::PathBuf::from("README.md"),
+            std::path::PathBuf::from(".firetrail/config.yml"),
+        ];
+        let changed: [std::path::PathBuf; 0] = [];
+        let report = validate_pre_commit_diff(&storage, &changed, &deleted);
+        // Non-record deletions are not surfaced (they cannot affect chain
+        // integrity); the report is empty and trivially clean.
+        assert!(report.paths.is_empty());
     }
 
     #[test]

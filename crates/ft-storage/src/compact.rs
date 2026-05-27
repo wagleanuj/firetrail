@@ -6,6 +6,8 @@
 //! [`ft_history::compact_history`] on each and writing the compacted
 //! result back. The chain remains verifiable end-to-end.
 
+use std::path::PathBuf;
+
 use ft_core::RecordId;
 use ft_history::{CompactPolicy, CompactReport, compact_history};
 
@@ -13,6 +15,41 @@ use crate::change::classify_change;
 use crate::embedded::EmbeddedStorage;
 use crate::storage::Storage;
 use crate::{ChangeClass, StorageError};
+
+/// Reason a path in a PR diff was skipped by [`compact_changed_in_pr`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SkipReason {
+    /// File was deleted in the head ref — nothing to compact.
+    DeletedInPr,
+    /// Path did not classify as a record (Config or Other).
+    NonRecordPath,
+    /// Filename stem could not be parsed back into a `RecordId`.
+    UnparseableId,
+    /// Path is gone from the working tree (mid-checkout, etc.).
+    MissingOnDisk,
+}
+
+/// One skipped diff entry with its reason.
+#[derive(Debug, Clone)]
+pub struct SkippedPath {
+    /// PR-relative path (as reported by the git diff entry).
+    pub path: PathBuf,
+    /// Why the path was skipped.
+    pub reason: SkipReason,
+}
+
+/// Aggregate outcome of [`compact_changed_in_pr`].
+///
+/// `compacted` is the per-record success list (was the bare return value
+/// historically). `skipped` records every diff entry that was filtered out
+/// so CI surfaces can audit what wasn't touched (firetrail-5gz).
+#[derive(Debug, Clone, Default)]
+pub struct CompactRunReport {
+    /// Records successfully compacted, in diff-walk order.
+    pub compacted: Vec<(RecordId, CompactReport)>,
+    /// Skipped diff entries with their reasons.
+    pub skipped: Vec<SkippedPath>,
+}
 
 /// Compact a single record's history and write it back.
 ///
@@ -46,11 +83,11 @@ pub fn compact_record(
 /// kinds are included; `Config` and `Other` paths are skipped), and
 /// calls [`compact_record`] on each.
 ///
-/// Returns one entry per record that was successfully compacted.
-/// Records that have been deleted in the head ref are skipped silently
-/// — there is nothing to compact. Records whose file cannot be parsed
-/// (e.g. malformed JSON in mid-PR state) bubble up as a [`StorageError`]
-/// and short-circuit the run.
+/// Returns a [`CompactRunReport`] with one entry per record that was
+/// successfully compacted plus a `skipped` list naming each diff entry
+/// that was filtered out and why (firetrail-5gz). Records whose file
+/// cannot be parsed (e.g. malformed JSON in mid-PR state) bubble up as a
+/// [`StorageError`] and short-circuit the run.
 ///
 /// # Errors
 ///
@@ -62,21 +99,29 @@ pub fn compact_changed_in_pr(
     pr_base_ref: &str,
     pr_head_ref: &str,
     policy: &CompactPolicy,
-) -> Result<Vec<(RecordId, CompactReport)>, StorageError> {
+) -> Result<CompactRunReport, StorageError> {
     let entries = git
         .diff(pr_base_ref, pr_head_ref, None)
         .map_err(StorageError::Git)?;
 
-    let mut out = Vec::new();
+    let mut report = CompactRunReport::default();
     for entry in entries {
         // We only care about live record paths in the head ref.
         // Deletes have no surviving record to compact; renames are
         // followed via the new path which is what `entry.path` holds.
         if matches!(entry.change_kind, ft_git::ChangeKind::Deleted) {
+            report.skipped.push(SkippedPath {
+                path: entry.path,
+                reason: SkipReason::DeletedInPr,
+            });
             continue;
         }
         let class = classify_change(&entry.path);
         if !matches!(class, ChangeClass::Memory(_) | ChangeClass::Structural(_)) {
+            report.skipped.push(SkippedPath {
+                path: entry.path,
+                reason: SkipReason::NonRecordPath,
+            });
             continue;
         }
 
@@ -84,6 +129,10 @@ pub fn compact_changed_in_pr(
         // (`<lowercase-id>.json`). We do this rather than reading the
         // file twice (once to learn the id, once via storage.read).
         let Some(id) = id_from_record_path(&entry.path) else {
+            report.skipped.push(SkippedPath {
+                path: entry.path,
+                reason: SkipReason::UnparseableId,
+            });
             continue;
         };
 
@@ -93,13 +142,17 @@ pub fn compact_changed_in_pr(
         // it as a benign skip.
         let on_disk = storage.path_for(&id);
         if !on_disk.exists() {
+            report.skipped.push(SkippedPath {
+                path: entry.path,
+                reason: SkipReason::MissingOnDisk,
+            });
             continue;
         }
 
-        let report = compact_record(storage, &id, policy)?;
-        out.push((id, report));
+        let one = compact_record(storage, &id, policy)?;
+        report.compacted.push((id, one));
     }
-    Ok(out)
+    Ok(report)
 }
 
 /// Best-effort recovery of a [`RecordId`] from a record-file path.
@@ -217,11 +270,31 @@ mod tests {
         tr.commit_all("add record on feat").unwrap();
 
         let git = ft_git::Repo::open(tr.root()).unwrap();
-        let reports =
-            compact_changed_in_pr(&storage, &git, "main", "feat", &CompactPolicy::default())
-                .unwrap();
-        assert_eq!(reports.len(), 1);
-        assert_eq!(reports[0].0, r.envelope.id);
-        assert!(reports[0].1.entries_after < reports[0].1.entries_before);
+        let run = compact_changed_in_pr(&storage, &git, "main", "feat", &CompactPolicy::default())
+            .unwrap();
+        assert_eq!(run.compacted.len(), 1);
+        assert_eq!(run.compacted[0].0, r.envelope.id);
+        assert!(run.compacted[0].1.entries_after < run.compacted[0].1.entries_before);
+    }
+
+    #[test]
+    fn compact_changed_in_pr_reports_skipped_non_record_paths() {
+        let tr = TestRepo::new().unwrap();
+        let storage = open(&tr);
+
+        // Branch and add a non-record config file. classify_change should
+        // bucket it as Config/Other → SkipReason::NonRecordPath.
+        tr.branch("docs").unwrap();
+        tr.checkout("docs").unwrap();
+        std::fs::write(tr.root().join("README.md"), "hi\n").unwrap();
+        tr.commit_all("readme").unwrap();
+
+        let git = ft_git::Repo::open(tr.root()).unwrap();
+        let run = compact_changed_in_pr(&storage, &git, "main", "docs", &CompactPolicy::default())
+            .unwrap();
+        assert!(run.compacted.is_empty());
+        assert_eq!(run.skipped.len(), 1);
+        assert_eq!(run.skipped[0].reason, SkipReason::NonRecordPath);
+        assert_eq!(run.skipped[0].path, std::path::PathBuf::from("README.md"));
     }
 }

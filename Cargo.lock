@@ -769,7 +769,17 @@ dependencies = [
 name = "ft-pr"
 version = "0.0.0"
 dependencies = [
+ "chrono",
+ "ft-core",
+ "ft-git",
+ "ft-history",
+ "ft-storage",
+ "ft-testkit",
+ "ft-trust",
+ "regex",
  "serde",
+ "serde_json",
+ "tempfile",
  "thiserror 2.0.18",
 ]
 

@@ -90,6 +90,9 @@ rand = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 humantime = "2.1"
 
+# Regex (secret scanning, PR-link footers)
+regex = "1.10"
+
 # File locking
 fs2 = "0.4"
 

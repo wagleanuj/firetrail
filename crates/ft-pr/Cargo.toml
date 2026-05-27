@@ -11,5 +11,17 @@ description = "PR check command and custom merge driver."
 workspace = true
 
 [dependencies]
+ft-core = { path = "../ft-core", version = "0.0.0" }
+ft-storage = { path = "../ft-storage", version = "0.0.0" }
+ft-history = { path = "../ft-history", version = "0.0.0" }
+ft-trust = { path = "../ft-trust", version = "0.0.0" }
+ft-git = { path = "../ft-git", version = "0.0.0" }
 serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
+chrono = { workspace = true }
+regex = { workspace = true }
+
+[dev-dependencies]
+ft-testkit = { path = "../ft-testkit", version = "0.0.0" }
+tempfile = { workspace = true }

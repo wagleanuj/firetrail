@@ -3,15 +3,19 @@
 //! A [`Record`] is an [`RecordEnvelope`] plus a [`RecordBody`] variant. The
 //! envelope carries the fields shared by every kind; the body carries the
 //! kind-specific shape. Memory-kind bodies (Incident, Finding, Runbook,
-//! Decision, Gotcha, Memory) are declared at M1 as empty placeholders so the
-//! on-disk schema version is locked; they become writable from M2.
+//! Decision, Gotcha, Memory) declared empty at M1 carry real fields from M2.
+//!
+//! Each memory-kind body declares the trust/risk fields required by ADR-0013
+//! (`trust: TrustState`, `risk_class: Option<RiskClass>`). `ft-core` only
+//! declares and serializes these — the state-machine enforcement lives in
+//! `ft-trust`.
 
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::acceptance::{AcceptanceCriterion, Claim, Evidence};
-use crate::enums::{Origin, Priority, Status};
+use crate::enums::{Origin, Priority, RiskClass, Severity, Status, TrustState};
 use crate::id::RecordId;
 use crate::identity::Identity;
 use crate::label::{HistoryEntry, Label};
@@ -125,49 +129,269 @@ pub struct Bug {
     pub claim: Option<Claim>,
 }
 
-/// Memory-kind body placeholders.
+// ---------------------------------------------------------------------------
+// Memory-kind bodies (writable from M2).
+//
+// Each carries the trust/risk fields required by ADR-0013. `ft-core` only
+// declares and serializes them; the trust state machine lives in `ft-trust`.
+// ---------------------------------------------------------------------------
+
+/// Operational incident report.
 ///
-/// These types round-trip through serde at M1 to lock the on-disk schema
-/// version, but the [`crate::builder::RecordBuilder`] refuses to construct
-/// records of these kinds until M2 wires the corresponding feature work.
-macro_rules! memory_body {
-    ($(#[$meta:meta])* $name:ident) => {
-        $(#[$meta])*
-        #[derive(
-            Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema,
-        )]
-        pub struct $name {
-            /// Reserved for future fields. Round-trips as `{}` at M1.
-            #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
-            pub reserved: serde_json::Map<String, serde_json::Value>,
-        }
-    };
+/// Captures production reality at the moment the incident occurred. Lands via
+/// a memory-only PR (ADR-0009) so the record outlives any single fix.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct Incident {
+    /// One-line summary of what happened.
+    pub summary: String,
+    /// Severity classification. Defaults to [`Severity::Sev3`].
+    #[serde(default)]
+    pub severity: Severity,
+    /// Wall-clock time the incident began.
+    pub started_at: DateTime<Utc>,
+    /// Wall-clock time the incident was resolved, if known.
+    pub resolved_at: Option<DateTime<Utc>>,
+    /// Service / surface names impacted by the incident.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub services_affected: Vec<String>,
+    /// Root-cause analysis, when one is known.
+    pub root_cause: Option<String>,
+    /// Findings created from this incident.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub findings: Vec<RecordId>,
+    /// Runbooks invoked while responding.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub runbooks_invoked: Vec<RecordId>,
+    /// Optional risk classification (ADR-0013).
+    pub risk_class: Option<RiskClass>,
+    /// Trust state. Declared here; state machine lives in `ft-trust`.
+    #[serde(default = "default_trust")]
+    pub trust: TrustState,
 }
 
-memory_body!(
-    /// Incident record (memory kind, writable from M2).
-    Incident
-);
-memory_body!(
-    /// Investigative finding (memory kind, writable from M2).
-    Finding
-);
-memory_body!(
-    /// Operational runbook (memory kind, writable from M2).
-    Runbook
-);
-memory_body!(
-    /// Architectural decision record (memory kind, writable from M2).
-    Decision
-);
-memory_body!(
-    /// Recurring footgun (memory kind, writable from M2).
-    Gotcha
-);
-memory_body!(
-    /// Generic memory note (memory kind, writable from M2).
-    Memory
-);
+impl Default for Incident {
+    fn default() -> Self {
+        Self {
+            summary: String::new(),
+            severity: Severity::default(),
+            started_at: epoch(),
+            resolved_at: None,
+            services_affected: Vec::new(),
+            root_cause: None,
+            findings: Vec::new(),
+            runbooks_invoked: Vec::new(),
+            risk_class: None,
+            trust: TrustState::Draft,
+        }
+    }
+}
+
+/// Investigative finding — a discrete claim about how a system actually
+/// behaves, captured for future readers and agents (ADR-0009).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct Finding {
+    /// One-line summary of the finding.
+    pub summary: String,
+    /// Long-form details (markdown body).
+    #[serde(default)]
+    pub details: String,
+    /// Originating incident, if any.
+    pub incident: Option<RecordId>,
+    /// Optional risk classification (ADR-0013).
+    pub risk_class: Option<RiskClass>,
+    /// File paths the finding applies to.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub affected_paths: Vec<String>,
+    /// Pointer to the record that replaced this one, if superseded.
+    pub superseded_by: Option<RecordId>,
+    /// Trust state. Declared here; state machine lives in `ft-trust`.
+    #[serde(default = "default_trust")]
+    pub trust: TrustState,
+}
+
+impl Default for Finding {
+    fn default() -> Self {
+        Self {
+            summary: String::new(),
+            details: String::new(),
+            incident: None,
+            risk_class: None,
+            affected_paths: Vec::new(),
+            superseded_by: None,
+            trust: TrustState::Draft,
+        }
+    }
+}
+
+/// A single step in a [`Runbook`].
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+pub struct RunbookStep {
+    /// Human-readable description of what the step accomplishes.
+    pub description: String,
+    /// Optional shell command (or other actionable invocation) for the step.
+    pub command: Option<String>,
+    /// What the operator should observe when the step succeeds.
+    pub expected_outcome: String,
+}
+
+/// Operational runbook — an ordered list of steps an on-call engineer can
+/// follow to handle a known situation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct Runbook {
+    /// Short title.
+    pub title: String,
+    /// One-line summary of when to use this runbook.
+    pub summary: String,
+    /// Ordered procedure steps.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub steps: Vec<RunbookStep>,
+    /// Service names / system tags this runbook applies to.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub applies_to: Vec<String>,
+    /// Optional risk classification (ADR-0013).
+    pub risk_class: Option<RiskClass>,
+    /// Trust state. Declared here; state machine lives in `ft-trust`.
+    #[serde(default = "default_trust")]
+    pub trust: TrustState,
+}
+
+impl Default for Runbook {
+    fn default() -> Self {
+        Self {
+            title: String::new(),
+            summary: String::new(),
+            steps: Vec::new(),
+            applies_to: Vec::new(),
+            risk_class: None,
+            trust: TrustState::Draft,
+        }
+    }
+}
+
+/// Architectural / design decision record.
+///
+/// Captures context, the decision itself, consequences, and alternatives
+/// considered — the canonical ADR shape adapted to Firetrail's record model.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[allow(clippy::struct_field_names)]
+pub struct Decision {
+    /// Short title (e.g. "Use ONNX runtime for embeddings").
+    pub title: String,
+    /// Background / problem statement (markdown).
+    #[serde(default)]
+    pub context: String,
+    /// The decision text itself.
+    pub decision: String,
+    /// Consequences of taking this decision.
+    #[serde(default)]
+    pub consequences: String,
+    /// Alternative options the team weighed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub alternatives_considered: Vec<String>,
+    /// Content lifecycle status of the decision itself.
+    #[serde(default)]
+    pub status: crate::enums::DecisionStatus,
+    /// Pointer to the record that replaced this one, if superseded.
+    pub superseded_by: Option<RecordId>,
+    /// Optional risk classification (ADR-0013).
+    pub risk_class: Option<RiskClass>,
+    /// Trust state. Declared here; state machine lives in `ft-trust`.
+    #[serde(default = "default_trust")]
+    pub trust: TrustState,
+}
+
+impl Default for Decision {
+    fn default() -> Self {
+        Self {
+            title: String::new(),
+            context: String::new(),
+            decision: String::new(),
+            consequences: String::new(),
+            alternatives_considered: Vec::new(),
+            status: crate::enums::DecisionStatus::default(),
+            superseded_by: None,
+            risk_class: None,
+            trust: TrustState::Draft,
+        }
+    }
+}
+
+/// A recurring footgun or sharp edge engineers keep encountering.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct Gotcha {
+    /// One-line summary of the gotcha.
+    pub summary: String,
+    /// Long-form details (markdown).
+    #[serde(default)]
+    pub details: String,
+    /// File paths the gotcha applies to.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub affected_paths: Vec<String>,
+    /// Optional risk classification (ADR-0013).
+    pub risk_class: Option<RiskClass>,
+    /// Trust state. Declared here; state machine lives in `ft-trust`.
+    #[serde(default = "default_trust")]
+    pub trust: TrustState,
+}
+
+impl Default for Gotcha {
+    fn default() -> Self {
+        Self {
+            summary: String::new(),
+            details: String::new(),
+            affected_paths: Vec::new(),
+            risk_class: None,
+            trust: TrustState::Draft,
+        }
+    }
+}
+
+/// Generic memory note — the catch-all body for memory-kind records that do
+/// not fit into one of the more specific shapes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct Memory {
+    /// Short title.
+    pub title: String,
+    /// Markdown body.
+    #[serde(default)]
+    pub body: String,
+    /// Free-form tags for indexing.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+    /// Related records.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub related: Vec<RecordId>,
+    /// Optional risk classification (ADR-0013).
+    pub risk_class: Option<RiskClass>,
+    /// Trust state. Declared here; state machine lives in `ft-trust`.
+    #[serde(default = "default_trust")]
+    pub trust: TrustState,
+}
+
+impl Default for Memory {
+    fn default() -> Self {
+        Self {
+            title: String::new(),
+            body: String::new(),
+            tags: Vec::new(),
+            related: Vec::new(),
+            risk_class: None,
+            trust: TrustState::Draft,
+        }
+    }
+}
+
+/// Default `trust` value for newly-deserialized memory bodies that omit the
+/// field (forward-compat with pre-M2 records on disk).
+fn default_trust() -> TrustState {
+    TrustState::Draft
+}
+
+/// Earliest `DateTime<Utc>` representable: used as the `Default` value for
+/// timestamp fields on memory bodies. Real records always set a real time.
+fn epoch() -> DateTime<Utc> {
+    chrono::DateTime::<Utc>::from_timestamp(0, 0).expect("unix epoch is representable")
+}
 
 /// Kind-specific body for a [`Record`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

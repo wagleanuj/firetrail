@@ -41,7 +41,8 @@ pub mod schema;
 pub use acceptance::{AcceptanceCriterion, Claim, Evidence};
 pub use builder::RecordBuilder;
 pub use enums::{
-    AcStatus, EvidenceKind, Origin, Priority, RelationKind, RiskClass, Status, TrustState,
+    AcStatus, DecisionStatus, EvidenceKind, Origin, Priority, RelationKind, RiskClass, Severity,
+    Status, TrustState,
 };
 pub use error::CoreError;
 pub use hash::{canonical_json, state_hash};
@@ -50,7 +51,7 @@ pub use identity::Identity;
 pub use label::{HistoryEntry, Label};
 pub use record::{
     Bug, Decision, Epic, Finding, Gotcha, Incident, Memory, Record, RecordBody, RecordEnvelope,
-    Runbook, Subtask, Task,
+    Runbook, RunbookStep, Subtask, Task,
 };
 pub use relation::Relation;
 pub use schema::{record_schema, record_schema_json, validate_record_json};

@@ -173,7 +173,13 @@ pub enum TrustState {
     Redacted,
 }
 
-/// Risk classification of a memory-kind record (declared at M1).
+/// Risk classification of a memory-kind record (ADR-0013).
+///
+/// The first four variants (`Security`, `Availability`, `DataLoss`,
+/// `Compliance`) are *high-stakes* — records carrying them require `verified`
+/// trust before appearing in default `prime` output and need 180-day
+/// re-validation. The remaining variants (`Performance`, `Correctness`) are
+/// low-stakes and follow the standard trust rules.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum RiskClass {
@@ -189,4 +195,56 @@ pub enum RiskClass {
     Performance,
     /// Correctness risk.
     Correctness,
+}
+
+impl RiskClass {
+    /// Whether this risk class is high-stakes per ADR-0013.
+    ///
+    /// High-stakes records (security, availability, data-loss, compliance)
+    /// require `verified` trust before default prime inclusion. The
+    /// state-machine enforcement of this rule lives in `ft-trust`.
+    #[must_use]
+    pub fn is_high_stakes(self) -> bool {
+        matches!(
+            self,
+            Self::Security | Self::Availability | Self::DataLoss | Self::Compliance
+        )
+    }
+}
+
+/// Severity classification for an [`crate::record::Incident`].
+///
+/// `Sev1` is the most severe (customer-impacting outage class), `Sev4` is the
+/// least severe (minor / informational). Mirrors common SRE conventions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Severity {
+    /// Critical, customer-impacting outage.
+    Sev1,
+    /// Major degradation; some users affected.
+    Sev2,
+    /// Minor impact; partial degradation.
+    #[default]
+    Sev3,
+    /// Informational; no user-visible impact.
+    Sev4,
+}
+
+/// Lifecycle status of an architectural decision record.
+///
+/// Distinct from the broader [`TrustState`] in that it describes the *content
+/// posture* of a decision (still being proposed, accepted, replaced) rather
+/// than its review state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DecisionStatus {
+    /// Drafted and under discussion.
+    #[default]
+    Proposed,
+    /// Accepted and current.
+    Accepted,
+    /// Replaced by a successor decision (see `superseded_by`).
+    Superseded,
+    /// No longer applicable but kept for audit.
+    Deprecated,
 }

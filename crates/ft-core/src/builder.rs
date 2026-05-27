@@ -7,13 +7,19 @@ use crate::error::CoreError;
 use crate::hash::state_hash;
 use crate::id::{RecordId, RecordKind};
 use crate::identity::Identity;
-use crate::record::{Bug, Epic, Record, RecordBody, RecordEnvelope, Subtask, Task};
+use crate::record::{
+    Bug, Decision, Epic, Finding, Gotcha, Incident, Memory, Record, RecordBody, RecordEnvelope,
+    Runbook, Subtask, Task,
+};
 
 /// Builder for [`Record`] instances that validates as it constructs.
 ///
-/// At M1, only the work-tracking kinds (`Epic`, `Task`, `Subtask`, `Bug`) can
-/// be constructed via this builder. Attempting to call [`Self::build`] on a
-/// memory-kind body returns [`CoreError::NotYetWritable`].
+/// From M2 onward all record kinds — work-tracking (`Epic`, `Task`,
+/// `Subtask`, `Bug`) and memory (`Incident`, `Finding`, `Runbook`,
+/// `Decision`, `Gotcha`, `Memory`) — can be constructed via this builder.
+/// Memory bodies that require non-defaultable fields (notably
+/// [`Subtask::parent_task`] and [`Incident::started_at`]) need an explicit
+/// body via [`Self::body`] or one of the kind-specific setters.
 ///
 /// The builder fills in safe defaults (status `Open`, origin `Human`,
 /// timestamps `now`, scope fields empty) and computes the initial
@@ -180,37 +186,52 @@ impl RecordBuilder {
         self.body(RecordBody::Bug(bug))
     }
 
+    /// Convenience: set the body to an `Incident`.
+    #[must_use]
+    pub fn incident(self, incident: Incident) -> Self {
+        self.body(RecordBody::Incident(incident))
+    }
+
+    /// Convenience: set the body to a `Finding`.
+    #[must_use]
+    pub fn finding(self, finding: Finding) -> Self {
+        self.body(RecordBody::Finding(finding))
+    }
+
+    /// Convenience: set the body to a `Runbook`.
+    #[must_use]
+    pub fn runbook(self, runbook: Runbook) -> Self {
+        self.body(RecordBody::Runbook(runbook))
+    }
+
+    /// Convenience: set the body to a `Decision`.
+    #[must_use]
+    pub fn decision(self, decision: Decision) -> Self {
+        self.body(RecordBody::Decision(decision))
+    }
+
+    /// Convenience: set the body to a `Gotcha`.
+    #[must_use]
+    pub fn gotcha(self, gotcha: Gotcha) -> Self {
+        self.body(RecordBody::Gotcha(gotcha))
+    }
+
+    /// Convenience: set the body to a generic `Memory`.
+    #[must_use]
+    pub fn memory(self, memory: Memory) -> Self {
+        self.body(RecordBody::Memory(memory))
+    }
+
     /// Finalize: validate, compute `state_hash`, and return the [`Record`].
     ///
     /// # Errors
     ///
     /// - [`CoreError::InvalidRecord`] if the title is empty, an acceptance
     ///   criterion is malformed, or the supplied body does not match `kind`.
-    /// - [`CoreError::NotYetWritable`] if `kind` is a memory kind.
     pub fn build(self) -> Result<Record, CoreError> {
         let title = self.title.trim().to_string();
         if title.is_empty() {
             return Err(CoreError::InvalidRecord("title is empty".into()));
-        }
-
-        if matches!(
-            self.kind,
-            RecordKind::Incident
-                | RecordKind::Finding
-                | RecordKind::Runbook
-                | RecordKind::Decision
-                | RecordKind::Gotcha
-                | RecordKind::Memory
-        ) {
-            return Err(CoreError::NotYetWritable(match self.kind {
-                RecordKind::Incident => "incident",
-                RecordKind::Finding => "finding",
-                RecordKind::Runbook => "runbook",
-                RecordKind::Decision => "decision",
-                RecordKind::Gotcha => "gotcha",
-                RecordKind::Memory => "memory",
-                _ => unreachable!(),
-            }));
         }
 
         let body = self.body.unwrap_or_else(|| default_body_for(self.kind));
@@ -262,16 +283,16 @@ fn default_body_for(kind: RecordKind) -> RecordBody {
         RecordKind::Epic => RecordBody::Epic(Epic::default()),
         RecordKind::Task => RecordBody::Task(Task::default()),
         RecordKind::Bug => RecordBody::Bug(Bug::default()),
+        RecordKind::Incident => RecordBody::Incident(Incident::default()),
+        RecordKind::Finding => RecordBody::Finding(Finding::default()),
+        RecordKind::Runbook => RecordBody::Runbook(Runbook::default()),
+        RecordKind::Decision => RecordBody::Decision(Decision::default()),
+        RecordKind::Gotcha => RecordBody::Gotcha(Gotcha::default()),
+        RecordKind::Memory => RecordBody::Memory(Memory::default()),
         // Subtask requires `parent_task`; callers must supply a body explicitly.
-        RecordKind::Subtask
-        | RecordKind::Incident
-        | RecordKind::Finding
-        | RecordKind::Runbook
-        | RecordKind::Decision
-        | RecordKind::Gotcha
-        | RecordKind::Memory => {
-            // Subtask path is reached only if the caller forgot to set body;
-            // we return an obviously-empty body so the validator can flag it.
+        RecordKind::Subtask => {
+            // Reached only if the caller forgot to set body; we return an
+            // obviously-empty body so the validator can flag it.
             RecordBody::Subtask(Subtask {
                 description: String::new(),
                 parent_task: RecordId::from_string(format!("TASK-{}", "0".repeat(64)))
@@ -340,7 +361,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_memory_kinds() {
+    fn builds_all_memory_kinds() {
         for kind in [
             RecordKind::Incident,
             RecordKind::Finding,
@@ -349,8 +370,39 @@ mod tests {
             RecordKind::Gotcha,
             RecordKind::Memory,
         ] {
-            let err = RecordBuilder::new(kind, "x", alice()).build().unwrap_err();
-            assert!(matches!(err, CoreError::NotYetWritable(_)));
+            let r = RecordBuilder::new(kind, "x", alice())
+                .build()
+                .unwrap_or_else(|e| panic!("memory kind {kind:?} should build: {e}"));
+            assert_eq!(r.envelope.kind, kind);
+            assert_eq!(r.body.kind(), kind);
+            assert_eq!(r.envelope.state_hash.len(), 64);
+        }
+    }
+
+    #[test]
+    fn builds_incident_with_explicit_body() {
+        use crate::enums::{RiskClass, Severity, TrustState};
+        use crate::record::Incident;
+        let started = Utc::now();
+        let inc = Incident {
+            summary: "redis pool exhaustion".into(),
+            severity: Severity::Sev2,
+            started_at: started,
+            resolved_at: None,
+            services_affected: vec!["checkout".into()],
+            root_cause: None,
+            findings: Vec::new(),
+            runbooks_invoked: Vec::new(),
+            risk_class: Some(RiskClass::Availability),
+            trust: TrustState::Draft,
+        };
+        let r = RecordBuilder::new(RecordKind::Incident, "INC-redis", alice())
+            .incident(inc.clone())
+            .build()
+            .unwrap();
+        match r.body {
+            RecordBody::Incident(b) => assert_eq!(b, inc),
+            other => panic!("expected Incident body, got {other:?}"),
         }
     }
 

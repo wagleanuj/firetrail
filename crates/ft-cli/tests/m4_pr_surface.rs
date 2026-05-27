@@ -205,6 +205,19 @@ fn diff_lists_changed_records() {
     let mv = parse_json(&mem);
     let mrows = mv["data"]["rows"].as_array().cloned().unwrap_or_default();
     assert!(mrows.iter().all(|r| r["class"] == "memory"));
+
+    // firetrail-du8: directory entries surfaced by git's tree walk
+    // (e.g. `.firetrail`, `.firetrail/records`) must not appear as rows.
+    let paths: Vec<String> = rows
+        .iter()
+        .filter_map(|r| r["path"].as_str().map(str::to_string))
+        .collect();
+    for forbidden in [".firetrail", ".firetrail/records"] {
+        assert!(
+            !paths.iter().any(|p| p == forbidden),
+            "directory entry leaked into diff rows: {forbidden} (paths={paths:?})"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------

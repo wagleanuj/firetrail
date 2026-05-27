@@ -67,6 +67,13 @@ pub fn run(args: &DiffArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliEr
 
     let mut rows = Vec::with_capacity(entries.len());
     for entry in entries {
+        // Skip directory entries that surface from git's tree walk
+        // (e.g. `.firetrail`, `.firetrail/records`). They're not files
+        // an operator can act on. firetrail-du8.
+        let abs = ctx.ws.root.join(&entry.path);
+        if abs.is_dir() {
+            continue;
+        }
         let class = classify_change(&entry.path);
         let (is_record, kind) = match &class {
             ChangeClass::Memory(k) | ChangeClass::Structural(k) => (true, Some(*k)),

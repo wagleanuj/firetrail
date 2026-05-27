@@ -11,5 +11,13 @@ description = "Context-pack generation for priming downstream agents."
 workspace = true
 
 [dependencies]
+ft-core = { path = "../ft-core", version = "0.0.0" }
+ft-storage = { path = "../ft-storage", version = "0.0.0" }
+ft-index = { path = "../ft-index", version = "0.0.0" }
 serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

@@ -10,6 +10,25 @@ description = "Local ONNX embedding daemon and embedding cache."
 [lints]
 workspace = true
 
+[features]
+# Default keeps CI/build hermetic: no ONNX model download required.
+default = []
+# Enable the real ONNX-backed embedder (`bge-small-en-v1.5`) via `ort`.
+# Disabled by default because it pulls in a native dependency and expects a
+# model file on disk; see crate docs for setup.
+onnx = ["dep:ort"]
+
 [dependencies]
+ft-core = { path = "../ft-core", version = "0.0.0" }
 serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
+rusqlite = { workspace = true }
+blake3 = { workspace = true }
+hex = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+ort = { workspace = true, optional = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

@@ -10,6 +10,23 @@ description = "Hybrid vector + lexical search with ranking over Firetrail record
 [lints]
 workspace = true
 
+[features]
+default = []
+# Enables sqlite-vec extension loading for vector search. When disabled, the
+# engine operates in lexical-only fallback mode (M3 minimum requirement).
+sqlite-vec = ["dep:sqlite-vec"]
+
 [dependencies]
 serde = { workspace = true }
 thiserror = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+rusqlite = { workspace = true, features = ["load_extension"] }
+sqlite-vec = { workspace = true, optional = true }
+ft-core = { path = "../ft-core", version = "0.0.0" }
+ft-storage = { path = "../ft-storage", version = "0.0.0" }
+ft-index = { path = "../ft-index", version = "0.0.0" }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+ft-testkit = { path = "../ft-testkit", version = "0.0.0" }

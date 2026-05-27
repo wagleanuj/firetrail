@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use chrono::Utc;
-use ft_core::{Claim, Identity, Priority, Record, RecordBody, RecordId, Status};
+use ft_core::{Claim, Identity, Priority, Record, RecordBody, RecordId, Relation, Status};
 use ft_index::{
     Index, ListQuery, OrderBy, ReadyQuery, Storage, StorageError, StorageFilter, WalkDirection,
 };
@@ -32,6 +32,7 @@ use tempfile::TempDir;
 struct MemStorage {
     root: PathBuf,
     inner: Mutex<Vec<Record>>,
+    relations: Mutex<Vec<Relation>>,
 }
 
 impl MemStorage {
@@ -39,6 +40,7 @@ impl MemStorage {
         Self {
             root,
             inner: Mutex::new(Vec::new()),
+            relations: Mutex::new(Vec::new()),
         }
     }
 
@@ -55,6 +57,13 @@ impl MemStorage {
         let pos = g.iter().position(|r| &r.envelope.id == id)?;
         let removed = g.remove(pos);
         Some(self.path_for(&removed.envelope.id))
+    }
+
+    /// Inject a relation into the in-memory store so the next
+    /// `rebuild_from` / `refresh` exposes it to the index. This is the
+    /// test analogue of `firetrail dep add` appending to the JSONL log.
+    fn add_relation(&self, rel: Relation) {
+        self.relations.lock().unwrap().push(rel);
     }
 
     fn records_dir(&self) -> PathBuf {
@@ -123,6 +132,10 @@ impl Storage for MemStorage {
 
     fn records_root(&self) -> PathBuf {
         self.records_dir()
+    }
+
+    fn relations(&self) -> Result<Vec<Relation>, StorageError> {
+        Ok(self.relations.lock().unwrap().clone())
     }
 }
 
@@ -321,9 +334,6 @@ fn parent_child_relations_are_derived() {
 
 #[test]
 fn ready_excludes_blocked_records() {
-    use ft_core::Relation;
-    use ft_index::IndexError;
-
     let (_d, mut idx, storage) = fresh_index();
     let blocker = make_task().title("blocker").build();
     let blocked = make_task().title("blocked").build();
@@ -335,13 +345,13 @@ fn ready_excludes_blocked_records() {
     let ready0 = idx.ready(&ReadyQuery::default()).unwrap();
     assert_eq!(ready0.len(), 2);
 
-    // Inject a blocked-by edge by hand (until ft-storage owns relation writes).
-    insert_blocked_by(
-        &idx,
+    // Add a blocked-by edge through Storage and rebuild so the index sees it.
+    storage.add_relation(make_blocked_by(
         &blocked.envelope.id,
         &blocker.envelope.id,
         &make_identity_named("tester"),
-    );
+    ));
+    idx.rebuild_from(&storage).unwrap();
 
     let ready = idx.ready(&ReadyQuery::default()).unwrap();
     assert_eq!(ready.len(), 1);
@@ -359,11 +369,6 @@ fn ready_excludes_blocked_records() {
     assert!(visible.contains(&&blocked.envelope.id));
     // `blocker_closed` is closed → not ready.
     assert!(!visible.contains(&&blocker_closed.envelope.id));
-
-    // Sanity: the helper compiled.
-    let _: fn(&Index, &RecordId, &RecordId, &Identity) = insert_blocked_by;
-    let _: fn(IndexError) -> String = |e| e.to_string();
-    let _: Relation; // keep the import meaningful even though we bypass it
 }
 
 #[test]
@@ -439,9 +444,10 @@ fn dependency_walk_handles_cycles() {
 
     let tester = make_identity_named("tester");
     // a → b → c → a (cycle on blocked-by)
-    insert_blocked_by(&idx, &a.envelope.id, &b.envelope.id, &tester);
-    insert_blocked_by(&idx, &b.envelope.id, &c.envelope.id, &tester);
-    insert_blocked_by(&idx, &c.envelope.id, &a.envelope.id, &tester);
+    storage.add_relation(make_blocked_by(&a.envelope.id, &b.envelope.id, &tester));
+    storage.add_relation(make_blocked_by(&b.envelope.id, &c.envelope.id, &tester));
+    storage.add_relation(make_blocked_by(&c.envelope.id, &a.envelope.id, &tester));
+    idx.rebuild_from(&storage).unwrap();
 
     let walk = idx
         .dependency_walk(&a.envelope.id, WalkDirection::Upstream, 10)
@@ -521,22 +527,15 @@ fn list_limit_and_offset() {
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 
-/// Inject a `blocked-by` edge directly into the index's SQLite database.
-///
-/// Real callers will write a Relation record via `ft-storage` and trigger a
-/// refresh; until that crate lands we exercise the read path by writing the
-/// edge through a side channel.
-fn insert_blocked_by(idx: &Index, from: &RecordId, to: &RecordId, by: &Identity) {
-    let conn = rusqlite::Connection::open(idx.db_path()).unwrap();
-    conn.execute(
-        "INSERT OR IGNORE INTO relations(from_id, to_id, kind, created_at, created_by)
-         VALUES(?1, ?2, 'blocked-by', ?3, ?4)",
-        rusqlite::params![
-            from.as_str(),
-            to.as_str(),
-            Utc::now().to_rfc3339(),
-            by.as_str(),
-        ],
-    )
-    .unwrap();
+/// Build a `blocked-by` [`Relation`] for injection through
+/// [`MemStorage::add_relation`]. The index then ingests it via
+/// `Storage::relations()` on the next `rebuild_from`/`refresh`.
+fn make_blocked_by(from: &RecordId, to: &RecordId, by: &Identity) -> Relation {
+    Relation {
+        from: from.clone(),
+        to: to.clone(),
+        kind: ft_core::RelationKind::BlockedBy,
+        created_at: Utc::now(),
+        created_by: by.clone(),
+    }
 }

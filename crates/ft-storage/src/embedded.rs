@@ -5,7 +5,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use ft_core::{Record, RecordId, RecordKind, state_hash, validate_record_json};
+use ft_core::{Record, RecordId, RecordKind, Relation, state_hash, validate_record_json};
 use ft_git::Repo;
 
 use crate::filter::StorageFilter;
@@ -239,6 +239,42 @@ impl Storage for EmbeddedStorage {
     fn records_root(&self) -> PathBuf {
         self.repo_root.join(RECORDS_DIR)
     }
+
+    fn relations(&self) -> Result<Vec<Relation>, StorageError> {
+        // `ft-cli`'s `link` / `dep` commands still write directly to
+        // `.firetrail/relations.jsonl` (append-only JSONL, one `Relation` per
+        // line). Reading that file here moves ownership of the relation read
+        // path from `ft-index` into `ft-storage`. Promoting writes through the
+        // `Storage` trait is tracked as a follow-up.
+        let path = self.repo_root.join(".firetrail").join("relations.jsonl");
+        read_relations_jsonl(&path)
+    }
+}
+
+/// Parse `.firetrail/relations.jsonl` (one JSON-encoded [`Relation`] per line).
+///
+/// Missing files yield an empty vector; malformed lines surface as
+/// [`StorageError::Invalid`] with the offending line number.
+fn read_relations_jsonl(path: &Path) -> Result<Vec<Relation>, StorageError> {
+    use std::io::{BufRead, BufReader};
+
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let f = File::open(path)?;
+    let mut out = Vec::new();
+    for (lineno, line) in BufReader::new(f).lines().enumerate() {
+        let line = line?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let rel: Relation = serde_json::from_str(&line).map_err(|e| StorageError::Invalid {
+            path: path.to_path_buf(),
+            reason: format!("relations.jsonl line {}: {e}", lineno + 1),
+        })?;
+        out.push(rel);
+    }
+    Ok(out)
 }
 
 /// Build a unique sibling `.tmp` path for an atomic write.
@@ -614,6 +650,53 @@ mod tests {
         for r in &records {
             let back = s.read(&r.envelope.id).unwrap();
             assert_eq!(back.envelope.title, r.envelope.title);
+        }
+    }
+
+    #[test]
+    fn relations_reads_jsonl_log() {
+        use ft_core::{Identity, RelationKind};
+
+        let tr = TestRepo::new().unwrap();
+        let s = open_storage(&tr);
+
+        // Empty / missing log → empty Vec.
+        assert!(s.relations().unwrap().is_empty());
+
+        // Write two relations into `.firetrail/relations.jsonl` directly, the
+        // same path `ft-cli`'s `link`/`dep` commands append to today.
+        let from = make_task().build();
+        let to = make_task().build();
+        let rel = ft_core::Relation {
+            from: from.envelope.id.clone(),
+            to: to.envelope.id.clone(),
+            kind: RelationKind::BlockedBy,
+            created_at: chrono::Utc::now(),
+            created_by: Identity::new("alice").unwrap(),
+        };
+        let log_path = tr.root().join(".firetrail").join("relations.jsonl");
+        std::fs::create_dir_all(log_path.parent().unwrap()).unwrap();
+        let line = serde_json::to_string(&rel).unwrap();
+        std::fs::write(&log_path, format!("{line}\n\n{line}\n")).unwrap();
+
+        let got = s.relations().unwrap();
+        assert_eq!(got.len(), 2);
+        assert_eq!(got[0], rel);
+        assert_eq!(got[1], rel);
+    }
+
+    #[test]
+    fn relations_surfaces_malformed_line() {
+        let tr = TestRepo::new().unwrap();
+        let s = open_storage(&tr);
+        let log_path = tr.root().join(".firetrail").join("relations.jsonl");
+        std::fs::create_dir_all(log_path.parent().unwrap()).unwrap();
+        std::fs::write(&log_path, b"{ not valid json }\n").unwrap();
+        match s.relations().unwrap_err() {
+            StorageError::Invalid { reason, .. } => {
+                assert!(reason.contains("line 1"), "got: {reason}");
+            }
+            other => panic!("expected Invalid, got {other:?}"),
         }
     }
 

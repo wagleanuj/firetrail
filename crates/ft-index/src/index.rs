@@ -138,14 +138,14 @@ impl Index {
             }
         }
 
-        // Ingest the interim `.firetrail/relations.jsonl` log so blocked-by /
-        // related-to edges added via `firetrail dep add` and friends are
-        // queryable. ft-storage will own the canonical relation store in
-        // `firetrail-tq7`; until then this side-channel keeps `ready` honest.
-        let relations_path = relations_log_path_for(storage);
-        let extra = read_relations_log(&relations_path)?;
-        for edge in &extra {
-            insert_relation(&tx, edge)?;
+        // Ingest non-structural edges (`blocked-by`, `related-to`, ...) via
+        // the `Storage::relations()` accessor. `ft-cli`'s `link` / `dep`
+        // commands still write the append-only `.firetrail/relations.jsonl`
+        // log directly; `EmbeddedStorage::relations()` reads that same file.
+        // Promoting writes through the `Storage` trait is a future follow-up.
+        for rel in storage.relations()? {
+            let edge = relation_to_edge(&rel);
+            insert_relation(&tx, &edge)?;
             report.relations_indexed += 1;
         }
 
@@ -233,12 +233,12 @@ impl Index {
             }
         }
 
-        // Re-ingest the interim relations log on every refresh so external
-        // edges added since the last rebuild become visible.
-        let relations_path = relations_log_path_for(storage);
-        let extra = read_relations_log(&relations_path)?;
-        for edge in &extra {
-            insert_relation(&tx, edge)?;
+        // Re-ingest non-structural edges on every refresh so relations added
+        // since the last rebuild become visible. See `rebuild_from` for the
+        // ownership note on `Storage::relations()`.
+        for rel in storage.relations()? {
+            let edge = relation_to_edge(&rel);
+            insert_relation(&tx, &edge)?;
         }
 
         if let Some(sha) = current_head_sha(&self.db_path) {
@@ -1130,12 +1130,6 @@ fn id_from_path(path: &Path) -> Result<RecordId, IndexError> {
     RecordId::from_string(canonical).map_err(|e| IndexError::Integrity(e.to_string()))
 }
 
-/// Resolve the path to the interim `.firetrail/relations.jsonl` log given a
-/// [`Storage`] reference.
-///
-/// The path is derived from [`Storage::records_root`] (which is always
-/// `<root>/.firetrail/records/`) so the helper works for any backend that
-/// honours the canonical layout.
 /// Resolve the git HEAD SHA for the workspace this index lives in.
 ///
 /// `db_path` is `<workspace_root>/.firetrail/index.db`. Walks two levels up
@@ -1148,41 +1142,17 @@ fn current_head_sha(db_path: &Path) -> Option<String> {
     repo.head().ok().map(|h| h.commit_sha)
 }
 
-fn relations_log_path_for(storage: &dyn Storage) -> PathBuf {
-    let root = storage.records_root();
-    // records_root() points at `.firetrail/records/`; the relations log sits
-    // one level up at `.firetrail/relations.jsonl`.
-    root.parent().unwrap_or(&root).join("relations.jsonl")
-}
-
-/// Parse the interim `.firetrail/relations.jsonl` file (one JSON-encoded
-/// [`ft_core::Relation`] per line). Missing files yield an empty vector.
-fn read_relations_log(path: &Path) -> Result<Vec<DerivedEdge>, IndexError> {
-    use std::io::{BufRead, BufReader};
-
-    if !path.exists() {
-        return Ok(Vec::new());
+/// Convert a [`ft_core::Relation`] (as returned by `Storage::relations()`)
+/// into the internal [`DerivedEdge`] representation used by
+/// [`insert_relation`].
+fn relation_to_edge(rel: &ft_core::Relation) -> DerivedEdge {
+    DerivedEdge {
+        from: rel.from.as_str().to_string(),
+        to: rel.to.as_str().to_string(),
+        kind: relation_kind_to_str(rel.kind).to_string(),
+        created_at: rel.created_at,
+        created_by: rel.created_by.clone(),
     }
-    let f = std::fs::File::open(path)?;
-    let mut out = Vec::new();
-    for (lineno, line) in BufReader::new(f).lines().enumerate() {
-        let line = line?;
-        if line.trim().is_empty() {
-            continue;
-        }
-        let rel: ft_core::Relation = serde_json::from_str(&line).map_err(|e| {
-            IndexError::Integrity(format!("relations.jsonl line {}: {e}", lineno + 1))
-        })?;
-        let kind = relation_kind_to_str(rel.kind).to_string();
-        out.push(DerivedEdge {
-            from: rel.from.as_str().to_string(),
-            to: rel.to.as_str().to_string(),
-            kind,
-            created_at: rel.created_at,
-            created_by: rel.created_by,
-        });
-    }
-    Ok(out)
 }
 
 fn relation_kind_to_str(k: RelationKind) -> &'static str {

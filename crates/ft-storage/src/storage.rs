@@ -7,7 +7,7 @@
 
 use std::path::PathBuf;
 
-use ft_core::{Record, RecordId};
+use ft_core::{Record, RecordId, Relation};
 
 use crate::StorageError;
 use crate::filter::StorageFilter;
@@ -62,4 +62,23 @@ pub trait Storage: Send + Sync {
 
     /// Root of the records tree (e.g. `<repo>/.firetrail/records/`).
     fn records_root(&self) -> PathBuf;
+
+    /// Return every relation edge tracked by the backing store.
+    ///
+    /// Today the canonical write path for non-structural relations
+    /// (`blocked-by`, `related-to`, ...) is the append-only
+    /// `.firetrail/relations.jsonl` log written by `firetrail dep add` and
+    /// friends. `ft-index` consumes this method during rebuild/refresh to
+    /// ingest those edges.
+    ///
+    /// The default implementation returns an empty vector so external
+    /// `Storage` backends that have not yet adopted a relation store stay
+    /// forward-compatible.
+    ///
+    /// # Errors
+    ///
+    /// Implementations surface I/O and parse failures via [`StorageError`].
+    fn relations(&self) -> Result<Vec<Relation>, StorageError> {
+        Ok(Vec::new())
+    }
 }

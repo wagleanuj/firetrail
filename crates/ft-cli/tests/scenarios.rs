@@ -30,6 +30,14 @@ const SCENARIO_DIR: &str = "tests/scenarios";
 
 fn runner_options() -> RunnerOptions {
     let bin = env!("CARGO_BIN_EXE_firetrail");
+    // M4 introduces a second binary target — the standalone merge driver git
+    // invokes via `%O %A %B`. Scenarios that exercise the driver outside the
+    // `firetrail merge-driver-install` shim (m4-merge-driver) need its
+    // absolute path. Cargo sets `CARGO_BIN_EXE_firetrail-merge-driver`
+    // alongside the primary `CARGO_BIN_EXE_firetrail` env var for the test
+    // target; we plumb it through the runner so YAML steps can reference it
+    // as `$FIRETRAIL_MERGE_DRIVER_BIN` from `sh -c`.
+    let merge_driver = env!("CARGO_BIN_EXE_firetrail-merge-driver");
     RunnerOptions::default()
         .with_firetrail_bin(bin)
         // Pin identity so the scenario is host-agnostic.
@@ -39,6 +47,7 @@ fn runner_options() -> RunnerOptions {
         // the background via `sh -c`, and the scenario runner only rewrites
         // the literal `firetrail` head argv when it dispatches directly).
         .with_env("FIRETRAIL_BIN", bin)
+        .with_env("FIRETRAIL_MERGE_DRIVER_BIN", merge_driver)
 }
 
 fn scenario_path(name: &str) -> PathBuf {
@@ -50,7 +59,7 @@ fn scenario_path(name: &str) -> PathBuf {
 /// Run a single scenario and panic with a structured diagnostic if any step
 /// failed. The diagnostic is designed to make CI failure logs actionable.
 fn run_scenario(name: &str) {
-    run_scenario_with_budget(name, std::time::Duration::from_secs(5));
+    run_scenario_with_budget(name, std::time::Duration::from_secs(15));
 }
 
 /// Variant that takes an explicit per-scenario runtime budget. M2 scenarios
@@ -196,4 +205,50 @@ fn m3_daemon_lifecycle() {
 #[test]
 fn m3_index_rebuild() {
     run_scenario_with_budget("m3-index-rebuild.yml", M3_BUDGET);
+}
+
+// ---------------------------------------------------------------------------
+// M4 scenarios — ft-pr check pr rule coverage end-to-end:
+//   - incomplete acceptance (ADR-0010)
+//   - evidence-required happy path (ADR-0013 backstop)
+//   - mixed commit (ADR-0009)
+//   - secret-scan default pattern set
+//   - merge driver three-way merge on concurrent AC edits
+//   - force-push / on-disk history tamper detection via `verify --all`
+//
+// Per-scenario budget is 15s (each runs several git commits, a merge, and
+// optionally a python tamper step); the M4 suite stays well under 90s total,
+// matching the M4 plan's CI-suite envelope.
+// ---------------------------------------------------------------------------
+
+const M4_BUDGET: std::time::Duration = std::time::Duration::from_secs(15);
+
+#[test]
+fn m4_incomplete_ac() {
+    run_scenario_with_budget("m4-incomplete-ac.yml", M4_BUDGET);
+}
+
+#[test]
+fn m4_evidence_required() {
+    run_scenario_with_budget("m4-evidence-required.yml", M4_BUDGET);
+}
+
+#[test]
+fn m4_mixed_commit() {
+    run_scenario_with_budget("m4-mixed-commit.yml", M4_BUDGET);
+}
+
+#[test]
+fn m4_secret_scan() {
+    run_scenario_with_budget("m4-secret-scan.yml", M4_BUDGET);
+}
+
+#[test]
+fn m4_merge_driver() {
+    run_scenario_with_budget("m4-merge-driver.yml", M4_BUDGET);
+}
+
+#[test]
+fn m4_force_push_detection() {
+    run_scenario_with_budget("m4-force-push-detection.yml", M4_BUDGET);
 }

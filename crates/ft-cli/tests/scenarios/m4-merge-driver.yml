@@ -1,0 +1,142 @@
+name: m4-merge-driver
+description: |
+  M4 success criterion #5 — the firetrail JSON merge driver handles
+  concurrent acceptance-criteria edits without loss.
+
+  Flow
+  ----
+  1. Init the repo and create a task with one baseline AC; commit on main.
+  2. Install the merge driver (`merge-driver-install` writes the
+     `[merge "firetrail"]` block to `.git/config` and the `merge=firetrail`
+     attribute to `.gitattributes`). The driver itself is the standalone
+     `firetrail-merge-driver` binary; the install pins
+     `driver = firetrail-merge-driver %O %A %B`.
+  3. Branch A adds AC-2 and commits.
+  4. Branch B (from main) adds AC-3 and commits.
+  5. From branch A, merge branch B. Because both sides modified the same
+     `acceptance_criteria` array in the same JSON file, git sees a
+     content conflict and delegates to the configured driver, which
+     unions the lists.
+  6. Assert all three ACs are present after merge.
+  7. Assert `firetrail verify` still passes — the driver re-hashes the
+     merged record and stitches a chain entry so the audit trail holds.
+
+  Driver invocation
+  -----------------
+  The driver binary is wired into `.git/config` by `merge-driver-install`,
+  so the test does not need to call it directly. The scenarios.rs runner
+  exports `FIRETRAIL_MERGE_DRIVER_BIN` (the cargo-resolved absolute path)
+  for scenarios that want to invoke the driver outside git — but for the
+  three-way merge contract, going through `git merge` is the
+  user-facing path and the one we want CI to lock in.
+
+setup:
+  config:
+    storage_mode: embedded
+    strict_identity: false
+    author_email: alice@example.com
+    author_name: Alice Tester
+
+steps:
+  - name: init repo on main
+    run: firetrail init --json --no-hooks --no-agents
+    expect:
+      exit: 0
+
+  - name: install the firetrail merge driver
+    # Adds the .gitattributes line and .git/config block. The binary on
+    # PATH must be named `firetrail-merge-driver`; the install step does
+    # NOT inline an absolute path because production users install the
+    # cargo binary system-wide. In the scenario sandbox we extend PATH
+    # in the merge step below so git can resolve the test-built binary.
+    run: firetrail --json merge-driver-install
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.added_gitattributes: true
+        data.added_git_config: true
+
+  - name: confirm gitattributes is registered
+    run: sh -c 'grep -q "merge=firetrail" .gitattributes'
+    expect:
+      exit: 0
+
+  - name: confirm .git/config wires the driver
+    run: sh -c 'grep -q "firetrail-merge-driver" .git/config'
+    expect:
+      exit: 0
+
+  - name: create a task with one baseline AC on main
+    run: firetrail --json task create "ship the migration"
+    expect:
+      exit: 0
+    capture:
+      task_id: stdout_field=data.record.envelope.id
+
+  - name: add baseline AC
+    run: firetrail --json criteria add ${task_id} "baseline criterion"
+    expect:
+      exit: 0
+
+  - name: commit baseline + task on main
+    run: sh -c 'git add -A && git commit -q -m "task with one AC"'
+    expect:
+      exit: 0
+
+  - name: branch A off main
+    run: git checkout -q -b feature/a
+    expect:
+      exit: 0
+  - name: branch A adds its own AC
+    run: firetrail --json criteria add ${task_id} "branch-a criterion"
+    expect:
+      exit: 0
+  - name: commit branch A
+    run: sh -c 'git add -A && git commit -q -m "branch-a AC"'
+    expect:
+      exit: 0
+
+  - name: branch B off main
+    run: sh -c 'git checkout -q main && git checkout -q -b feature/b'
+    expect:
+      exit: 0
+  - name: branch B adds its own AC
+    run: firetrail --json criteria add ${task_id} "branch-b criterion"
+    expect:
+      exit: 0
+  - name: commit branch B
+    run: sh -c 'git add -A && git commit -q -m "branch-b AC"'
+    expect:
+      exit: 0
+
+  - name: switch back to branch A
+    run: git checkout -q feature/a
+    expect:
+      exit: 0
+
+  - name: merge branch B into A via the firetrail driver
+    # The .git/config driver line is `firetrail-merge-driver %O %A %B`.
+    # We prepend the directory holding the test-built driver binary to
+    # PATH for the lifetime of this one `git merge` so the entry can be
+    # resolved without writing absolute paths into .git/config (which
+    # would be a host-leaking artifact in CI). The runner exports the
+    # absolute binary path via FIRETRAIL_MERGE_DRIVER_BIN.
+    run: sh -c 'export PATH="$(dirname "$FIRETRAIL_MERGE_DRIVER_BIN"):$PATH" && git merge -q --no-edit -m "merge b" feature/b'
+    expect:
+      exit: 0
+
+  - name: verify all three ACs are present after the merge
+    run: firetrail --json show ${task_id}
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.body.acceptance_criteria.0.text: baseline criterion
+        data.record.body.acceptance_criteria.1.text: branch-a criterion
+        data.record.body.acceptance_criteria.2.text: branch-b criterion
+
+  - name: chain still verifies after the three-way merge
+    run: firetrail --json verify ${task_id}
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.failures: 0

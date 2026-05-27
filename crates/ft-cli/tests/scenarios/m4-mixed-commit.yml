@@ -1,0 +1,115 @@
+name: m4-mixed-commit
+description: |
+  M4 success criterion #3 — `check pr` rejects a diff that mixes code with
+  memory-kind records (ADR-0009).
+
+  The mixed-commit rule fires when a memory-kind record (finding,
+  decision, runbook, gotcha, memory, incident) coexists with non-record
+  ("code") paths in the SAME PR diff. Structural records (task/epic/etc.)
+  are deliberately allowed to co-commit with code — that's the canonical
+  workflow for closing a task via a code change.
+
+  Note on scope: ft-pr's rule operates over the FULL diff base..head, not
+  per-commit. The remediation per ADR-0009 is therefore to land memory
+  records on a memory-only PR and the code change on a separate PR; that
+  contract is what this scenario validates.
+
+  Flow
+  ----
+  1. Baseline init on main, commit a structural task too so we have a
+     non-memory baseline.
+  2. Branch to `feature/mixed`, create a memory record AND a code file in
+     the same diff. Assert `check pr` exits 1 with `mixed_commit`.
+  3. On `feature/memory-only`, drop just the memory record (no code) and
+     assert `check pr` is clean — confirming the remediation works.
+
+setup:
+  config:
+    storage_mode: embedded
+    strict_identity: false
+    author_email: alice@example.com
+    author_name: Alice Tester
+
+steps:
+  - name: init repo on main
+    run: firetrail init --json --no-hooks --no-agents
+    expect:
+      exit: 0
+
+  - name: baseline commit on main
+    run: sh -c 'git add -A && git commit -q -m "seed firetrail workspace"'
+    expect:
+      exit: 0
+
+  - name: capture base ref
+    run: git rev-parse HEAD
+    expect:
+      exit: 0
+    capture:
+      base_sha: stdout
+
+  - name: branch to feature/mixed
+    run: git checkout -q -b feature/mixed
+    expect:
+      exit: 0
+
+  - name: create a memory record on the branch
+    run: firetrail --json memory create "release notes" --body "no secrets here"
+    expect:
+      exit: 0
+
+  - name: also add a code file (no AKIA, no API keys)
+    run: sh -c 'printf "fn main() {}\n" > main.rs'
+    expect:
+      exit: 0
+
+  - name: commit memory + code in the same commit
+    run: sh -c 'git add -A && git commit -q -m "mixed memory plus code"'
+    expect:
+      exit: 0
+
+  - name: capture mixed head ref
+    run: git rev-parse HEAD
+    expect:
+      exit: 0
+    capture:
+      mixed_head: stdout
+
+  - name: check pr blocks the mixed commit (ADR-0009)
+    run: firetrail --json check pr ${base_sha} ${mixed_head}
+    expect:
+      exit: 1
+      stderr_contains: mixed_commit
+      stderr_json_path:
+        error.kind: user_error
+        error.details.report.findings.0.rule: mixed_commit
+        error.details.report.findings.0.severity: error
+
+  - name: switch back to main and branch fresh for the memory-only remediation
+    run: sh -c 'git checkout -q main && git checkout -q -b feature/memory-only'
+    expect:
+      exit: 0
+
+  - name: create the memory record without any code change
+    run: firetrail --json memory create "release notes" --body "memory only"
+    expect:
+      exit: 0
+
+  - name: commit the memory record by itself
+    run: sh -c 'git add -A && git commit -q -m "memory only PR"'
+    expect:
+      exit: 0
+
+  - name: capture memory-only head ref
+    run: git rev-parse HEAD
+    expect:
+      exit: 0
+    capture:
+      mem_only_head: stdout
+
+  - name: check pr passes for the memory-only PR (ADR-0009 remediation)
+    run: firetrail --json check pr ${base_sha} ${mem_only_head}
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.report.summary.errors: 0

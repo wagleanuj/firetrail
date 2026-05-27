@@ -1,0 +1,117 @@
+name: m4-incomplete-ac
+description: |
+  M4 success criterion #1 — `check pr --strict` blocks a PR that closes a
+  task while acceptance criteria are still unchecked (ADR-0010).
+
+  Flow
+  ----
+  1. On `main`, init the workspace and create a task with two ACs; commit.
+  2. Branch to `feature/skip-acs`.
+  3. Force-close the task WITHOUT checking the ACs (the close subcommand
+     requires either every AC checked or `--force --reason`; we exercise
+     the force path because plain `close` would reject the request before
+     it ever reaches the PR check).
+  4. Commit the closure on the feature branch.
+  5. Run `firetrail check pr main..feature/skip-acs --strict`. The
+     `IncompleteAcceptance` rule must fire as a blocking error.
+
+  Why force-close
+  ---------------
+  The CLI's pre-write guard (`close` with unchecked ACs) is the first line
+  of defense; the `check pr` rule is the audit-trail backstop that catches
+  records closed locally with `--force --reason "…"` and then proposed as
+  a PR. ADR-0010 explicitly admits the force path as a reviewable escape
+  hatch, and this scenario verifies the PR-time enforcement that follows.
+
+setup:
+  config:
+    storage_mode: embedded
+    strict_identity: false
+    author_email: alice@example.com
+    author_name: Alice Tester
+
+steps:
+  - name: init repo on main
+    run: firetrail init --json --no-hooks --no-agents
+    expect:
+      exit: 0
+
+  - name: stage init artifacts
+    run: git add -A
+    expect:
+      exit: 0
+  - name: baseline commit on main
+    run: git commit -q -m "seed firetrail workspace"
+    expect:
+      exit: 0
+
+  - name: create task on main
+    run: firetrail --json task create "Ship the migration"
+    expect:
+      exit: 0
+    capture:
+      task_id: stdout_field=data.record.envelope.id
+
+  - name: add AC 1
+    run: firetrail --json criteria add ${task_id} "migrate the table"
+    expect:
+      exit: 0
+  - name: add AC 2
+    run: firetrail --json criteria add ${task_id} "backfill the new column"
+    expect:
+      exit: 0
+
+  - name: commit task + ACs on main
+    run: sh -c 'git add -A && git commit -q -m "create task with 2 ACs"'
+    expect:
+      exit: 0
+
+  - name: capture base ref
+    run: git rev-parse HEAD
+    expect:
+      exit: 0
+    capture:
+      base_sha: stdout
+
+  - name: branch off main
+    run: git checkout -q -b feature/skip-acs
+    expect:
+      exit: 0
+
+  - name: plain close is rejected before reaching the PR check
+    # Pre-write guard fires; PR-side rule never sees an incomplete-closed
+    # record unless --force is used. Recorded here to make the test
+    # contract self-documenting.
+    run: firetrail --json close ${task_id}
+    expect:
+      exit: 1
+      stderr_json_path:
+        error.kind: user_error
+
+  - name: force-close the task without checking ACs
+    run: firetrail --json close ${task_id} --force --reason "Tracked externally; closing for demo"
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.envelope.status: closed
+
+  - name: commit the closure
+    run: sh -c 'git add -A && git commit -q -m "force-close task without checking ACs"'
+    expect:
+      exit: 0
+
+  - name: capture head ref
+    run: git rev-parse HEAD
+    expect:
+      exit: 0
+    capture:
+      head_sha: stdout
+
+  - name: check pr --strict surfaces incomplete_acceptance as a blocking error
+    run: firetrail --json check pr ${base_sha} ${head_sha} --strict
+    expect:
+      exit: 1
+      stderr_json_path:
+        error.kind: user_error
+        error.details.report.findings.0.rule: incomplete_acceptance
+        error.details.report.findings.0.severity: error

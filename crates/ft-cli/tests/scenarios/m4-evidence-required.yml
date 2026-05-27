@@ -1,0 +1,144 @@
+name: m4-evidence-required
+description: |
+  M4 success criterion #2 — high-stakes records must reach `Verified` with
+  recorded evidence (ADR-0013).
+
+  Two-layer enforcement
+  ---------------------
+  The CLI enforces evidence at the trust state-machine level: `firetrail
+  memory promote` rejects a Reviewed→Verified path for a high-stakes
+  record unless `--evidence-url` is supplied (caught here as the
+  state-machine guard). The `check pr` rule is the audit-time backstop
+  that fires whenever a high-stakes record reaches Verified within the
+  diff and the head record does NOT carry an `evidence:` marker on the
+  last history entry's `ops_summary`. Together they form belt-and-braces
+  coverage of ADR-0013.
+
+  Current state and the marker gap
+  --------------------------------
+  At time of writing, `firetrail memory promote` does NOT yet write the
+  `evidence:` marker into `HistoryEntry::ops_summary`, even when the
+  reviewer supplies `--evidence-url`. The transition is recorded as
+  `Reviewed→Verified (reason)`, and the evidence URL lives on the
+  structured TrustTransition payload — but ft-pr's rule reads the
+  ops_summary string. This scenario locks in the observable behaviour
+  (the PR rule fires whenever a high-stakes record reaches Verified in
+  the diff) so any future fix to also write the marker will be a
+  visible, intentional change. The follow-up to plumb the marker into
+  the CLI's promote path is filed alongside this scenario.
+
+setup:
+  config:
+    storage_mode: embedded
+    strict_identity: false
+    author_email: alice@example.com
+    author_name: Alice Tester
+
+steps:
+  - name: init repo on main
+    run: firetrail init --json --no-hooks --no-agents
+    expect:
+      exit: 0
+
+  - name: stage init artifacts
+    run: git add -A
+    expect:
+      exit: 0
+  - name: baseline commit on main
+    run: git commit -q -m "seed firetrail workspace"
+    expect:
+      exit: 0
+
+  - name: alice creates a high-stakes finding
+    run: firetrail --json finding create "Token bypass under load" --details "Auth tokens past TTL accepted on the legacy edge." --risk-class security
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.body.trust: draft
+        data.record.body.risk_class: security
+    capture:
+      finding_id: stdout_field=data.record.envelope.id
+
+  - name: commit the draft finding
+    run: sh -c 'git add -A && git commit -q -m "alice captures high-stakes finding"'
+    expect:
+      exit: 0
+
+  - name: capture base ref
+    run: git rev-parse HEAD
+    expect:
+      exit: 0
+    capture:
+      base_sha: stdout
+
+  - name: branch off main
+    run: git checkout -q -b feature/promote-finding
+    expect:
+      exit: 0
+
+  - name: bob reviews the finding (draft → reviewed)
+    run: firetrail --json memory review ${finding_id} --reason "log review"
+    env:
+      FIRETRAIL_AUTHOR: bob@example.com
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.body.trust: reviewed
+
+  - name: carol cannot promote a high-stakes finding without evidence (state-machine guard)
+    # First line of ADR-0013 enforcement: the CLI refuses before the
+    # file is written. This is what every agent path hits.
+    run: firetrail --json memory promote ${finding_id} --reason "trust me"
+    env:
+      FIRETRAIL_AUTHOR: carol@example.com
+    expect:
+      exit: 1
+      stderr_contains: "high-stakes"
+      stderr_json_path:
+        error.kind: user_error
+
+  - name: carol promotes with evidence (reviewed → verified)
+    run: firetrail --json memory promote ${finding_id} --reason "validated by load test" --evidence-url "https://ci.example.com/runs/42"
+    env:
+      FIRETRAIL_AUTHOR: carol@example.com
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.body.trust: verified
+
+  - name: commit the trust transitions
+    run: sh -c 'git add -A && git commit -q -m "bob and carol promote with evidence"'
+    expect:
+      exit: 0
+
+  - name: capture head ref
+    run: git rev-parse HEAD
+    expect:
+      exit: 0
+    capture:
+      head_sha: stdout
+
+  - name: check pr surfaces evidence_required (CLI marker gap — see description)
+    # This is the audit backstop firing: the head record IS Verified +
+    # high-stakes, but ops_summary does not yet carry an `evidence:`
+    # prefix. The scenario asserts the rule fires today; the follow-up
+    # CLI fix should make this transition into the clean-PR branch
+    # below.
+    run: firetrail --json check pr ${base_sha} ${head_sha}
+    expect:
+      exit: 1
+      stderr_contains: evidence
+      stderr_json_path:
+        error.kind: user_error
+        error.details.report.findings.0.rule: evidence_required
+        error.details.report.findings.0.severity: error
+
+  - name: chain still verifies after Draft→Reviewed→Verified with evidence
+    # The record itself is valid — the only divergence is between
+    # ft-pr's marker contract and the CLI's history payload. Verify is
+    # the on-disk chain check and is unaffected.
+    run: firetrail --json verify ${finding_id}
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.failures: 0

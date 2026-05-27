@@ -1,0 +1,97 @@
+name: m4-force-push-detection
+description: |
+  M4 success criterion #6 — a force-push that rewrites `.firetrail/records/`
+  history is detected by client-side `verify --all`.
+
+  Realism vs scenario sandbox
+  ---------------------------
+  An actual force-push only matters across a remote; this scenario has
+  no remote. Per the M4 plan, the on-wire push is a server-side concern
+  surfaced by the pre-receive hook scaffold (`firetrail server-hooks
+  install`, which is verified by `m4_pr_surface::server_hooks_install_...`).
+  The client-side promise is what we exercise here: regardless of how a
+  history rewrite arrived on disk, `firetrail verify --all` MUST flag it.
+
+  Flow
+  ----
+  1. Create a finding, then promote it through Reviewed (yielding TWO
+     history entries: Create + trust transition). Commit.
+  2. Confirm `verify --all` is clean before tampering.
+  3. Simulate a force-push by surgically deleting the last history entry
+     in-place via python3 — this is the kind of rewrite a hostile (or
+     buggy) merge would produce. The state_hash field is left untouched
+     so the corruption is "stealthy": the only signal is the recomputed
+     state_hash diverging from the stored value.
+  4. Assert `verify --all` exits non-zero with a state_hash mismatch on
+     exactly one record.
+
+setup:
+  config:
+    storage_mode: embedded
+    strict_identity: false
+    author_email: alice@example.com
+    author_name: Alice Tester
+
+steps:
+  - name: init repo
+    run: firetrail init --json --no-hooks --no-agents
+    expect:
+      exit: 0
+
+  - name: baseline commit
+    run: sh -c 'git add -A && git commit -q -m "seed firetrail workspace"'
+    expect:
+      exit: 0
+
+  - name: alice creates a finding
+    run: firetrail --json finding create "edge cache thrash" --details "request bursts evict the hot set" --risk-class performance
+    expect:
+      exit: 0
+    capture:
+      finding_id: stdout_field=data.record.envelope.id
+
+  - name: bob reviews the finding (appends a second history entry)
+    run: firetrail --json memory review ${finding_id} --reason "log review"
+    env:
+      FIRETRAIL_AUTHOR: bob@example.com
+    expect:
+      exit: 0
+
+  - name: commit the finding + review
+    run: sh -c 'git add -A && git commit -q -m "alice and bob capture and review"'
+    expect:
+      exit: 0
+
+  - name: verify --all is clean before tampering
+    run: firetrail --json verify --all
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.failures: 0
+
+  - name: simulate a history-rewriting force-push by truncating the chain
+    # Drop the most recent history entry in place. The `state_hash` field
+    # is *not* touched, so the only divergence is what `verify` is
+    # designed to catch — the recomputed canonical hash no longer matches
+    # the stored one. python3 is used (rather than sed/jq) because portable
+    # in-place JSON editing across BSD and GNU userlands is otherwise
+    # painful; python3 is universally available on the platforms ft-cli
+    # supports through M4 (see m2-force-push-detection for the same
+    # rationale).
+    run: python3 -c "import json,glob; p=glob.glob('.firetrail/records/finding/*.json')[0]; d=json.load(open(p)); assert len(d['envelope']['history']) >= 2, d['envelope']['history']; d['envelope']['history']=d['envelope']['history'][:-1]; open(p,'w').write(json.dumps(d, separators=(',',':'))); print(p)"
+    expect:
+      exit: 0
+      stdout_contains: ".firetrail/records/finding/"
+
+  - name: verify --all detects the rewrite via state_hash mismatch
+    # Two error shapes are acceptable here. The walk-everything path
+    # surfaces a state_hash mismatch as a per-record failure; the
+    # important contract is that exit != 0 and that the failure reason
+    # is structurally a hash divergence (state_hash mismatch).
+    run: firetrail --json verify --all
+    expect:
+      exit: 1
+      stderr_contains: "state_hash mismatch"
+      stderr_json_path:
+        error.kind: user_error
+        error.details.failures: 1

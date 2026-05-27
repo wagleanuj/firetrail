@@ -10,6 +10,12 @@ description = "SQLite + sqlite-vec read index for Firetrail records."
 [lints]
 workspace = true
 
+[features]
+# Opt-in marker for slow, fixture-heavy tests (e.g. 1000-record perf bench).
+# Default `cargo test -p ft-index` does NOT enable this; CI's standard path
+# stays cheap. Run with `cargo test -p ft-index --features slow-tests`.
+slow-tests = []
+
 [dependencies]
 rusqlite = { workspace = true }
 serde = { workspace = true }

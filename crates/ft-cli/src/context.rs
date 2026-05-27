@@ -29,7 +29,7 @@ use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
-use ft_core::{Identity, Record, RecordId, Relation, state_hash};
+use ft_core::{Identity, Record, RecordId, Relation, ResolveError, resolve_prefix, state_hash};
 use ft_history::{HistoryDraft, append_history};
 use ft_identity::{DefaultResolver, IdentityResolver};
 use ft_index::Index;
@@ -268,49 +268,69 @@ impl WorkCtx {
 }
 
 /// Resolve `raw` as either a full record id or a unique prefix.
+///
+/// Delegates the prefix-matching logic to [`ft_core::resolve_prefix`] over the
+/// full storage listing. `ResolveError` variants are mapped onto the
+/// appropriate [`CliError`] surface: `Unknown` → `NotFound`, `Ambiguous` →
+/// `UserError` with a structured match list, `Empty` → `UserError`.
 pub fn resolve_record_id(
     command: &str,
     storage: &EmbeddedStorage,
     raw: &str,
 ) -> Result<RecordId, CliError> {
-    // Fast path: already a valid full id.
+    // Fast path: a fully-canonical id skips the storage scan. This avoids
+    // validating every record on disk (which `storage.list` does, surfacing
+    // hash-mismatch errors from unrelated records) when the caller already
+    // typed the precise id they want.
     if let Ok(id) = RecordId::from_string(raw.to_string()) {
-        // Verify it exists.
-        if storage.read(&id).is_ok() {
-            return Ok(id);
-        }
-        return Err(CliError::NotFound {
-            command: command.to_string(),
-            what: raw.to_string(),
-        });
+        return if storage.read(&id).is_ok() {
+            Ok(id)
+        } else {
+            Err(CliError::NotFound {
+                command: command.to_string(),
+                what: raw.to_string(),
+            })
+        };
     }
 
-    // Slow path: walk storage and find unique candidate where the canonical id
-    // (uppercased) starts with `raw` (uppercased) up to the kind separator.
-    let needle = raw.to_ascii_lowercase();
     let candidates = storage.list(&StorageFilter::default()).map_err(|e| {
         CliError::internal(command, format!("scanning storage for prefix match: {e}"))
     })?;
-    let matches: Vec<RecordId> = candidates
-        .into_iter()
-        .filter(|id| id.as_str().to_ascii_lowercase().starts_with(&needle))
-        .collect();
-    match matches.len() {
-        0 => Err(CliError::NotFound {
+    match resolve_prefix(raw, &candidates) {
+        Ok(id) => Ok(id),
+        Err(ResolveError::Empty) => Err(CliError::UserError {
+            command: command.to_string(),
+            message: "empty record id".to_string(),
+            details: serde_json::Value::Null,
+        }),
+        Err(ResolveError::Unknown(_)) => Err(CliError::NotFound {
             command: command.to_string(),
             what: raw.to_string(),
         }),
-        1 => Ok(matches.into_iter().next().expect("len==1")),
-        _ => Err(CliError::UserError {
-            command: command.to_string(),
-            message: format!("`{raw}` is ambiguous; matches multiple records"),
-            details: serde_json::json!({
-                "ambiguous_prefix": raw,
-                "matches": matches.iter().map(|m| m.as_str().to_string()).collect::<Vec<_>>(),
-            }),
-        }),
+        Err(ResolveError::Ambiguous { prefix, matches }) => {
+            let preview: Vec<String> = matches
+                .iter()
+                .take(5)
+                .map(|m| m.short(MIN_SHORT_HEX).to_string())
+                .collect();
+            Err(CliError::UserError {
+                command: command.to_string(),
+                message: format!(
+                    "`{raw}` is ambiguous; matches {n} records (showing up to 5): {preview}",
+                    n = matches.len(),
+                    preview = preview.join(", "),
+                ),
+                details: serde_json::json!({
+                    "ambiguous_prefix": prefix,
+                    "matches": matches.iter().map(|m| m.as_str().to_string()).collect::<Vec<_>>(),
+                }),
+            })
+        }
     }
 }
+
+/// Display length (in hex chars) for short-form ids in ambiguity messages.
+const MIN_SHORT_HEX: usize = 8;
 
 /// Path of the interim relation log.
 #[must_use]

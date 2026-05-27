@@ -46,7 +46,10 @@ pub use enums::{
 };
 pub use error::CoreError;
 pub use hash::{canonical_json, state_hash};
-pub use id::{HASH_HEX_LEN, MIN_DISPLAY_PREFIX, RecordId, RecordKind, build_display_table};
+pub use id::{
+    HASH_HEX_LEN, MIN_DISPLAY_PREFIX, RecordId, RecordKind, ResolveError, build_display_table,
+    resolve_prefix,
+};
 pub use identity::Identity;
 pub use label::{HistoryEntry, Label};
 pub use record::{

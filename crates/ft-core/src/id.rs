@@ -228,6 +228,117 @@ impl std::fmt::Display for RecordId {
     }
 }
 
+/// Failure modes for [`resolve_prefix`].
+///
+/// All variants are `Clone + Eq` so callers can assert on them in tests.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ResolveError {
+    /// The supplied prefix was empty or whitespace-only.
+    #[error("empty record-id prefix")]
+    Empty,
+
+    /// No candidate matched the supplied prefix.
+    #[error("no record matches prefix `{0}`")]
+    Unknown(String),
+
+    /// More than one candidate matched the supplied prefix.
+    #[error(
+        "prefix `{prefix}` is ambiguous; matches {n} records: {list}",
+        n = matches.len(),
+        list = matches.iter().map(RecordId::as_str).collect::<Vec<_>>().join(", "),
+    )]
+    Ambiguous {
+        /// Original input (normalised lowercase) that produced the collision.
+        prefix: String,
+        /// All matching candidates, preserving input order.
+        matches: Vec<RecordId>,
+    },
+}
+
+/// Resolve a user-typed prefix against `candidates` into a single
+/// [`RecordId`].
+///
+/// # Accepted forms
+///
+/// - **Full canonical id** (`KIND-<64 lowercase hex>`): if it parses via
+///   [`RecordId::from_string`], membership in `candidates` is checked and the
+///   id returned. Missing membership yields [`ResolveError::Unknown`].
+/// - **Kind-prefixed prefix** (`KIND-<short hex>`, e.g. `TASK-abc`): the part
+///   before `-` is matched case-insensitively against the uppercase kind tag
+///   from [`RecordKind::prefix`]. The part after `-` must be a non-empty,
+///   case-insensitive hex string that is matched against the tail of each
+///   candidate of that kind.
+/// - **Bare hex prefix** (e.g. `abc`): matched against the tail of every
+///   candidate regardless of kind.
+///
+/// # Rules
+///
+/// - Empty / whitespace-only input → [`ResolveError::Empty`].
+/// - Non-hex characters in the tail prefix → [`ResolveError::Unknown`].
+/// - Unknown kind tag → [`ResolveError::Unknown`].
+/// - Zero matches → [`ResolveError::Unknown`].
+/// - One match → `Ok(id)`.
+/// - Two-or-more matches → [`ResolveError::Ambiguous`].
+///
+/// # Errors
+///
+/// Returns [`ResolveError`] when the prefix cannot be uniquely resolved.
+pub fn resolve_prefix(prefix: &str, candidates: &[RecordId]) -> Result<RecordId, ResolveError> {
+    let trimmed = prefix.trim();
+    if trimmed.is_empty() {
+        return Err(ResolveError::Empty);
+    }
+
+    // Fast path: full canonical id.
+    if let Ok(full) = RecordId::from_string(trimmed.to_string()) {
+        return candidates
+            .iter()
+            .find(|c| *c == &full)
+            .cloned()
+            .ok_or_else(|| ResolveError::Unknown(trimmed.to_string()));
+    }
+
+    // Parse `KIND-hex` vs bare hex.
+    let (kind_filter, hex_prefix) = if let Some((kind_part, tail_part)) = trimmed.split_once('-') {
+        let Some(kind) = RecordKind::from_prefix(&kind_part.to_ascii_uppercase()) else {
+            return Err(ResolveError::Unknown(trimmed.to_string()));
+        };
+        (Some(kind), tail_part)
+    } else {
+        (None, trimmed)
+    };
+
+    if hex_prefix.is_empty() {
+        return Err(ResolveError::Unknown(trimmed.to_string()));
+    }
+    if !hex_prefix.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(ResolveError::Unknown(trimmed.to_string()));
+    }
+    let hex_lower = hex_prefix.to_ascii_lowercase();
+
+    let matches: Vec<RecordId> = candidates
+        .iter()
+        .filter(|c| match kind_filter {
+            Some(k) => c.kind() == k,
+            None => true,
+        })
+        .filter(|c| {
+            let tail = c.0.split_once('-').expect("RecordId invariant").1;
+            tail.starts_with(&hex_lower)
+        })
+        .cloned()
+        .collect();
+
+    match matches.len() {
+        0 => Err(ResolveError::Unknown(trimmed.to_string())),
+        1 => Ok(matches.into_iter().next().expect("len==1")),
+        _ => Err(ResolveError::Ambiguous {
+            prefix: trimmed.to_ascii_lowercase(),
+            matches,
+        }),
+    }
+}
+
 /// Build an in-memory prefix table from a candidate set.
 ///
 /// Useful for batch list-rendering: compute once, look up many.
@@ -332,6 +443,136 @@ mod tests {
         assert_ne!(disp_a, disp_b);
         assert!(disp_a.len() > "TASK-abcdef".len());
         assert!(disp_b.len() > "TASK-abcdef".len());
+    }
+
+    fn task(hex_tail: &str) -> RecordId {
+        RecordId::from_string(format!("TASK-{hex_tail}")).unwrap()
+    }
+
+    fn epic(hex_tail: &str) -> RecordId {
+        RecordId::from_string(format!("EPIC-{hex_tail}")).unwrap()
+    }
+
+    #[test]
+    fn resolve_prefix_full_id_resolves() {
+        let id = task(&"a".repeat(64));
+        let other = epic(&"b".repeat(64));
+        let candidates = vec![id.clone(), other];
+        let got = resolve_prefix(id.as_str(), &candidates).unwrap();
+        assert_eq!(got, id);
+    }
+
+    #[test]
+    fn resolve_prefix_full_id_not_in_candidates_is_unknown() {
+        let id = task(&"a".repeat(64));
+        let candidates: Vec<RecordId> = vec![];
+        assert_eq!(
+            resolve_prefix(id.as_str(), &candidates),
+            Err(ResolveError::Unknown(id.as_str().to_string()))
+        );
+    }
+
+    #[test]
+    fn resolve_prefix_bare_hex_unique_match() {
+        let a = task(&format!("abc123{}", "0".repeat(58)));
+        let b = epic(&format!("ffeedd{}", "0".repeat(58)));
+        let candidates = vec![a.clone(), b];
+        let got = resolve_prefix("abc12", &candidates).unwrap();
+        assert_eq!(got, a);
+    }
+
+    #[test]
+    fn resolve_prefix_kind_filter_excludes_other_kinds() {
+        let t = task(&format!("abc123{}", "0".repeat(58)));
+        let e = epic(&format!("abc123{}", "1".repeat(58)));
+        let candidates = vec![t.clone(), e];
+        let got = resolve_prefix("TASK-abc", &candidates).unwrap();
+        assert_eq!(got, t);
+    }
+
+    #[test]
+    fn resolve_prefix_kind_filter_is_case_insensitive() {
+        let t = task(&format!("abc123{}", "0".repeat(58)));
+        let candidates = vec![t.clone()];
+        let got = resolve_prefix("task-abc", &candidates).unwrap();
+        assert_eq!(got, t);
+    }
+
+    #[test]
+    fn resolve_prefix_ambiguous_lists_matches() {
+        let a = task(&format!("abc123{}", "0".repeat(58)));
+        let b = task(&format!("abc123{}", "1".repeat(58)));
+        let candidates = vec![a.clone(), b.clone()];
+        let err = resolve_prefix("abc123", &candidates).unwrap_err();
+        match err {
+            ResolveError::Ambiguous { prefix, matches } => {
+                assert_eq!(prefix, "abc123");
+                assert_eq!(matches.len(), 2);
+                let msg = format!(
+                    "{}",
+                    ResolveError::Ambiguous {
+                        prefix: prefix.clone(),
+                        matches: matches.clone(),
+                    }
+                );
+                assert!(msg.contains(a.as_str()));
+                assert!(msg.contains(b.as_str()));
+            }
+            other => panic!("expected Ambiguous, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resolve_prefix_unknown_when_no_match() {
+        let candidates = vec![task(&"a".repeat(64))];
+        assert_eq!(
+            resolve_prefix("deadbe", &candidates),
+            Err(ResolveError::Unknown("deadbe".to_string()))
+        );
+    }
+
+    #[test]
+    fn resolve_prefix_empty_input() {
+        let candidates: Vec<RecordId> = vec![];
+        assert_eq!(resolve_prefix("", &candidates), Err(ResolveError::Empty));
+        assert_eq!(
+            resolve_prefix("   \t", &candidates),
+            Err(ResolveError::Empty)
+        );
+    }
+
+    #[test]
+    fn resolve_prefix_case_insensitive_hex() {
+        let t = task(&format!("abcdef{}", "0".repeat(58)));
+        let candidates = vec![t.clone()];
+        let got = resolve_prefix("ABCDEF", &candidates).unwrap();
+        assert_eq!(got, t);
+        let got2 = resolve_prefix("TASK-ABCDEF", &candidates).unwrap();
+        assert_eq!(got2, t);
+    }
+
+    #[test]
+    fn resolve_prefix_rejects_non_hex_tail() {
+        let t = task(&"a".repeat(64));
+        let candidates = vec![t];
+        assert!(matches!(
+            resolve_prefix("xyz", &candidates),
+            Err(ResolveError::Unknown(_))
+        ));
+        assert!(matches!(
+            resolve_prefix("TASK-xyz", &candidates),
+            Err(ResolveError::Unknown(_))
+        ));
+    }
+
+    #[test]
+    fn resolve_prefix_unknown_kind_tag() {
+        let t = task(&"a".repeat(64));
+        let candidates = vec![t];
+        assert!(matches!(
+            resolve_prefix("BOGUS-abc", &candidates),
+            Err(ResolveError::Unknown(_))
+        ));
     }
 
     #[test]

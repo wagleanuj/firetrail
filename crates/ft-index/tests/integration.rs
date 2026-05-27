@@ -431,6 +431,48 @@ fn refresh_handles_add_modify_delete() {
     assert!(idx.show(&t.envelope.id).is_err());
 }
 
+/// Regression test for firetrail-lr3: `dep add` appends a relation to the
+/// JSONL log but never touches a record file, so an incremental `refresh()`
+/// with empty changed/removed slices used to skip the new edge entirely.
+/// `Index::refresh` now re-ingests `Storage::relations()` on every call to
+/// guarantee `ready` reflects relations added after the last rebuild.
+#[test]
+fn refresh_reingests_relations_added_after_rebuild() {
+    let (_d, mut idx, storage) = fresh_index();
+    let blocker = make_task().title("blocker").build();
+    let blocked = make_task().title("blocked").build();
+    storage.insert(blocker.clone());
+    storage.insert(blocked.clone());
+    idx.rebuild_from(&storage).unwrap();
+
+    // Before the relation is added both tasks are ready.
+    let ready0 = idx.ready(&ReadyQuery::default()).unwrap();
+    assert_eq!(ready0.len(), 2);
+
+    // Simulate `firetrail dep add blocked blocker --type blocked-by`: the
+    // relation lands in `Storage::relations()` but no record file changed.
+    storage.add_relation(make_blocked_by(
+        &blocked.envelope.id,
+        &blocker.envelope.id,
+        &make_identity_named("tester"),
+    ));
+
+    // Incremental refresh with no changed/removed record files — exactly
+    // what the CLI calls after `append_relation`.
+    idx.refresh(&storage, &[], &[]).unwrap();
+
+    let ready = idx.ready(&ReadyQuery::default()).unwrap();
+    assert_eq!(ready.len(), 1, "blocked task must be excluded from ready");
+    assert_eq!(ready[0].id, blocker.envelope.id);
+
+    // And the walk surfaces the edge too.
+    let walk = idx
+        .dependency_walk(&blocked.envelope.id, WalkDirection::Upstream, 5)
+        .unwrap();
+    assert_eq!(walk.len(), 1);
+    assert_eq!(walk[0].to, blocker.envelope.id);
+}
+
 #[test]
 fn dependency_walk_handles_cycles() {
     let (_d, mut idx, storage) = fresh_index();

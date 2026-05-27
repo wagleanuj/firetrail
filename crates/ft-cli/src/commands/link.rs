@@ -35,7 +35,7 @@ pub fn dep_add(args: &DepAddArgs, global: &GlobalOpts) -> Result<CommandOutcome,
 
 /// `firetrail dep remove`
 pub fn dep_remove(args: &DepRemoveArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
-    let ctx = WorkCtx::open(COMMAND_DEP_REMOVE, global.workspace.as_deref())?;
+    let mut ctx = WorkCtx::open(COMMAND_DEP_REMOVE, global.workspace.as_deref())?;
     let from = ctx.resolve_id(&args.from)?;
     let to = ctx.resolve_id(&args.to)?;
     let kind_filter = args.kind.map(RelationKindArg::to_core);
@@ -58,6 +58,13 @@ pub fn dep_remove(args: &DepRemoveArgs, global: &GlobalOpts) -> Result<CommandOu
         });
     }
     rewrite_relations(&ctx.ws, &kept)?;
+    // Removing a relation means the index has stale edges that an additive
+    // `refresh()` can't undo (it only re-derives edges for *changed records*
+    // and otherwise INSERT-OR-IGNOREs from the JSONL). Rebuild from storage
+    // so the relations table reflects the rewritten log (firetrail-lr3).
+    ctx.index
+        .rebuild_from(&ctx.storage)
+        .map_err(|e| CliError::internal(COMMAND_DEP_REMOVE, format!("rebuild: {e}")))?;
     Ok(CommandOutcome::RelationRemoved(RelationOutcome {
         command: COMMAND_DEP_REMOVE,
         from,
@@ -110,6 +117,14 @@ fn write_relation(
         created_by: actor,
     };
     append_relation(&ctx.ws, &relation)?;
+    // `refresh()` re-ingests the relations.jsonl log on every call, so an
+    // otherwise-empty refresh surfaces the just-appended edge to subsequent
+    // `ready` / `graph` / `walk` queries in the same session. Without this
+    // call the index would only see the new edge after a manual
+    // `firetrail index rebuild` (firetrail-lr3).
+    ctx.index
+        .refresh(&ctx.storage, &[], &[])
+        .map_err(|e| CliError::internal(command, format!("refresh: {e}")))?;
 
     Ok(CommandOutcome::RelationAdded(RelationOutcome {
         command,

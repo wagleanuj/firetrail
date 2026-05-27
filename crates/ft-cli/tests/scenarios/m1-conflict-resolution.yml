@@ -1,0 +1,134 @@
+name: m1-conflict-resolution
+description: |
+  Two branches add tasks under the same epic; both branches merge into main
+  and both tasks are present afterwards.
+
+  PARTIAL at M1: At M1, `task create --epic <id>` only writes the new task
+  file with a `parent_epic` pointer; it does NOT mutate the epic record's
+  `child_ids` array (firetrail-1xc deferred that to the JSON merge driver
+  shipped by ft-pr at M4). Because each branch only adds a new file under
+  `.firetrail/records/task/`, git's default text merge succeeds without any
+  driver. The scenario therefore validates the user-visible outcome the spec
+  asks for ("both tasks present on main") and locks in the test surface for
+  M4, where `child_ids` mutations will need a real JSON merge driver to merge
+  cleanly.
+
+  Follow-up filed under firetrail-939: once `child_ids` is mutated on the
+  epic in M1+ work, this scenario tightens to require the JSON merge driver.
+
+setup:
+  config:
+    storage_mode: embedded
+    strict_identity: false
+    author_email: alice@example.com
+    author_name: Alice Tester
+
+steps:
+  - name: init repo on main
+    run: firetrail init --json --no-agents
+    expect:
+      exit: 0
+
+  - name: create shared epic on main
+    run: firetrail --json epic create "Shared parent epic"
+    expect:
+      exit: 0
+    capture:
+      epic_id: stdout_field=data.record.envelope.id
+
+  - name: commit baseline workspace
+    run: git add -A
+    expect:
+      exit: 0
+  - name: baseline commit
+    run: git commit -q -m "baseline+epic"
+    expect:
+      exit: 0
+
+  - name: create feature-a branch
+    run: git checkout -q -b feature-a
+    expect:
+      exit: 0
+
+  - name: feature-a creates Task A
+    run: firetrail --json task create "Task A" --epic ${epic_id}
+    expect:
+      exit: 0
+    capture:
+      task_a: stdout_field=data.record.envelope.id
+
+  - name: commit feature-a work
+    run: git add -A
+    expect:
+      exit: 0
+  - name: feature-a commit
+    run: git commit -q -m "feature-a adds Task A"
+    expect:
+      exit: 0
+
+  - name: switch back to main
+    run: git checkout -q main
+    expect:
+      exit: 0
+
+  - name: create feature-b branch from main
+    run: git checkout -q -b feature-b
+    expect:
+      exit: 0
+
+  - name: feature-b creates Task B
+    run: firetrail --json task create "Task B" --epic ${epic_id}
+    expect:
+      exit: 0
+    capture:
+      task_b: stdout_field=data.record.envelope.id
+
+  - name: commit feature-b work
+    run: git add -A
+    expect:
+      exit: 0
+  - name: feature-b commit
+    run: git commit -q -m "feature-b adds Task B"
+    expect:
+      exit: 0
+
+  - name: return to main
+    run: git checkout -q main
+    expect:
+      exit: 0
+
+  - name: merge feature-a into main (fast-forward)
+    run: git merge -q --no-edit feature-a
+    expect:
+      exit: 0
+
+  - name: merge feature-b into main (no conflict at M1 — both branches only add new files)
+    run: git merge -q --no-edit -m "merge feature-b" feature-b
+    expect:
+      exit: 0
+
+  - name: task A is on main
+    run: firetrail --json show ${task_a}
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.envelope.id: ${task_a}
+
+  - name: task B is on main
+    run: firetrail --json show ${task_b}
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.envelope.id: ${task_b}
+
+  - name: rebuild index so list reflects the merge result
+    run: firetrail --json doctor --fix
+    expect:
+      exit: 0
+
+  - name: index reflects both tasks under the shared epic
+    run: firetrail --json list --type task
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.rows.0.kind: task

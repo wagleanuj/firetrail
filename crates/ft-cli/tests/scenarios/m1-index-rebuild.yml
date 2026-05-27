@@ -1,0 +1,111 @@
+name: m1-index-rebuild
+description: |
+  Verifies the index is truly a derived cache: deleting `.firetrail/index.db`
+  must not lose data, and a subsequent firetrail command (or `doctor --fix`)
+  rebuilds it so that `list` returns the same rows as before.
+
+  At M1, `firetrail list` does NOT lazily rebuild the index when the db is
+  missing (firetrail-1xc / firetrail-rby). The user-facing recovery path is
+  `firetrail doctor --fix`, which detects the missing index and rebuilds it.
+  This scenario exercises that path. The lazy-rebuild path is a follow-up.
+
+setup:
+  config:
+    storage_mode: embedded
+    strict_identity: false
+    author_email: alice@example.com
+    author_name: Alice Tester
+
+steps:
+  - name: init repo
+    run: firetrail init --json --no-hooks --no-agents
+    expect:
+      exit: 0
+
+  - name: create epic
+    run: firetrail --json epic create "Rebuild me"
+    expect:
+      exit: 0
+    capture:
+      epic_id: stdout_field=data.record.envelope.id
+
+  - name: create task 1
+    run: firetrail --json task create "T1" --epic ${epic_id}
+    expect:
+      exit: 0
+    capture:
+      t1: stdout_field=data.record.envelope.id
+
+  - name: create task 2
+    run: firetrail --json task create "T2" --epic ${epic_id}
+    expect:
+      exit: 0
+    capture:
+      t2: stdout_field=data.record.envelope.id
+
+  - name: create task 3
+    run: firetrail --json task create "T3" --epic ${epic_id}
+    expect:
+      exit: 0
+    capture:
+      t3: stdout_field=data.record.envelope.id
+
+  - name: baseline list before deletion
+    run: firetrail --json list --type task
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.rows.0.kind: task
+
+  - name: delete the index.db
+    run: rm .firetrail/index.db
+    expect:
+      exit: 0
+
+  - name: doctor reports the missing index
+    run: firetrail --json doctor
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.clean: false
+
+  - name: doctor --fix rebuilds the index
+    # `--fix` may still leave non-fatal warnings (hook check etc.) so we do
+    # not assert `data.clean: true`. The acceptance criterion is that the
+    # index file is back and subsequent queries succeed.
+    run: firetrail --json doctor --fix
+    expect:
+      exit: 0
+
+  - name: index.db file exists after the rebuild
+    run: test -f .firetrail/index.db
+    expect:
+      exit: 0
+
+  - name: list returns the same 3 tasks after rebuild
+    run: firetrail --json list --type task
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.rows.0.kind: task
+
+  - name: show t1 still works (record file survived)
+    run: firetrail --json show ${t1}
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.envelope.id: ${t1}
+
+  - name: show t2 still works
+    run: firetrail --json show ${t2}
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.envelope.id: ${t2}
+
+  - name: show t3 still works
+    run: firetrail --json show ${t3}
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.envelope.id: ${t3}

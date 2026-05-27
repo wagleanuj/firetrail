@@ -37,4 +37,4 @@ pub use factories::{
 };
 pub use mock_embedder::MockEmbedder;
 pub use repo::{CmdOutput, StorageMode, TestRepo, TestRepoConfig};
-pub use scenario::ScenarioRunner;
+pub use scenario::{RunnerOptions, ScenarioRunner};

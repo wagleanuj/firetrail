@@ -1,0 +1,121 @@
+name: m1-ac-enforcement
+description: |
+  Covers acceptance-criteria enforcement edges:
+  - close fails while ACs are incomplete; the error envelope names the
+    incomplete ACs (via the `details.incomplete` array)
+  - close succeeds after every AC is checked
+  - --force without --reason is rejected by clap (exit 2)
+  - --force with --reason succeeds and records the reason as a label
+
+setup:
+  config:
+    storage_mode: embedded
+    strict_identity: false
+    author_email: alice@example.com
+    author_name: Alice Tester
+
+steps:
+  - name: init repo
+    run: firetrail init --json --no-hooks --no-agents
+    expect:
+      exit: 0
+
+  - name: create epic
+    run: firetrail --json epic create "AC enforcement epic"
+    expect:
+      exit: 0
+    capture:
+      epic_id: stdout_field=data.record.envelope.id
+
+  - name: create task with 3 ACs
+    run: firetrail --json task create "Task with 3 ACs" --epic ${epic_id}
+    expect:
+      exit: 0
+    capture:
+      task_id: stdout_field=data.record.envelope.id
+
+  - name: add AC 1
+    run: firetrail --json criteria add ${task_id} "first criterion"
+    expect:
+      exit: 0
+  - name: add AC 2
+    run: firetrail --json criteria add ${task_id} "second criterion"
+    expect:
+      exit: 0
+  - name: add AC 3
+    run: firetrail --json criteria add ${task_id} "third criterion"
+    expect:
+      exit: 0
+
+  - name: close fails with 3 incomplete ACs
+    run: firetrail --json close ${task_id}
+    expect:
+      exit: 1
+      stderr_contains: "acceptance criteria"
+      stderr_json_path:
+        error.kind: user_error
+        error.details.incomplete.0.id: ac-01
+        error.details.incomplete.1.id: ac-02
+        error.details.incomplete.2.id: ac-03
+
+  - name: check AC 1
+    run: firetrail --json criteria check ${task_id} 1
+    expect:
+      exit: 0
+  - name: check AC 2
+    run: firetrail --json criteria check ${task_id} 2
+    expect:
+      exit: 0
+
+  - name: close still fails with 1 incomplete AC
+    run: firetrail --json close ${task_id}
+    expect:
+      exit: 1
+      stderr_json_path:
+        error.kind: user_error
+        error.details.incomplete.0.id: ac-03
+
+  - name: check AC 3
+    run: firetrail --json criteria check ${task_id} 3
+    expect:
+      exit: 0
+
+  - name: close succeeds
+    run: firetrail --json close ${task_id}
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.envelope.status: closed
+
+  - name: create second task for force-close coverage
+    run: firetrail --json task create "Force-close demo" --epic ${epic_id}
+    expect:
+      exit: 0
+    capture:
+      forced_id: stdout_field=data.record.envelope.id
+
+  - name: add AC to forced task
+    run: firetrail --json criteria add ${forced_id} "unchecked criterion"
+    expect:
+      exit: 0
+
+  - name: --force without --reason is rejected by clap (exit 2)
+    run: firetrail --json close ${forced_id} --force
+    expect:
+      exit: 2
+
+  - name: --force with --reason succeeds and records the reason as a label
+    run: firetrail --json close ${forced_id} --force --reason "Tracked externally in Jira PAY-123"
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.envelope.status: closed
+        data.record.envelope.labels.0.key: force_close_reason
+        data.record.envelope.labels.0.value: "Tracked externally in Jira PAY-123"
+
+  - name: show surfaces the forced record with the reason label
+    run: firetrail --json show ${forced_id}
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.envelope.labels.0.key: force_close_reason

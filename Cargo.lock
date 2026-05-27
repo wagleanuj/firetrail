@@ -619,9 +619,17 @@ dependencies = [
 name = "ft-history"
 version = "0.0.0"
 dependencies = [
+ "chrono",
+ "ft-core",
+ "ft-git",
+ "ft-storage",
+ "ft-testkit",
  "hex",
+ "proptest",
  "serde",
+ "serde_json",
  "sha2",
+ "tempfile",
  "thiserror 2.0.18",
 ]
 
@@ -728,6 +736,9 @@ dependencies = [
 name = "ft-trust"
 version = "0.0.0"
 dependencies = [
+ "chrono",
+ "ft-core",
+ "proptest",
  "serde",
  "thiserror 2.0.18",
 ]

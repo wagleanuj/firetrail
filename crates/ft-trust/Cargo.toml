@@ -11,5 +11,10 @@ description = "Trust state machine, evidence model, and review workflow."
 workspace = true
 
 [dependencies]
+ft-core = { path = "../ft-core", version = "0.0.0" }
 serde = { workspace = true }
 thiserror = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

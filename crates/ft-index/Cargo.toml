@@ -1,0 +1,23 @@
+[package]
+name = "ft-index"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "SQLite + sqlite-vec read index for Firetrail records."
+
+[lints]
+workspace = true
+
+[dependencies]
+rusqlite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
+ft-core = { path = "../ft-core", version = "0.0.0" }
+
+[dev-dependencies]
+ft-testkit = { path = "../ft-testkit", version = "0.0.0" }
+tempfile = { workspace = true }

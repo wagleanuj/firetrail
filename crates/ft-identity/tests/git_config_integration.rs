@@ -1,9 +1,10 @@
 //! Integration tests: resolve identity through a real `git config` in a
 //! tempdir-backed [`ft_testkit::TestRepo`].
 //!
-//! These tests exercise the only resolution branch that actually shells out:
-//! step 4, `git config user.email`. The git binary must be installed on the
-//! host; if it is not, `TestRepo::new` fails and the test is skipped.
+//! These tests exercise resolution step 4 (`git config user.email`). The
+//! reader uses `ft-git` / `gix` in-process, but `TestRepo` still shells out
+//! to the system `git` binary to seed the repo, so the suite is skipped if
+//! `git` is unavailable.
 
 use ft_identity::{DefaultResolver, IdentityResolver, MockEnv, ResolutionSource, SourceResult};
 use ft_testkit::repo::{TestRepo, TestRepoConfig};

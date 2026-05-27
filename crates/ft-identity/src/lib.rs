@@ -15,8 +15,8 @@
 //! 1. `$FIRETRAIL_AUTHOR` environment variable.
 //! 2. `.firetrail/identity.yml` — the `name` or `email` field.
 //! 3. `.firetrail/config.yml` — the `identity.name` (or `identity.email`) field.
-//! 4. `git config user.email` (and `user.name` as fallback) read by shelling
-//!    out to `git` from the workspace root.
+//! 4. `git config user.email` (and `user.name` as fallback) read via the
+//!    `ft-git` crate's in-process `gix` config snapshot rooted at the workspace.
 //!
 //! If every source declines (no value, not invalid), an
 //! [`IdentityError::Unresolved`] is returned naming every source that was
@@ -44,9 +44,9 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use ft_core::{CoreError, Identity};
+use ft_git::Repo as GitRepo;
 use serde::Deserialize;
 use thiserror::Error;
 
@@ -477,7 +477,7 @@ impl IdentityResolver for DefaultResolver {
 
         // 4. git config user.email
         if resolved.is_none() {
-            let check = check_git_config(&self.workspace_root, self.env.as_ref());
+            let check = check_git_config(&self.workspace_root);
             let outcome = check.result.clone();
             sources_checked.push(check);
             if let SourceResult::Found(v) = outcome {
@@ -595,8 +595,8 @@ where
     }
 }
 
-fn check_git_config(root: &Path, env: &dyn EnvSource) -> SourceCheck {
-    let email = git_config_value(root, "user.email", env);
+fn check_git_config(root: &Path) -> SourceCheck {
+    let email = git_config_value(root, "user.email");
     let result = match email {
         Some(raw) if !raw.trim().is_empty() => match validate_identity_value(&raw) {
             Ok(v) => SourceResult::Found(v),
@@ -604,7 +604,7 @@ fn check_git_config(root: &Path, env: &dyn EnvSource) -> SourceCheck {
         },
         _ => {
             // Fall back to `user.name` (token-shaped) if email is absent.
-            match git_config_value(root, "user.name", env) {
+            match git_config_value(root, "user.name") {
                 Some(raw) if !raw.trim().is_empty() => match validate_identity_value(&raw) {
                     Ok(v) => SourceResult::Found(v),
                     Err(_) => SourceResult::Invalid(raw),
@@ -619,31 +619,21 @@ fn check_git_config(root: &Path, env: &dyn EnvSource) -> SourceCheck {
     }
 }
 
-/// Run `git config --get <key>` in `root`, returning the trimmed value if any.
+/// Look up a `git config` value at the given `key` rooted at `root`.
 ///
-/// Git's config scopes (system / global / local) are honored normally. Two
-/// well-known overrides are forwarded from the [`EnvSource`] when present —
-/// `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_SYSTEM` — so callers (most notably
-/// tests) can pin git to read only a known scope without polluting the host
-/// process environment.
-fn git_config_value(root: &Path, key: &str, env: &dyn EnvSource) -> Option<String> {
-    let mut cmd = Command::new("git");
-    cmd.args(["config", "--get", key]).current_dir(root);
-    for var in [
-        "GIT_CONFIG_GLOBAL",
-        "GIT_CONFIG_SYSTEM",
-        "GIT_CONFIG_NOSYSTEM",
-    ] {
-        if let Some(v) = env.get(var) {
-            cmd.env(var, v);
-        }
-    }
-    let output = cmd.output().ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if value.is_empty() { None } else { Some(value) }
+/// Delegates to [`ft_git::Repo::config_value`], which uses `gix`'s in-process
+/// `config_snapshot` and honors the normal scope chain (system / global /
+/// local). When the path is not a git repository we surface `None`, matching
+/// the previous shell-out's behavior on `git config` failure.
+///
+/// Note: gix reads `GIT_CONFIG_GLOBAL` / `GIT_CONFIG_SYSTEM` /
+/// `GIT_CONFIG_NOSYSTEM` from the process environment (not from a passed-in
+/// `EnvSource`). Tests that want to neutralize ambient git config must
+/// influence the actual process environment — see `isolated_env` in this
+/// crate's tests for the chosen approach.
+fn git_config_value(root: &Path, key: &str) -> Option<String> {
+    let repo = GitRepo::open(root).ok()?;
+    repo.config_value(key).ok().flatten()
 }
 
 // ---------------------------------------------------------------------------
@@ -706,17 +696,17 @@ mod tests {
         root
     }
 
-    /// Build a [`MockEnv`] that disables ambient git config so unit tests
-    /// don't accidentally pick up the developer's real `user.email`.
+    /// Build an empty [`MockEnv`].
     ///
-    /// Production callers don't do this — they want ambient git config
-    /// resolution. Tests that want to assert "git config is empty" must
-    /// neutralize the host environment.
+    /// Historically this helper forwarded `GIT_CONFIG_*` env vars to the
+    /// shell-out so tests didn't pick up the developer's real `user.email`.
+    /// After the refactor to `ft-git` (`gix`-based, no subprocess), isolation
+    /// is achieved differently: the test workspaces are tempdirs that lack a
+    /// `.git/` directory, so `ft_git::Repo::open` fails and `check_git_config`
+    /// returns `NotPresent` regardless of ambient global / system config.
+    /// The helper is retained as the canonical "empty environment" factory.
     fn isolated_env() -> MockEnv {
         MockEnv::new()
-            .with("GIT_CONFIG_GLOBAL", "/dev/null")
-            .with("GIT_CONFIG_SYSTEM", "/dev/null")
-            .with("GIT_CONFIG_NOSYSTEM", "1")
     }
 
     // ---- validate_identity_value --------------------------------------------------

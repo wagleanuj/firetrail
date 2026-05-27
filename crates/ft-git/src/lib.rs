@@ -966,6 +966,50 @@ impl Repo {
         Ok(())
     }
 
+    // ── Config ─────────────────────────────────────────────────────────────
+
+    /// Look up a single `git config` value by dotted key (e.g. `user.email`).
+    ///
+    /// Reads the merged config snapshot via `gix`, honoring the normal scope
+    /// chain (system, global / user, local) and the `GIT_CONFIG_GLOBAL` /
+    /// `GIT_CONFIG_SYSTEM` / `GIT_CONFIG_NOSYSTEM` environment variables that
+    /// gix consults through `gix-config`.
+    ///
+    /// Returns `Ok(None)` when the key is unset OR when the resolved value is
+    /// empty / whitespace-only. The returned string is trimmed.
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`GitError::Gix`] when opening the repository or its config
+    /// snapshot fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ft_git::Repo;
+    /// use ft_testkit::TestRepo;
+    ///
+    /// let tr = TestRepo::new().unwrap();
+    /// let repo = Repo::open(tr.root()).unwrap();
+    /// // TestRepo sets user.email via `git config`.
+    /// assert!(repo.config_value("user.email").unwrap().is_some());
+    /// assert!(repo.config_value("does.not.exist").unwrap().is_none());
+    /// ```
+    pub fn config_value(&self, key: &str) -> Result<Option<String>, GitError> {
+        let r = self.gix()?;
+        let snapshot = r.config_snapshot();
+        let raw = snapshot.string(key);
+        Ok(raw.and_then(|c| {
+            let s = c.to_string();
+            let trimmed = s.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        }))
+    }
+
     // ── Internals ──────────────────────────────────────────────────────────
 
     fn hook_path(&self, name: HookName) -> PathBuf {

@@ -125,6 +125,615 @@ pub enum Command {
 
     /// Render an ASCII dependency tree.
     Graph(GraphArgs),
+
+    /// Create an incident memory record.
+    #[command(subcommand)]
+    Incident(IncidentCmd),
+
+    /// Create a finding memory record.
+    #[command(subcommand)]
+    Finding(FindingCmd),
+
+    /// Create / manage a runbook memory record.
+    #[command(subcommand)]
+    Runbook(RunbookCmd),
+
+    /// Create a decision memory record.
+    #[command(subcommand)]
+    Decision(DecisionCmd),
+
+    /// Create a gotcha memory record.
+    #[command(subcommand)]
+    Gotcha(GotchaCmd),
+
+    /// Memory-record management: create, list, show, lifecycle.
+    #[command(subcommand)]
+    Memory(MemoryCmd),
+
+    /// Quick opportunistic memory capture.
+    Capture(CaptureArgs),
+
+    /// Verify per-record history chain integrity.
+    Verify(VerifyArgs),
+
+    /// PR-time history compaction.
+    Compact(CompactArgs),
+
+    /// Workspace / PR sanity checks.
+    #[command(subcommand)]
+    Check(CheckCmd),
+}
+
+/// Severity selector for `incident create`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[clap(rename_all = "lower")]
+pub enum SeverityArg {
+    /// `sev1` — customer-impacting outage.
+    Sev1,
+    /// `sev2` — major degradation.
+    Sev2,
+    /// `sev3` — minor impact.
+    Sev3,
+    /// `sev4` — informational.
+    Sev4,
+}
+
+impl SeverityArg {
+    /// Convert to `ft_core::Severity`.
+    #[must_use]
+    pub fn to_core(self) -> ft_core::Severity {
+        match self {
+            Self::Sev1 => ft_core::Severity::Sev1,
+            Self::Sev2 => ft_core::Severity::Sev2,
+            Self::Sev3 => ft_core::Severity::Sev3,
+            Self::Sev4 => ft_core::Severity::Sev4,
+        }
+    }
+}
+
+/// Risk-class selector (ADR-0013).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[clap(rename_all = "kebab-case")]
+pub enum RiskClassArg {
+    /// Security risk (high-stakes).
+    Security,
+    /// Availability risk (high-stakes).
+    Availability,
+    /// Data-loss risk (high-stakes).
+    DataLoss,
+    /// Compliance risk (high-stakes).
+    Compliance,
+    /// Performance risk.
+    Performance,
+    /// Correctness risk.
+    Correctness,
+}
+
+impl RiskClassArg {
+    /// Convert to `ft_core::RiskClass`.
+    #[must_use]
+    pub fn to_core(self) -> ft_core::RiskClass {
+        match self {
+            Self::Security => ft_core::RiskClass::Security,
+            Self::Availability => ft_core::RiskClass::Availability,
+            Self::DataLoss => ft_core::RiskClass::DataLoss,
+            Self::Compliance => ft_core::RiskClass::Compliance,
+            Self::Performance => ft_core::RiskClass::Performance,
+            Self::Correctness => ft_core::RiskClass::Correctness,
+        }
+    }
+}
+
+/// Trust-state filter selector.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[clap(rename_all = "snake_case")]
+pub enum TrustStateArg {
+    /// Newly authored.
+    Draft,
+    /// Human-reviewed.
+    Reviewed,
+    /// Verified by two reviewers.
+    Verified,
+    /// Aged out.
+    Stale,
+    /// Deprecated.
+    Deprecated,
+    /// Archived.
+    Archived,
+    /// Superseded.
+    Superseded,
+    /// Rejected.
+    Rejected,
+    /// Redacted.
+    Redacted,
+}
+
+impl TrustStateArg {
+    /// Convert to `ft_core::TrustState`.
+    #[must_use]
+    pub fn to_core(self) -> ft_core::TrustState {
+        match self {
+            Self::Draft => ft_core::TrustState::Draft,
+            Self::Reviewed => ft_core::TrustState::Reviewed,
+            Self::Verified => ft_core::TrustState::Verified,
+            Self::Stale => ft_core::TrustState::Stale,
+            Self::Deprecated => ft_core::TrustState::Deprecated,
+            Self::Archived => ft_core::TrustState::Archived,
+            Self::Superseded => ft_core::TrustState::Superseded,
+            Self::Rejected => ft_core::TrustState::Rejected,
+            Self::Redacted => ft_core::TrustState::Redacted,
+        }
+    }
+}
+
+/// Evidence-kind selector for promotion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[clap(rename_all = "snake_case")]
+pub enum EvidenceKindArg {
+    /// Incident report.
+    IncidentReport,
+    /// Pull request.
+    PullRequest,
+    /// Commit.
+    Commit,
+    /// Dashboard.
+    Dashboard,
+    /// Log query.
+    LogQuery,
+    /// Test result.
+    TestResult,
+    /// Jira ticket.
+    JiraTicket,
+    /// Confluence page.
+    ConfluencePage,
+    /// Manual note.
+    ManualNote,
+}
+
+impl EvidenceKindArg {
+    /// Convert to `ft_core::EvidenceKind`.
+    #[must_use]
+    pub fn to_core(self) -> ft_core::EvidenceKind {
+        match self {
+            Self::IncidentReport => ft_core::EvidenceKind::IncidentReport,
+            Self::PullRequest => ft_core::EvidenceKind::PullRequest,
+            Self::Commit => ft_core::EvidenceKind::Commit,
+            Self::Dashboard => ft_core::EvidenceKind::Dashboard,
+            Self::LogQuery => ft_core::EvidenceKind::LogQuery,
+            Self::TestResult => ft_core::EvidenceKind::TestResult,
+            Self::JiraTicket => ft_core::EvidenceKind::JiraTicket,
+            Self::ConfluencePage => ft_core::EvidenceKind::ConfluencePage,
+            Self::ManualNote => ft_core::EvidenceKind::ManualNote,
+        }
+    }
+}
+
+/// Memory-kind selector for `capture` / `memory list --kind`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[clap(rename_all = "lower")]
+pub enum MemoryKindArg {
+    /// Incident.
+    Incident,
+    /// Finding.
+    Finding,
+    /// Runbook.
+    Runbook,
+    /// Decision.
+    Decision,
+    /// Gotcha.
+    Gotcha,
+    /// Generic memory note.
+    Memory,
+}
+
+impl MemoryKindArg {
+    /// Convert to `ft_core::RecordKind`.
+    #[must_use]
+    pub fn to_core(self) -> ft_core::RecordKind {
+        match self {
+            Self::Incident => ft_core::RecordKind::Incident,
+            Self::Finding => ft_core::RecordKind::Finding,
+            Self::Runbook => ft_core::RecordKind::Runbook,
+            Self::Decision => ft_core::RecordKind::Decision,
+            Self::Gotcha => ft_core::RecordKind::Gotcha,
+            Self::Memory => ft_core::RecordKind::Memory,
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Memory subcommands
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// `firetrail incident …`
+#[derive(Debug, Subcommand)]
+pub enum IncidentCmd {
+    /// Create a new incident.
+    Create(CreateIncidentArgs),
+}
+
+/// `firetrail finding …`
+#[derive(Debug, Subcommand)]
+pub enum FindingCmd {
+    /// Create a new finding.
+    Create(CreateFindingArgs),
+}
+
+/// `firetrail runbook …`
+#[derive(Debug, Subcommand)]
+pub enum RunbookCmd {
+    /// Create a new runbook.
+    Create(CreateRunbookArgs),
+    /// Step subcommands.
+    #[command(subcommand)]
+    Step(RunbookStepCmd),
+}
+
+/// `firetrail runbook step …`
+#[derive(Debug, Subcommand)]
+pub enum RunbookStepCmd {
+    /// Add a step to an existing runbook.
+    Add(RunbookStepAddArgs),
+}
+
+/// `firetrail decision …`
+#[derive(Debug, Subcommand)]
+pub enum DecisionCmd {
+    /// Create a new decision.
+    Create(CreateDecisionArgs),
+}
+
+/// `firetrail gotcha …`
+#[derive(Debug, Subcommand)]
+pub enum GotchaCmd {
+    /// Create a new gotcha.
+    Create(CreateGotchaArgs),
+}
+
+/// `firetrail memory …`
+#[derive(Debug, Subcommand)]
+pub enum MemoryCmd {
+    /// Create a new generic memory note.
+    Create(CreateMemoryArgs),
+    /// List memory records.
+    List(MemoryListArgs),
+    /// List stale memory records.
+    Stale(MemoryStaleArgs),
+    /// Show a memory record with body rendering.
+    Show(MemoryShowArgs),
+    /// Promote Draft → Reviewed.
+    Review(TrustReviewArgs),
+    /// Promote Reviewed → Verified.
+    Promote(TrustPromoteArgs),
+    /// Mark a record Deprecated.
+    Deprecate(TrustReasonArgs),
+    /// Archive a record (terminal).
+    Archive(TrustSimpleArgs),
+    /// Supersede a record by another.
+    Supersede(TrustSupersedeArgs),
+    /// Merge multiple records into a canonical one.
+    Merge(TrustMergeArgs),
+    /// Redact a record (irreversible body wipe).
+    Redact(TrustReasonArgs),
+}
+
+/// Incident creation arguments.
+#[derive(Debug, Args)]
+pub struct CreateIncidentArgs {
+    /// One-line summary of what happened.
+    pub summary: String,
+
+    /// Severity classification.
+    #[arg(long, value_enum)]
+    pub severity: Option<SeverityArg>,
+
+    /// RFC3339 timestamp the incident began (defaults to now).
+    #[arg(long)]
+    pub started_at: Option<String>,
+
+    /// Comma-separated list of services affected.
+    #[arg(long)]
+    pub services: Option<String>,
+
+    /// Risk classification (ADR-0013).
+    #[arg(long, value_enum)]
+    pub risk_class: Option<RiskClassArg>,
+
+    /// Owning scope.
+    #[arg(long)]
+    pub scope: Option<String>,
+}
+
+/// Finding creation arguments.
+#[derive(Debug, Args)]
+pub struct CreateFindingArgs {
+    /// One-line summary.
+    pub summary: String,
+
+    /// Parent incident id, if any.
+    #[arg(long)]
+    pub incident: Option<String>,
+
+    /// Long-form details (markdown).
+    #[arg(long)]
+    pub details: Option<String>,
+
+    /// Risk classification.
+    #[arg(long, value_enum)]
+    pub risk_class: Option<RiskClassArg>,
+
+    /// Comma-separated affected paths.
+    #[arg(long)]
+    pub affected: Option<String>,
+
+    /// Owning scope.
+    #[arg(long)]
+    pub scope: Option<String>,
+}
+
+/// Runbook creation arguments.
+#[derive(Debug, Args)]
+pub struct CreateRunbookArgs {
+    /// Short title.
+    pub title: String,
+
+    /// One-line summary describing when to use the runbook.
+    #[arg(long)]
+    pub summary: String,
+
+    /// Comma-separated `applies_to` service names.
+    #[arg(long)]
+    pub applies_to: Option<String>,
+
+    /// Risk classification.
+    #[arg(long, value_enum)]
+    pub risk_class: Option<RiskClassArg>,
+
+    /// Owning scope.
+    #[arg(long)]
+    pub scope: Option<String>,
+}
+
+/// `firetrail runbook step add` arguments.
+#[derive(Debug, Args)]
+pub struct RunbookStepAddArgs {
+    /// Runbook record id.
+    pub id: String,
+    /// Step description.
+    #[arg(long)]
+    pub description: String,
+    /// Shell command (or other invocation) for the step.
+    #[arg(long)]
+    pub command: Option<String>,
+    /// What the operator should observe.
+    #[arg(long)]
+    pub expected: String,
+}
+
+/// Decision creation arguments.
+#[derive(Debug, Args)]
+pub struct CreateDecisionArgs {
+    /// Short title.
+    pub title: String,
+    /// Background / problem statement.
+    #[arg(long)]
+    pub context: String,
+    /// The decision itself.
+    #[arg(long)]
+    pub decision: String,
+    /// Consequences of the decision.
+    #[arg(long)]
+    pub consequences: Option<String>,
+    /// Risk classification.
+    #[arg(long, value_enum)]
+    pub risk_class: Option<RiskClassArg>,
+    /// Owning scope.
+    #[arg(long)]
+    pub scope: Option<String>,
+}
+
+/// Gotcha creation arguments.
+#[derive(Debug, Args)]
+pub struct CreateGotchaArgs {
+    /// One-line summary.
+    pub summary: String,
+    /// Long-form details (markdown).
+    #[arg(long)]
+    pub details: Option<String>,
+    /// Risk classification.
+    #[arg(long, value_enum)]
+    pub risk_class: Option<RiskClassArg>,
+    /// Comma-separated affected paths.
+    #[arg(long)]
+    pub affected: Option<String>,
+    /// Owning scope.
+    #[arg(long)]
+    pub scope: Option<String>,
+}
+
+/// Memory note creation arguments.
+#[derive(Debug, Args)]
+pub struct CreateMemoryArgs {
+    /// Short title.
+    pub title: String,
+    /// Markdown body (use `--body -` or `firetrail capture` for stdin input).
+    #[arg(long)]
+    pub body: String,
+    /// Comma-separated tags.
+    #[arg(long)]
+    pub tags: Option<String>,
+    /// Risk classification.
+    #[arg(long, value_enum)]
+    pub risk_class: Option<RiskClassArg>,
+    /// Owning scope.
+    #[arg(long)]
+    pub scope: Option<String>,
+}
+
+/// `firetrail memory list` arguments.
+#[derive(Debug, Args)]
+pub struct MemoryListArgs {
+    /// Restrict to a single memory kind.
+    #[arg(long, value_enum)]
+    pub kind: Option<MemoryKindArg>,
+    /// Filter by trust state.
+    #[arg(long, value_enum)]
+    pub trust: Option<TrustStateArg>,
+    /// Filter by risk class.
+    #[arg(long, value_enum)]
+    pub risk_class: Option<RiskClassArg>,
+    /// Only show records whose freshness window has passed.
+    #[arg(long)]
+    pub stale: bool,
+    /// Cap the number of results.
+    #[arg(long)]
+    pub limit: Option<u64>,
+}
+
+/// `firetrail memory stale` arguments.
+#[derive(Debug, Args)]
+pub struct MemoryStaleArgs {
+    /// Restrict to a single memory kind.
+    #[arg(long, value_enum)]
+    pub kind: Option<MemoryKindArg>,
+}
+
+/// `firetrail memory show` arguments.
+#[derive(Debug, Args)]
+pub struct MemoryShowArgs {
+    /// Record id (full or prefix).
+    pub id: String,
+}
+
+/// `firetrail memory review` arguments.
+#[derive(Debug, Args)]
+pub struct TrustReviewArgs {
+    /// Record id.
+    pub id: String,
+    /// Free-form reason / review summary.
+    #[arg(long)]
+    pub reason: Option<String>,
+    /// URL pointing to supporting evidence.
+    #[arg(long)]
+    pub evidence_url: Option<String>,
+}
+
+/// `firetrail memory promote` arguments.
+#[derive(Debug, Args)]
+pub struct TrustPromoteArgs {
+    /// Record id.
+    pub id: String,
+    /// Free-form reason.
+    #[arg(long)]
+    pub reason: Option<String>,
+    /// URL pointing to supporting evidence.
+    #[arg(long)]
+    pub evidence_url: Option<String>,
+    /// Evidence kind (defaults to `manual_note`).
+    #[arg(long, value_enum)]
+    pub evidence_type: Option<EvidenceKindArg>,
+}
+
+/// `firetrail memory deprecate` / `… redact` arguments.
+#[derive(Debug, Args)]
+pub struct TrustReasonArgs {
+    /// Record id.
+    pub id: String,
+    /// Reason (required).
+    #[arg(long)]
+    pub reason: String,
+}
+
+/// `firetrail memory archive` arguments.
+#[derive(Debug, Args)]
+pub struct TrustSimpleArgs {
+    /// Record id.
+    pub id: String,
+}
+
+/// `firetrail memory supersede` arguments.
+#[derive(Debug, Args)]
+pub struct TrustSupersedeArgs {
+    /// Record id being superseded.
+    pub id: String,
+    /// Successor record id.
+    #[arg(long = "with")]
+    pub successor: String,
+    /// Optional reason.
+    #[arg(long)]
+    pub reason: Option<String>,
+}
+
+/// `firetrail memory merge` arguments.
+#[derive(Debug, Args)]
+pub struct TrustMergeArgs {
+    /// Canonical record id (kept; others are superseded by it).
+    pub canonical: String,
+    /// Other record ids to fold into the canonical record.
+    #[arg(required = true)]
+    pub others: Vec<String>,
+    /// Optional reason recorded on each supersede transition.
+    #[arg(long)]
+    pub reason: Option<String>,
+}
+
+/// `firetrail capture` arguments.
+#[derive(Debug, Args)]
+pub struct CaptureArgs {
+    /// Memory kind (defaults to generic `memory`).
+    #[arg(long, value_enum, default_value_t = MemoryKindArg::Memory)]
+    pub kind: MemoryKindArg,
+    /// Title / summary (required).
+    #[arg(long)]
+    pub title: String,
+    /// Body content. If omitted, the body is read from stdin.
+    #[arg(long)]
+    pub body: Option<String>,
+    /// Comma-separated tags.
+    #[arg(long)]
+    pub tags: Option<String>,
+    /// Risk classification.
+    #[arg(long, value_enum)]
+    pub risk_class: Option<RiskClassArg>,
+    /// Owning scope.
+    #[arg(long)]
+    pub scope: Option<String>,
+}
+
+/// `firetrail verify` arguments.
+#[derive(Debug, Args)]
+pub struct VerifyArgs {
+    /// Specific record id to verify; verifies every record when omitted.
+    pub id: Option<String>,
+    /// Force walking every record (default when no id is provided).
+    #[arg(long)]
+    pub all: bool,
+}
+
+/// `firetrail compact` arguments.
+#[derive(Debug, Args)]
+pub struct CompactArgs {
+    /// Compact a single record id.
+    pub id: Option<String>,
+    /// Compact every record changed between two git refs (`base..head`).
+    #[arg(long, conflicts_with = "id")]
+    pub pr: Option<String>,
+}
+
+/// `firetrail check …`
+#[derive(Debug, Subcommand)]
+pub enum CheckCmd {
+    /// Validate the records changed between two git refs.
+    Pr(CheckPrArgs),
+}
+
+/// `firetrail check pr` arguments.
+#[derive(Debug, Args)]
+pub struct CheckPrArgs {
+    /// Base git ref of the PR.
+    pub base: String,
+    /// Head git ref of the PR.
+    pub head: String,
 }
 
 /// Arguments for `firetrail init`.

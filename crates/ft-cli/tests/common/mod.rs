@@ -46,6 +46,7 @@ pub fn parse_json(out: &CmdOutput) -> serde_json::Value {
 }
 
 /// Pull the record id out of a successful create-command JSON envelope.
+#[allow(dead_code)]
 pub fn id_from_create(out: &CmdOutput) -> String {
     assert!(out.success(), "create failed: {}", out.stderr);
     let v = parse_json(out);

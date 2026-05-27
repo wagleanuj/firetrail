@@ -64,7 +64,10 @@ fn main() -> ExitCode {
 }
 
 fn dispatch(cli: &Cli) -> Result<commands::CommandOutcome, CliError> {
-    use crate::cli::{BugCmd, CriteriaCmd, DepCmd, EpicCmd, SubtaskCmd, TaskCmd};
+    use crate::cli::{
+        BugCmd, CheckCmd, CriteriaCmd, DecisionCmd, DepCmd, EpicCmd, FindingCmd, GotchaCmd,
+        IncidentCmd, MemoryCmd, RunbookCmd, RunbookStepCmd, SubtaskCmd, TaskCmd,
+    };
     match &cli.command {
         Command::Init(args) => commands::init::run(args, &cli.global),
         Command::Doctor(args) => commands::doctor::run(args, &cli.global),
@@ -94,5 +97,47 @@ fn dispatch(cli: &Cli) -> Result<commands::CommandOutcome, CliError> {
         Command::Ready(args) => commands::list::ready(args, &cli.global),
         Command::Board(args) => commands::board::run(args, &cli.global),
         Command::Graph(args) => commands::graph::run(args, &cli.global),
+
+        Command::Incident(IncidentCmd::Create(args)) => {
+            commands::memory_create::incident(args, &cli.global)
+        }
+        Command::Finding(FindingCmd::Create(args)) => {
+            commands::memory_create::finding(args, &cli.global)
+        }
+        Command::Runbook(RunbookCmd::Create(args)) => {
+            commands::memory_create::runbook(args, &cli.global)
+        }
+        Command::Runbook(RunbookCmd::Step(RunbookStepCmd::Add(args))) => {
+            commands::trust::runbook_step_add(args, &cli.global)
+        }
+        Command::Decision(DecisionCmd::Create(args)) => {
+            commands::memory_create::decision(args, &cli.global)
+        }
+        Command::Gotcha(GotchaCmd::Create(args)) => {
+            commands::memory_create::gotcha(args, &cli.global)
+        }
+
+        Command::Memory(MemoryCmd::Create(args)) => {
+            commands::memory_create::memory(args, &cli.global)
+        }
+        Command::Memory(MemoryCmd::List(args)) => commands::memory_views::list(args, &cli.global),
+        Command::Memory(MemoryCmd::Stale(args)) => commands::memory_views::stale(args, &cli.global),
+        Command::Memory(MemoryCmd::Show(args)) => commands::memory_views::show(args, &cli.global),
+        Command::Memory(MemoryCmd::Review(args)) => commands::trust::review(args, &cli.global),
+        Command::Memory(MemoryCmd::Promote(args)) => commands::trust::promote(args, &cli.global),
+        Command::Memory(MemoryCmd::Deprecate(args)) => {
+            commands::trust::deprecate(args, &cli.global)
+        }
+        Command::Memory(MemoryCmd::Archive(args)) => commands::trust::archive(args, &cli.global),
+        Command::Memory(MemoryCmd::Supersede(args)) => {
+            commands::trust::supersede(args, &cli.global)
+        }
+        Command::Memory(MemoryCmd::Merge(args)) => commands::trust::merge(args, &cli.global),
+        Command::Memory(MemoryCmd::Redact(args)) => commands::trust::redact(args, &cli.global),
+
+        Command::Capture(args) => commands::memory_create::capture(args, &cli.global),
+        Command::Verify(args) => commands::verify::run(args, &cli.global),
+        Command::Compact(args) => commands::compact::run(args, &cli.global),
+        Command::Check(CheckCmd::Pr(args)) => commands::check::pr(args, &cli.global),
     }
 }

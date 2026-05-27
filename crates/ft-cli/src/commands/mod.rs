@@ -6,8 +6,10 @@
 //! needing to know which format is selected.
 
 pub mod board;
+pub mod check;
 pub mod claim;
 pub mod close;
+pub mod compact;
 pub mod create;
 pub mod criteria;
 pub mod doctor;
@@ -15,8 +17,12 @@ pub mod graph;
 pub mod init;
 pub mod link;
 pub mod list;
+pub mod memory_create;
+pub mod memory_views;
 pub mod show;
+pub mod trust;
 pub mod update;
+pub mod verify;
 
 use ft_core::Record;
 use serde::Serialize;
@@ -107,6 +113,16 @@ pub enum CommandOutcome {
     Board(board::BoardOutcome),
     /// `firetrail graph`.
     Graph(graph::GraphOutcome),
+    /// `firetrail verify`.
+    Verify(verify::VerifyOutcome),
+    /// `firetrail compact`.
+    Compact(compact::CompactOutcome),
+    /// `firetrail check pr`.
+    CheckPr(check::CheckPrOutcome),
+    /// `firetrail memory list` / `memory stale`.
+    MemoryList(memory_views::MemoryListOutcome),
+    /// `firetrail memory show`.
+    MemoryShow(memory_views::MemoryShowOutcome),
 }
 
 impl CommandOutcome {
@@ -122,6 +138,11 @@ impl CommandOutcome {
             Self::List(l) => l.command,
             Self::Board(_) => "board",
             Self::Graph(_) => "graph",
+            Self::Verify(_) => "verify",
+            Self::Compact(_) => "compact",
+            Self::CheckPr(_) => "check pr",
+            Self::MemoryList(l) => l.command,
+            Self::MemoryShow(_) => "memory show",
         }
     }
 
@@ -139,6 +160,11 @@ impl CommandOutcome {
             Self::List(l) => l.markdown(),
             Self::Board(b) => b.markdown(),
             Self::Graph(g) => g.markdown(),
+            Self::Verify(v) => v.markdown(),
+            Self::Compact(c) => c.markdown(),
+            Self::CheckPr(c) => c.markdown(),
+            Self::MemoryList(l) => l.markdown(),
+            Self::MemoryShow(s) => s.markdown(),
         }
     }
 
@@ -156,6 +182,11 @@ impl CommandOutcome {
             Self::List(l) => l.quiet_line(),
             Self::Board(b) => b.quiet_line(),
             Self::Graph(g) => g.quiet_line(),
+            Self::Verify(v) => v.quiet_line(),
+            Self::Compact(c) => c.quiet_line(),
+            Self::CheckPr(c) => c.quiet_line(),
+            Self::MemoryList(l) => l.quiet_line(),
+            Self::MemoryShow(s) => s.quiet_line(),
         }
     }
 
@@ -175,6 +206,11 @@ impl CommandOutcome {
             Self::List(l) => serde_json::to_value(l).unwrap_or(Value::Null),
             Self::Board(b) => serde_json::to_value(b).unwrap_or(Value::Null),
             Self::Graph(g) => serde_json::to_value(g).unwrap_or(Value::Null),
+            Self::Verify(v) => serde_json::to_value(v).unwrap_or(Value::Null),
+            Self::Compact(c) => serde_json::to_value(c).unwrap_or(Value::Null),
+            Self::CheckPr(c) => serde_json::to_value(c).unwrap_or(Value::Null),
+            Self::MemoryList(l) => serde_json::to_value(l).unwrap_or(Value::Null),
+            Self::MemoryShow(s) => serde_json::to_value(s).unwrap_or(Value::Null),
         }
     }
 
@@ -192,6 +228,11 @@ impl CommandOutcome {
             Self::List(l) => l.warnings.clone(),
             Self::Board(b) => b.warnings.clone(),
             Self::Graph(g) => g.warnings.clone(),
+            Self::Verify(v) => v.warnings.clone(),
+            Self::Compact(c) => c.warnings.clone(),
+            Self::CheckPr(c) => c.warnings.clone(),
+            Self::MemoryList(l) => l.warnings.clone(),
+            Self::MemoryShow(s) => s.warnings.clone(),
         }
     }
 }

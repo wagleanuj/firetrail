@@ -1,40 +1,369 @@
-# Agent Instructions
+# Firetrail — Agent Build Driver
 
-This project uses **bd** (beads) for issue tracking. Run `bd prime` for full workflow context.
+This file is the entry point for any AI agent (Claude Code, Cursor, or subagent) working on
+the Firetrail codebase. Read it before doing anything. It tells you what we are building,
+how we work, where decisions live, and how to validate that what you produced is correct.
 
-## Quick Reference
+---
 
-```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --claim  # Claim work atomically
-bd close <id>         # Complete work
-bd dolt push          # Push beads data to remote
+## 1. What we are building
+
+**Firetrail** is a repo-native work graph and incident memory system for engineering teams.
+Tasks, incidents, findings, runbooks, decisions, and memory records live as JSON files in
+Git. SQLite + sqlite-vec is a derived read index. Engineers and AI agents read structured
+context via `firetrail prime`, write records via the CLI, and review changes through PRs.
+
+Firetrail itself never calls an LLM at runtime. The reasoning layer is the host agent
+(Claude Code, Cursor, or a human). Firetrail provides structured context and structural
+guardrails.
+
+For the original brief, see `requirements.md`. For the current design, read `docs/`.
+
+---
+
+## 2. The build approach
+
+**One human plus AI subagents. Built in Rust. Parallel where possible, validated everywhere.**
+
+### Workspace layout
+
+A Cargo workspace with many small crates. Each crate is sized to fit one agent's context
+(~2k–5k lines). See `docs/decisions/0016-build-approach.md` for the full rationale.
+
+```
+crates/
+  ft-core/       record types, schema, hash chain
+  ft-storage/    JSON-in-Git read/write, embedded + external modes
+  ft-index/      SQLite + sqlite-vec read index
+  ft-embed/      ONNX daemon, embedding cache
+  ft-identity/   registry, resolution, capabilities
+  ft-scope/      multi-scope routing, CODEOWNERS resolution
+  ft-trust/      trust state machine, evidence, review workflow
+  ft-history/    PR-time compaction, prev_state_hash chain
+  ft-search/     vector + lexical + ranking
+  ft-prime/      context pack generation
+  ft-pr/         check pr, custom merge driver
+  ft-import/     markdown, jira, confluence importers
+  ft-git/        git operations wrapper
+  ft-cli/        clap entry, command dispatch
+  ft-testkit/    shared test fixtures, factories
 ```
 
-## Non-Interactive Shell Commands
+Crates are built in waves. Within a wave, crates are independent and can be implemented
+by separate subagents in parallel git worktrees.
 
-**ALWAYS use non-interactive flags** with file operations to avoid hanging on confirmation prompts.
+```
+Wave 1 (foundation):
+  ft-core, ft-git, ft-testkit
 
-Shell commands like `cp`, `mv`, and `rm` may be aliased to include `-i` (interactive) mode on some systems, causing the agent to hang indefinitely waiting for y/n input.
+Wave 2 (parallel):
+  ft-storage, ft-identity, ft-history
 
-**Use these forms instead:**
-```bash
-# Force overwrite without prompting
-cp -f source dest           # NOT: cp source dest
-mv -f source dest           # NOT: mv source dest
-rm -f file                  # NOT: rm file
+Wave 3 (parallel):
+  ft-index, ft-embed, ft-scope, ft-trust
 
-# For recursive operations
-rm -rf directory            # NOT: rm -r directory
-cp -rf source dest          # NOT: cp -r source dest
+Wave 4 (parallel):
+  ft-search, ft-prime, ft-import, ft-pr
+
+Wave 5:
+  ft-cli (glue layer)
 ```
 
-**Other commands that may prompt:**
-- `scp` - use `-o BatchMode=yes` for non-interactive
-- `ssh` - use `-o BatchMode=yes` to fail instead of prompting
-- `apt-get` - use `-y` flag
-- `brew` - use `HOMEBREW_NO_AUTO_UPDATE=1` env var
+### Subagent assignment
+
+Each subagent receives:
+
+1. The component spec from `docs/components/<crate>.md`.
+2. Relevant ADRs linked from the spec.
+3. The crate skeleton with public API stubbed.
+4. The list of tests that must pass.
+5. **Constraint: do not modify other crates' code.** Public APIs only.
+
+The agent implements until the test list passes. It may add tests if it finds gaps in
+coverage. It must not skip the verifier step (see below).
+
+### Verifier-agent pattern
+
+For every component PR, a second subagent runs as an independent reviewer with this brief:
+
+> You did not write this code. Read the spec, the ADRs, and the diff. Without consulting
+> the author's tests, write three additional tests the implementation should pass. Run
+> them. Report results.
+
+This catches the AI-claims-done-on-broken-code failure mode. Implementer and verifier have
+different prompts and therefore make different mistakes.
+
+---
+
+## 3. Where to find things
+
+```
+requirements.md                Original brief. Historical reference only.
+
+docs/
+├── ARCHITECTURE.md            How the system fits together (entry point — read first)
+├── ROADMAP.md                 Milestones, gates, success criteria per milestone
+├── BUILD_PLAN.md              Phased implementation plan
+├── decisions/                 ADRs — why we chose what we chose
+│   ├── 0001-rust-over-go.md
+│   ├── 0002-json-in-git-not-dolt.md
+│   ├── 0003-pr-compaction-history.md
+│   ├── 0004-multi-scope-records.md
+│   ├── 0005-no-llm-in-tool.md
+│   ├── 0006-storage-modes.md
+│   ├── 0007-local-embeddings-daemon.md
+│   ├── 0008-identity-registry.md
+│   ├── 0009-memory-only-prs.md
+│   ├── 0010-pr-link-enforcement.md
+│   ├── 0011-offline-first.md
+│   ├── 0012-skill-as-agent-docs.md
+│   ├── 0013-trust-model.md
+│   ├── 0014-import-quarantine.md
+│   ├── 0015-hash-based-ids.md
+│   ├── 0016-build-approach.md
+│   ├── 0017-audit-chain-integrity.md
+│   ├── 0018-branch-salvage.md
+│   └── 0019-prime-context-budget.md
+└── components/                Per-crate specs. The contract agents implement against.
+    ├── ft-core.md
+    ├── ft-storage.md
+    └── ...
+```
+
+**Reading order for a new agent:**
+
+1. This file.
+2. `docs/ARCHITECTURE.md` — the integration view.
+3. `docs/decisions/` — read ADRs relevant to your assigned work.
+4. `docs/components/<crate>.md` — the spec for your specific crate.
+5. The crate's `Cargo.toml` and any existing source.
+
+---
+
+## 4. How to pick up work
+
+All work is tracked in beads, the local issue tracker at `.beads/`. Issue prefix is `firetrail`.
+
+```bash
+bd ready                # show unblocked work
+bd ready --json         # same, machine-readable
+bd show firetrail-<id>  # detail view including dependencies and design notes
+bd update <id> --claim  # claim atomically so other agents do not pick the same task
+```
+
+**Rules:**
+
+- Always `bd ready` before asking what to work on.
+- Always `--claim` before starting. If the claim fails, someone else got there first.
+- If you discover related work mid-task, file a new issue with
+  `--deps discovered-from:<parent-id>`. Do not silently expand scope.
+- Close issues only when validation passes (see Section 5). Use
+  `bd close <id> --reason "..."`.
+
+**Naming:**
+
+- Issues created during the build are prefixed `firetrail-<hash>` (e.g. `firetrail-a3f2dd`).
+- Epics group related work. Tasks roll up to epics via `--parent`.
+
+---
+
+## 5. How to validate work
+
+Five layers of testing. Inner-loop development depends on the first three. CI runs all
+five on every PR.
+
+### Layer 0: compile (instant)
+
+Rust's type system is your fastest reviewer. Encode trust transitions, scope routing,
+record kinds, and identity capabilities as `enum` and type-state so incorrect transitions
+are compile errors rather than runtime bugs.
+
+### Layer 1: unit tests (sub-second per crate)
+
+```bash
+cargo nextest run -p ft-<crate>
+```
+
+Pure logic, no filesystem, no SQLite, no Git.
+
+### Layer 2: property tests (seconds)
+
+```bash
+cargo nextest run -p ft-<crate> --features proptest
+```
+
+Use `proptest` for record parsing, scope routing, merge logic, hash chain validation,
+trust transitions. Property tests catch the edge cases AI agents predictably miss —
+empty arrays, deeply nested input, unicode, malformed fields.
+
+### Layer 3: integration tests (seconds to minutes)
+
+```bash
+cargo nextest run --workspace --features integration
+```
+
+Real SQLite (tempfile), real Git repos (tempdir), real filesystem. Use
+`ft_testkit::TestRepo::new()` for isolated workspaces.
+
+### Layer 4: scenario tests (a few minutes)
+
+```bash
+cargo run -p ft-testkit --bin scenarios
+```
+
+Black-box CLI tests. Spawn the `firetrail` binary against a fixture repo, execute a
+sequence of commands, assert observable state. Scenarios live in
+`tests/scenarios/*.scenario`.
+
+### Layer 5: conflict and merge tests (a few minutes)
+
+```bash
+cargo nextest run --workspace --features slow-tests
+```
+
+Two engineers, two branches, conflicting edits, custom merge driver runs, expected final
+state asserted. These catch the concurrency bugs the AI will absolutely miss.
+
+### Validation gates per PR
+
+Before claiming a task as complete, every one of these must pass:
+
+1. `cargo fmt --check`
+2. `cargo clippy -- -D warnings`
+3. `cargo nextest run` (unit + property + integration)
+4. `cargo test --doc`
+5. Scenario suite passes
+6. Verifier subagent signed off (in PR description)
+7. `docs/components/<crate>.md` requirements demonstrably covered by tests
+
+Run the local helper:
+
+```bash
+./scripts/validate.sh
+```
+
+A pre-commit hook runs items 1–3 locally. CI runs all of them on every PR.
+
+### When tests fail
+
+Do not patch around failures. Find the root cause. If a test failure exposes a spec gap,
+update the spec and the ADR before changing the test. Tests describe the contract; the
+contract is the source of truth.
+
+---
+
+## 6. Conventions
+
+### Rust style
+
+- 2024 edition. `cargo fmt` with default config.
+- `clippy::pedantic` on by default; suppress with comments only when justified.
+- Error handling: `thiserror` for library errors, `anyhow` for application code in `ft-cli`.
+- Async: `tokio` for the embedding daemon. Synchronous for everything else.
+- Public APIs documented with `///` doc comments and `cargo test --doc` examples.
+- `#[must_use]` on builder methods and constructors of important state.
+
+### Crate boundaries
+
+- Public API is whatever appears in `lib.rs`. Internal modules are `pub(crate)` by default.
+- Do not depend on another crate's internals. If you need something internal, extend the
+  spec, then expose it via the spec'd public API.
+- Cross-crate types live in `ft-core`. Everything else builds on top.
+
+### Naming
+
+- Records and types: `Record`, `Task`, `Incident`, `Finding` — singular.
+- IDs at the type level: `RecordId`, `TaskId`, etc. — newtype wrappers around `String`.
+- Database operations: `read_record`, `write_record`, `list_records` — verbs first.
+- Errors: `<Domain>Error` — `StorageError`, `IndexError`.
+
+### Commits
+
+- Conventional Commits format (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`).
+- One logical change per commit.
+- Reference the bd issue in the footer: `firetrail-issue: firetrail-a3f2dd`.
+
+### PR descriptions
+
+Every PR must include:
+
+- Linked bd issue: `firetrail-closes: firetrail-a3f2dd`.
+- Summary of what changed and why.
+- Test plan: which gates were run locally, which are running in CI.
+- Verifier signoff section (filled in by the verifier subagent before merge).
+
+---
+
+## 7. Conventions specifically about how AI agents work in this repo
+
+These are the rules that exist because AI agents are doing most of the implementation.
+
+### Never claim done without evidence
+
+A statement like "the tests pass" must be backed by the actual command output. If you
+ran `cargo nextest run` and 47/47 passed, paste the output. Do not summarize.
+
+### Never modify other crates without explicit task
+
+If your spec is `ft-storage` and your work needs a new method on `ft-core`, do not add
+it silently. File a new bd issue (`bd create --deps blocks:<your-task-id>`), block on it,
+and either implement it as a new task or wait for someone else to.
+
+### Never bypass validation gates
+
+If `cargo clippy` fails on a warning you do not understand, the answer is to understand
+it, not to suppress it. The gates exist to catch the specific class of mistakes AI agents
+make.
+
+### Run the verifier before claiming done
+
+The verifier-agent pattern (Section 2) is mandatory. The PR description must include the
+verifier's three additional tests and their results. A claim of done without verifier
+signoff is not done.
+
+### Beads is the only task tracker
+
+- Do not create markdown TODO files.
+- Do not use the host environment's TodoWrite/TaskCreate tools.
+- Do not invent a parallel tracking system.
+- `bd` is the truth.
+
+### Memory and persistent knowledge
+
+Use `bd remember "..."` for insights that should outlive a single session. Do not write
+`MEMORY.md` files. Search via `bd memories <keyword>`.
+
+---
+
+## 8. Session close protocol
+
+When ending a work session you MUST:
+
+1. **File issues for remaining work** — anything discovered but not done.
+2. **Run quality gates** if code changed — `./scripts/validate.sh`.
+3. **Update issue status** — close finished work, update in-progress items.
+4. **Commit and push** — `git add`, `git commit`, `git push`. Work that is not pushed
+   does not exist for the next session.
+5. **Hand off** — final message describes what was done and what is next.
+
+Work is NOT complete until `git push` succeeds.
+
+---
+
+## 9. Open questions, decisions, and discoveries
+
+When you discover something worth recording (a constraint, a design choice, a workaround,
+a non-obvious failure mode), do one of three things:
+
+- **Constraint or design choice with broad implications** → propose a new ADR in
+  `docs/decisions/`. Number it after the latest existing ADR.
+- **Component-level decision** → update the relevant `docs/components/<crate>.md` spec.
+- **Insight or workaround that future agents need** → `bd remember "..."`.
+
+Do not bury decisions in commit messages or PR descriptions. Surface them where future
+agents will find them.
+
+---
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:full hash:f65d5d33 -->
 ## Issue Tracking with bd (beads)

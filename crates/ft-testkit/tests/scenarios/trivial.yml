@@ -1,0 +1,25 @@
+name: trivial
+description: |
+  Create a task via the testkit virtual command, then assert the record file
+  exists. Exercises the YAML parser, step runner, variable capture, and the
+  testkit dispatch path end-to-end without depending on the firetrail binary.
+
+setup:
+  config:
+    storage_mode: embedded
+    strict_identity: false
+    author_email: alice@example.com
+    author_name: Alice
+
+steps:
+  - name: create task
+    run: testkit:create-task --title "trivial task"
+    expect:
+      exit: 0
+    capture:
+      task_id: stdout_field=id
+
+  - name: assert task exists
+    run: testkit:assert-exists --id ${task_id}
+    expect:
+      exit: 0

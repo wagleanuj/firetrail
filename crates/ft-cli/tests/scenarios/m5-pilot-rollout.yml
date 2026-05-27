@@ -10,29 +10,20 @@ description: |
     reported as "out of pilot scope" with a Warning). PRs that touch
     apps/checkout still get the full rule set.
 
-  Current scope (this scenario):
-    `ft_scope::ScopeRegistry::is_scope_enabled` is wired and parses
-    `enabled_scopes`, but `ft_pr::validate_pr` (driven by
-    `firetrail check pr`) does NOT yet read scopes.yaml nor filter
-    findings by the enabled set. This scenario therefore locks in:
+  Behaviour locked in (firetrail-3mt)
+  -----------------------------------
+  `firetrail check pr` loads `.firetrail/scopes.yaml` and threads
+  `enabled_scopes` into `PrValidatorOptions`. `ft_pr::validate_pr` then
+  partitions changed records by pilot membership:
+    - Records whose `owning_scope` is NOT in the list contribute one
+      `Info`-severity `scope_skipped` finding each and are excluded from
+      rule evaluation — no Error findings, exit 0.
+    - Records whose `owning_scope` IS in the list (or that carry no
+      scope) get the full rule set, unchanged from today.
 
-      1. `enabled_scopes` parses and round-trips through `scope list`.
-      2. The current `check pr` surface still runs end-to-end against
-         both a payment-only and a checkout-touching PR, on the same
-         workspace, so the regression baseline is captured.
-
-    Once the ft-pr filter lands (see follow-up issue tracked in beads),
-    the two `check pr` calls below should diverge:
-      - apps/payment PR → exit 0 with a Warning finding noting the scope
-        is out of pilot, OR skipped entirely.
-      - apps/checkout PR → exit 1 with whatever rule findings the diff
-        produces (in this scenario, incomplete_acceptance via a forced
-        close), unchanged from today.
-
-    PENDING(firetrail follow-up): wire `enabled_scopes` into
-    `ft_pr::validate_pr` and update this scenario to assert the
-    diverging surface. The currently-asserted shape is the pre-filter
-    baseline only.
+  This scenario asserts the diverging surface:
+    - apps/payment PR → exit 0 + a single `scope_skipped` Info finding.
+    - apps/checkout PR → exit 1 with `incomplete_acceptance`.
 
 setup:
   config:
@@ -113,15 +104,17 @@ steps:
     capture:
       payment_head: stdout
 
-  - name: |
-      PENDING — `check pr` over a payment-only PR currently surfaces a finding
-      regardless of enabled_scopes. Once ft-pr respects the pilot filter, this
-      should become exit 0 (skipped or warned).
+  - name: check pr over the payment-only PR is skipped by the pilot filter
+    # apps/payment is not in enabled_scopes → ft-pr emits a single
+    # scope_skipped Info finding for the changed record and otherwise
+    # runs no rules, so the PR exits 0 even under --strict.
     run: firetrail --json check pr ${payment_base} ${payment_head} --strict
     expect:
-      exit: 1
-      stderr_json_path:
-        error.kind: user_error
+      exit: 0
+      stdout_json_path:
+        data.report.summary.errors: 0
+        data.report.findings.0.rule: scope_skipped
+        data.report.findings.0.severity: info
 
   # ── Build a checkout-scope task on a second feature branch ────────────────
   - name: back to main

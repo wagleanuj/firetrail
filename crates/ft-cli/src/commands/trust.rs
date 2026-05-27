@@ -20,7 +20,6 @@
 use chrono::Utc;
 use ft_core::{Evidence, Identity, Origin, Record, RecordBody, TrustState};
 use ft_history::{HistoryDraft, HistoryEntryKind};
-use ft_storage::write_with_history;
 use ft_trust::{MemoryBody, TrustTransition, apply_transition, validate_transition};
 
 use crate::cli::{
@@ -298,8 +297,7 @@ fn apply_and_persist(
 
     record.envelope.updated_at = applied.occurred_at;
 
-    // Persist with a TrustTransition history entry. `write_with_history`
-    // re-hashes and atomically writes the file.
+    // Persist with a TrustTransition history entry.
     let summary = format!(
         "{:?}→{:?}{}",
         applied.from,
@@ -310,21 +308,47 @@ fn apply_and_persist(
             .map(|r| format!(" ({r})"))
             .unwrap_or_default(),
     );
+    // Build ops_summary: the transition line is always first (carries the
+    // kind tag prefix expected by ft-history); when this transition shipped
+    // with evidence, append an `evidence: <url>` marker line so ft-pr's
+    // `evidence_required` substring check clears for high-stakes promotions
+    // (ADR-0013).
+    let mut ops_summary = vec![summary];
+    for ev in &applied.evidence {
+        ops_summary.push(format!(
+            "evidence: type={} url={}",
+            evidence_kind_tag(ev.kind),
+            ev.url
+        ));
+    }
     let draft = HistoryDraft {
         merged_via_pr: None,
         timestamp: applied.occurred_at,
         primary_actor: actor.clone(),
         contributors: Vec::new(),
-        ops_summary: vec![summary],
+        ops_summary,
         ops_count: 1,
         kind: HistoryEntryKind::TrustTransition,
     };
-    let path = write_with_history(&ctx.storage, record, draft)
-        .map_err(|e| CliError::internal(command, format!("write: {e}")))?;
-    ctx.index
-        .refresh(&ctx.storage, std::slice::from_ref(&path), &[])
-        .map_err(|e| CliError::internal(command, format!("refresh: {e}")))?;
+    let _ = command; // ctx already carries the command name for error framing
+    ctx.save_record_with_history(record, draft)?;
     Ok(())
+}
+
+/// Short tag for an evidence kind, suitable for embedding inside the
+/// `ops_summary` marker line. Matches the lowercase ADR-0013 vocabulary.
+fn evidence_kind_tag(kind: ft_core::EvidenceKind) -> &'static str {
+    match kind {
+        ft_core::EvidenceKind::IncidentReport => "incident-report",
+        ft_core::EvidenceKind::PullRequest => "pull-request",
+        ft_core::EvidenceKind::Commit => "commit",
+        ft_core::EvidenceKind::Dashboard => "dashboard",
+        ft_core::EvidenceKind::LogQuery => "log-query",
+        ft_core::EvidenceKind::TestResult => "test-result",
+        ft_core::EvidenceKind::JiraTicket => "jira-ticket",
+        ft_core::EvidenceKind::ConfluencePage => "confluence-page",
+        ft_core::EvidenceKind::ManualNote => "manual-note",
+    }
 }
 
 /// Build an `Evidence` vec from an optional URL, attributing it to `actor`.
@@ -380,11 +404,8 @@ pub fn runbook_step_add(
         ops_count: 1,
         kind: HistoryEntryKind::Update,
     };
-    let path = write_with_history(&ctx.storage, &mut record, draft)
-        .map_err(|e| CliError::internal(CMD, format!("write: {e}")))?;
-    ctx.index
-        .refresh(&ctx.storage, std::slice::from_ref(&path), &[])
-        .map_err(|e| CliError::internal(CMD, format!("refresh: {e}")))?;
+    let _ = CMD; // ctx already carries the command name for error framing
+    ctx.save_record_with_history(&mut record, draft)?;
 
     Ok(CommandOutcome::Updated(
         RecordOutcome::new(CMD, record).with_warnings(ctx.warnings.clone()),

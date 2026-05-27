@@ -86,7 +86,9 @@ impl SearchEngine {
         Ok(())
     }
 
-    /// Upsert the lexical (FTS5) row for `record`.
+    /// Upsert the lexical (FTS5) row for `record` and refresh the search
+    /// metadata side table (`records_search_meta`) so trust filtering and
+    /// trust-weighted ranking see the current `trust` from the record body.
     pub fn upsert_lexical(&self, record: &Record) -> Result<(), SearchError> {
         let (title, body) = record_to_text(record);
         // External-content FTS5 doesn't have a unique key constraint we can
@@ -97,6 +99,12 @@ impl SearchEngine {
         self.conn.execute(
             "INSERT INTO records_fts(id, title, body) VALUES (?1, ?2, ?3)",
             params![id_str, title, body],
+        )?;
+        let trust = trust_for_record(record);
+        self.conn.execute(
+            "INSERT INTO records_search_meta(id, trust) VALUES (?1, ?2) \
+             ON CONFLICT(id) DO UPDATE SET trust = excluded.trust",
+            params![id_str, trust_str(trust)],
         )?;
         Ok(())
     }
@@ -124,11 +132,15 @@ impl SearchEngine {
         self.upsert_vector_inner(id, embedding)
     }
 
-    /// Remove all search index entries (lexical + vector) for `id`.
+    /// Remove all search index entries (lexical + vector + meta) for `id`.
     pub fn delete(&self, id: &RecordId) -> Result<(), SearchError> {
         let id_str = id.as_str();
         self.conn
             .execute("DELETE FROM records_fts WHERE id = ?1", params![id_str])?;
+        self.conn.execute(
+            "DELETE FROM records_search_meta WHERE id = ?1",
+            params![id_str],
+        )?;
         if self.vec_loaded {
             self.conn
                 .execute("DELETE FROM records_vec WHERE id_str = ?1", params![id_str])?;
@@ -417,20 +429,23 @@ impl SearchEngine {
     }
 
     fn lookup_meta(&self, id_str: &str) -> Result<Option<RecordMeta>, SearchError> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT kind, title, updated_at, owning_scope FROM records WHERE id = ?1")?;
+        let mut stmt = self.conn.prepare(
+            "SELECT r.kind, r.title, r.updated_at, r.owning_scope, m.trust \
+             FROM records r LEFT JOIN records_search_meta m ON m.id = r.id \
+             WHERE r.id = ?1",
+        )?;
         let row = stmt
             .query_row(params![id_str], |r| {
                 let kind_s: String = r.get(0)?;
                 let title: String = r.get(1)?;
                 let updated_at_s: String = r.get(2)?;
                 let owning_scope: Option<String> = r.get(3)?;
-                Ok((kind_s, title, updated_at_s, owning_scope))
+                let trust_s: Option<String> = r.get(4)?;
+                Ok((kind_s, title, updated_at_s, owning_scope, trust_s))
             })
             .optional()?;
 
-        let Some((kind_s, title, updated_at_s, owning_scope)) = row else {
+        let Some((kind_s, title, updated_at_s, owning_scope, trust_s)) = row else {
             return Ok(None);
         };
         let kind = parse_kind(&kind_s)
@@ -439,12 +454,14 @@ impl SearchEngine {
             .map(|d| d.with_timezone(&Utc))
             .map_err(|e| SearchError::Integrity(format!("bad updated_at `{updated_at_s}`: {e}")))?;
 
-        // Trust comes from the per-kind body, which the relational `records`
-        // table does not currently materialize. For M3, treat work-tracking
-        // kinds (epic/task/subtask/bug) as `Reviewed` (they have no formal
-        // trust state) and memory kinds as `Draft` by default. When `ft-trust`
-        // surfaces a per-record column we will read it here.
-        let trust = default_trust_for_kind(kind);
+        // Prefer the materialised per-record trust (written by
+        // `upsert_lexical` from the record body). Records that pre-date the
+        // side table — or that have never been upserted — fall back to the
+        // kind-driven default so existing scenarios continue to surface.
+        let trust = trust_s
+            .as_deref()
+            .and_then(parse_trust)
+            .unwrap_or_else(|| default_trust_for_kind(kind));
 
         Ok(Some(RecordMeta {
             kind,
@@ -562,6 +579,55 @@ fn filters_pass(meta: &RecordMeta, query: &SearchQuery) -> bool {
         }
     }
     true
+}
+
+/// Read the trust state out of a record body. Memory bodies carry a
+/// `TrustState` field; work-tracking kinds (epic/task/subtask/bug) have no
+/// formal trust and fall back to [`default_trust_for_kind`].
+fn trust_for_record(record: &Record) -> TrustState {
+    match &record.body {
+        RecordBody::Incident(b) => b.trust,
+        RecordBody::Finding(b) => b.trust,
+        RecordBody::Runbook(b) => b.trust,
+        RecordBody::Decision(b) => b.trust,
+        RecordBody::Gotcha(b) => b.trust,
+        RecordBody::Memory(b) => b.trust,
+        RecordBody::Epic(_) | RecordBody::Task(_) | RecordBody::Subtask(_) | RecordBody::Bug(_) => {
+            default_trust_for_kind(record.envelope.kind)
+        }
+    }
+}
+
+/// Serialise a `TrustState` into the lowercase tag used in
+/// `records_search_meta.trust` (matches the on-the-wire JSON encoding).
+fn trust_str(t: TrustState) -> &'static str {
+    match t {
+        TrustState::Draft => "draft",
+        TrustState::Reviewed => "reviewed",
+        TrustState::Verified => "verified",
+        TrustState::Stale => "stale",
+        TrustState::Deprecated => "deprecated",
+        TrustState::Superseded => "superseded",
+        TrustState::Archived => "archived",
+        TrustState::Rejected => "rejected",
+        TrustState::Redacted => "redacted",
+    }
+}
+
+/// Inverse of [`trust_str`]; tolerant of unknown values (returns `None`).
+fn parse_trust(s: &str) -> Option<TrustState> {
+    Some(match s {
+        "draft" => TrustState::Draft,
+        "reviewed" => TrustState::Reviewed,
+        "verified" => TrustState::Verified,
+        "stale" => TrustState::Stale,
+        "deprecated" => TrustState::Deprecated,
+        "superseded" => TrustState::Superseded,
+        "archived" => TrustState::Archived,
+        "rejected" => TrustState::Rejected,
+        "redacted" => TrustState::Redacted,
+        _ => return None,
+    })
 }
 
 /// Default trust assignment until `ft-trust` surfaces a per-record column.

@@ -221,6 +221,16 @@ impl ScopeRegistry {
         self.id_index.get(id).map(|i| &self.scopes[*i])
     }
 
+    /// Returns the explicit pilot-rollout list, if one was declared.
+    ///
+    /// `None` means every scope is enabled (the default). `Some(list)` is
+    /// the literal `enabled_scopes` array from `scopes.yaml`, in source
+    /// order; an empty list means *no* scope is enabled.
+    #[must_use]
+    pub fn enabled_scopes_list(&self) -> Option<&[String]> {
+        self.enabled_scopes.as_deref()
+    }
+
     /// Returns true if `scope_id` is enabled by the pilot-rollout filter.
     ///
     /// When `enabled_scopes` is omitted from the YAML, every scope is

@@ -33,6 +33,15 @@ pub struct PrValidatorOptions {
     /// Whether to fetch and validate evidence URLs. Disabled at M4 to avoid
     /// network dependence in CI; deferred to follow-up.
     pub verify_evidence_urls: bool,
+
+    /// Pilot-rollout filter sourced from `.firetrail/scopes.yaml`
+    /// `enabled_scopes`. When `Some(list)`, rules skip records whose
+    /// `owning_scope` is not in the list and emit a single `Info`-severity
+    /// finding noting the skip. When `None`, every changed record is
+    /// validated (default behaviour). `Some(vec![])` skips every scoped
+    /// record — a workspace can use this to dry-run the validator without
+    /// enforcing on anything.
+    pub enabled_scopes: Option<Vec<String>>,
 }
 
 impl Default for PrValidatorOptions {
@@ -44,6 +53,7 @@ impl Default for PrValidatorOptions {
             enable_secret_scan: true,
             secret_patterns: default_secret_patterns(),
             verify_evidence_urls: false,
+            enabled_scopes: None,
         }
     }
 }

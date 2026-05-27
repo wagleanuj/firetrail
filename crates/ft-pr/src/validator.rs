@@ -14,7 +14,7 @@ use ft_storage::{ChangeClass, Storage, classify_change};
 use crate::error::PrError;
 use crate::options::PrValidatorOptions;
 use crate::path::id_from_record_path;
-use crate::report::PrReport;
+use crate::report::{PrFinding, PrReport, RuleId, Severity};
 use crate::rules;
 
 /// Convenience namespace mirroring [`validate_pr`]. Provided so callers can
@@ -89,14 +89,50 @@ pub fn validate_pr(
 ) -> Result<PrReport, PrError> {
     let diff = git.diff(base, head, None)?;
 
-    let changed = build_changed_records(storage, git, base, head, &diff)?;
+    let all_changed = build_changed_records(storage, git, base, head, &diff)?;
+
+    let mut report = PrReport::default();
+
+    // Partition by pilot-rollout filter (ADR-0021 / scopes.yaml
+    // `enabled_scopes`). When the filter is set, records whose
+    // `owning_scope` is NOT in the list contribute one Info finding each
+    // and are excluded from rule evaluation. Records without an
+    // `owning_scope` are always validated — un-scoped infrastructure
+    // changes still get the full rule set.
+    let changed: Vec<ChangedRecord> = if let Some(list) = opts.enabled_scopes.as_ref() {
+        let mut kept = Vec::with_capacity(all_changed.len());
+        for c in all_changed {
+            if let Some(scope) = changed_record_scope(&c) {
+                if !list.iter().any(|s| s == scope) {
+                    report.push(PrFinding {
+                        severity: Severity::Info,
+                        rule: RuleId::ScopeSkipped,
+                        record_id: c.id.clone(),
+                        path: Some(c.path.clone()),
+                        message: format!(
+                            "skipped: out of pilot scope `{scope}` (not in enabled_scopes)"
+                        ),
+                        details: serde_json::json!({
+                            "owning_scope": scope,
+                            "enabled_scopes": list,
+                        }),
+                    });
+                    continue;
+                }
+            }
+            kept.push(c);
+        }
+        kept
+    } else {
+        all_changed
+    };
+
     let by_id: HashMap<RecordId, usize> = changed
         .iter()
         .enumerate()
         .filter_map(|(i, c)| c.id.clone().map(|id| (id, i)))
         .collect();
 
-    let mut report = PrReport::default();
     report.summary.changed_records = changed
         .iter()
         .filter(|c| matches!(c.class, ChangeClass::Memory(_) | ChangeClass::Structural(_)))
@@ -174,6 +210,17 @@ fn build_changed_records(
         });
     }
     Ok(out)
+}
+
+/// Return the `owning_scope` for a changed record, preferring the head view
+/// (post-change) and falling back to the base view. Records that exist on
+/// neither side (e.g. non-record diff entries) and records with no owning
+/// scope return `None`.
+fn changed_record_scope(c: &ChangedRecord) -> Option<&str> {
+    c.at_head
+        .as_ref()
+        .or(c.at_base.as_ref())
+        .and_then(|r| r.envelope.owning_scope.as_deref())
 }
 
 fn read_record_at(

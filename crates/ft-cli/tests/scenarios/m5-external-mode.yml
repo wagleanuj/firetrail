@@ -12,19 +12,15 @@ description: |
       `firetrail sync`s; the records authored by A then appear in B's
       clone, and `firetrail show` finds them.
 
-  Why tasks (not memory records)
-  ------------------------------
-  Work-graph writes (`task create`, `claim`, etc.) flow through
-  `WorkCtx::save_record`, which routes through `ExternalStorage::write`
-  in external mode and auto-commits the record into the clone — so
-  `sync` has something to push. Memory writes
-  (`incident/finding create`) currently bypass that path and write
-  directly through the embedded view on the clone; the files exist on
-  disk but are not committed, so the cross-workspace propagation is not
-  observable until a separate follow-up wires `write_with_create`
-  through ExternalStorage. The scenario therefore exercises tasks to
-  pin down the cross-repo guarantee. (See follow-up issue filed in
-  beads.)
+  Both kinds round-trip (firetrail-1d7)
+  -------------------------------------
+  Work-graph writes (`task create`, `claim`, etc.) and memory writes
+  (`incident create`, `finding create`, …) all flow through
+  `WorkCtx::save_record_with_history`, which routes through
+  `ExternalStorage::write` in external mode and auto-commits the record
+  into the clone. This scenario exercises both a task and a finding to
+  pin down the ADR-0006 "two code repos → one shared memory" guarantee
+  across kinds.
 
   Locks in the "two code repos → one shared memory" ADR-0006 guarantee.
 
@@ -84,7 +80,24 @@ steps:
     capture:
       task_id_2: stdout_field=data.record.envelope.id
 
-  - name: workspace A — sync pushes both tasks to the bare repo
+  - name: workspace A — create a memory-kind record (finding) in external storage
+    # Memory creates also flow through save_record_with_history, which
+    # routes through ExternalStorage::write in external mode and
+    # auto-commits the file in the clone. firetrail-1d7.
+    run: firetrail --json finding create "Token cache TTL too aggressive" --details "Auth tokens evicted under load during renewal storm."
+    expect:
+      exit: 0
+    capture:
+      finding_id: stdout_field=data.record.envelope.id
+
+  - name: workspace A — create an incident-kind record (incident) in external storage
+    run: firetrail --json incident create "Auth gateway degradation" --severity sev3
+    expect:
+      exit: 0
+    capture:
+      incident_id: stdout_field=data.record.envelope.id
+
+  - name: workspace A — sync pushes both tasks AND memory records to the bare repo
     run: firetrail --json sync
     expect:
       exit: 0
@@ -129,3 +142,21 @@ steps:
       exit: 0
       stdout_json_path:
         data.record.envelope.id: ${task_id_2}
+
+  - name: workspace B — show finds the finding authored from A
+    run: firetrail --json show ${finding_id}
+    cwd: ws2
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.envelope.id: ${finding_id}
+        data.record.envelope.kind: finding
+
+  - name: workspace B — show finds the incident authored from A
+    run: firetrail --json show ${incident_id}
+    cwd: ws2
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.record.envelope.id: ${incident_id}
+        data.record.envelope.kind: incident

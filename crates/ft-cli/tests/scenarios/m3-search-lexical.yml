@@ -14,13 +14,13 @@ description: |
       default to `Draft`) but keeps work-tracking kinds (tasks/epics default
       to `Reviewed` per `default_trust_for_kind`).
 
-  Known gap (filed as follow-up)
-  ------------------------------
-  `finding create` (and other `memory create` paths) call
-  `write_with_history` directly instead of `WorkCtx::save_record`, so the
-  FTS index is NOT upserted on write. The roadmap M3 acceptance criterion
-  ("searchable within 1s of write completion") therefore needs an explicit
-  `firetrail index rebuild` step here before search will find the corpus.
+  Write path
+  ----------
+  Memory create handlers route through `WorkCtx::save_record_with_history`
+  which upserts the search FTS row (and, in external mode, auto-commits)
+  alongside the storage write. The M3 acceptance criterion "searchable
+  within 1s of write completion" therefore does NOT require an `index
+  rebuild` step here. (firetrail-6lj.)
 
 setup:
   config:
@@ -70,17 +70,7 @@ steps:
     capture:
       task_id: stdout_field=data.record.envelope.id
 
-  - name: rebuild index so search FTS rows materialise for memory kinds
-    # Follow-up: memory_create paths bypass WorkCtx::save_record, so the
-    # search index does not pick them up on write. The user-facing recovery
-    # path until that is fixed is `firetrail index rebuild`.
-    run: firetrail --json index rebuild
-    expect:
-      exit: 0
-      stdout_json_path:
-        data.action: rebuild
-
-  - name: lexical search on a body term returns hits with mode=lexical
+  - name: lexical search on a body term returns hits with mode=lexical (no rebuild needed)
     run: firetrail --json search "token" --mode lexical
     expect:
       exit: 0
@@ -109,11 +99,12 @@ steps:
         data.hits.0.trust: reviewed
         data.hits.0.id: ${task_id}
 
-  - name: --trust verified excludes everything (no records reach Verified via FTS today)
-    # Follow-up: trust transitions are not propagated into the FTS metadata,
-    # so even a promoted record reports its default-by-kind trust. Once
-    # ft-search materialises trust from the record body, this assertion can
-    # become "verified-only memory remains".
+  - name: --trust verified excludes everything (no record in this corpus is Verified)
+    # ft-search materialises the body's trust into records_search_meta on
+    # upsert, so a `--trust verified` floor now reflects real per-record
+    # state. This corpus authored only Draft memory and a default-Reviewed
+    # task, so no result remains. The companion m3-trust-weighting scenario
+    # exercises the post-promotion surface.
     run: firetrail --json search "token" --mode lexical --trust verified
     expect:
       exit: 0

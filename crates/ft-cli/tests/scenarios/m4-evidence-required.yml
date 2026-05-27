@@ -14,18 +14,15 @@ description: |
   last history entry's `ops_summary`. Together they form belt-and-braces
   coverage of ADR-0013.
 
-  Current state and the marker gap
-  --------------------------------
-  At time of writing, `firetrail memory promote` does NOT yet write the
-  `evidence:` marker into `HistoryEntry::ops_summary`, even when the
-  reviewer supplies `--evidence-url`. The transition is recorded as
-  `Reviewed→Verified (reason)`, and the evidence URL lives on the
-  structured TrustTransition payload — but ft-pr's rule reads the
-  ops_summary string. This scenario locks in the observable behaviour
-  (the PR rule fires whenever a high-stakes record reaches Verified in
-  the diff) so any future fix to also write the marker will be a
-  visible, intentional change. The follow-up to plumb the marker into
-  the CLI's promote path is filed alongside this scenario.
+  Marker contract (firetrail-yte)
+  -------------------------------
+  `firetrail memory {review,promote}` writes an `evidence: type=<kind>
+  url=<url>` marker line into `HistoryEntry::ops_summary` whenever the
+  reviewer supplies `--evidence-url`. ft-pr's `evidence_required` rule
+  performs a case-insensitive substring match on `evidence:` in the head
+  entry's ops_summary, so a high-stakes Reviewed→Verified promotion that
+  passes through the state-machine guard also clears the audit rule —
+  belt-and-braces coverage of ADR-0013 without a manual workaround.
 
 setup:
   config:
@@ -118,20 +115,16 @@ steps:
     capture:
       head_sha: stdout
 
-  - name: check pr surfaces evidence_required (CLI marker gap — see description)
-    # This is the audit backstop firing: the head record IS Verified +
-    # high-stakes, but ops_summary does not yet carry an `evidence:`
-    # prefix. The scenario asserts the rule fires today; the follow-up
-    # CLI fix should make this transition into the clean-PR branch
-    # below.
+  - name: check pr is clean — the evidence marker landed in ops_summary
+    # The head record IS Verified + high-stakes, but ops_summary now
+    # carries the `evidence: type=<kind> url=<url>` marker that the
+    # `evidence_required` rule matches on. Result: rule clears, the PR
+    # exits 0 even without `--no-secret-scan`.
     run: firetrail --json check pr ${base_sha} ${head_sha}
     expect:
-      exit: 1
-      stderr_contains: evidence
-      stderr_json_path:
-        error.kind: user_error
-        error.details.report.findings.0.rule: evidence_required
-        error.details.report.findings.0.severity: error
+      exit: 0
+      stdout_json_path:
+        data.report.summary.errors: 0
 
   - name: chain still verifies after Draft→Reviewed→Verified with evidence
     # The record itself is valid — the only divergence is between

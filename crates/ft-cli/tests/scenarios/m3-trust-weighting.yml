@@ -15,15 +15,14 @@ description: |
   kinds (task: Reviewed default; epic: Reviewed default) outrank
   lower-trust memory kinds (finding: Draft default) for the same query.
 
-  Known gap (follow-up)
-  ---------------------
-  ft-search's `default_trust_for_kind` does not yet read per-record trust
-  out of the record body, so the *post-promotion* state of finding 2
-  (reviewed) and finding 3 (verified) is not visible to search ranking — all
-  three findings still register as Draft via the default. This scenario
-  therefore asserts the *kind-driven* trust ordering that lexical search
-  surfaces today (task ahead of findings), and documents the gap so the
-  assertion can tighten once the per-record materialisation lands.
+  Materialised trust (firetrail-l1q)
+  ----------------------------------
+  `ft-search` writes the per-record body trust into the
+  `records_search_meta` side table on every `upsert_lexical`, and reads it
+  back via a LEFT JOIN in `lookup_meta`. Trust transitions therefore become
+  visible to ranking immediately — the Verified finding outranks the
+  Reviewed default work-tracking task, and a `--trust verified` floor
+  surfaces only the promoted record.
 
 setup:
   config:
@@ -93,26 +92,30 @@ steps:
     capture:
       task_id: stdout_field=data.record.envelope.id
 
-  - name: rebuild the search index after the trust transitions
-    run: firetrail --json index rebuild
-    expect:
-      exit: 0
-
-  - name: search ranks the higher-trust task ahead of draft-default findings
+  - name: search now ranks the Verified finding ahead of the Reviewed-default task
+    # All three findings share the same lexical signal; trust_weight is
+    # higher for Verified than Reviewed, so finding_3 outranks task_id.
     run: firetrail --json search "cache" --mode lexical --limit 10
     expect:
       exit: 0
       stdout_json_path:
         data.mode: lexical
-        data.hits.0.kind: task
-        data.hits.0.id: ${task_id}
-        data.hits.0.trust: reviewed
+        data.hits.0.id: ${f_verified}
+        data.hits.0.trust: verified
 
-  - name: --trust reviewed filter keeps the task and drops the draft findings
+  - name: --trust verified leaves only the promoted finding
+    run: firetrail --json search "cache" --mode lexical --trust verified
+    expect:
+      exit: 0
+      stdout_json_path:
+        data.mode: lexical
+        data.hits.0.id: ${f_verified}
+        data.hits.0.trust: verified
+
+  - name: --trust reviewed keeps the task and both reviewed/verified findings, drops draft
     run: firetrail --json search "cache" --mode lexical --trust reviewed
     expect:
       exit: 0
       stdout_json_path:
         data.mode: lexical
-        data.hits.0.kind: task
-        data.hits.0.trust: reviewed
+        data.hits.0.trust: verified

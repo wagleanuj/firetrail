@@ -86,6 +86,11 @@ pub enum RuleId {
     /// ADR-0010: PR description references a record but its closure cannot be
     /// resolved in the diff.
     PrLinkMissing,
+    /// ADR-0021 pilot rollout: a record was skipped because its
+    /// `owning_scope` is not in `scopes.yaml::enabled_scopes`. Always
+    /// `Info`-severity — surfaces the skip so CI logs explain why a
+    /// would-be finding did not fire.
+    ScopeSkipped,
 }
 
 /// A single rule violation.

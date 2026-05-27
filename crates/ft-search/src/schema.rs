@@ -37,9 +37,25 @@ CREATE VIRTUAL TABLE IF NOT EXISTS records_vec USING vec0(
 );
 ";
 
-/// Ensure the FTS5 virtual table exists. Always runs.
+/// Side table holding per-record search metadata that does not live on the
+/// `records_fts` virtual table (FTS5 columns are tokenized text).
+///
+/// Today this carries the materialised `trust` state read from the record
+/// body at upsert time (memory bodies carry a `TrustState` field; work-
+/// tracking kinds default to `reviewed`). Search ranking, the
+/// `--min-trust` filter, and the `--trust` filter all read this column so
+/// trust transitions become visible to search without an index rebuild.
+const META_TABLE: &str = "
+CREATE TABLE IF NOT EXISTS records_search_meta (
+    id TEXT PRIMARY KEY,
+    trust TEXT NOT NULL
+);
+";
+
+/// Ensure the FTS5 virtual table and side metadata table exist. Always runs.
 pub fn ensure_fts(conn: &Connection) -> Result<(), SearchError> {
     conn.execute_batch(FTS_TABLE)?;
+    conn.execute_batch(META_TABLE)?;
     Ok(())
 }
 

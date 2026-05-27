@@ -2,9 +2,13 @@
 //! `firetrail capture` — write a new memory record with a Create-kind
 //! history entry.
 //!
-//! Every create routes through [`ft_storage::write_with_history`] so the
-//! per-record chain is bootstrapped with a genesis entry. This matches the
-//! M2 contract that every on-disk record carries at least a Create entry.
+//! Every create routes through [`WorkCtx::save_record_with_history`] so the
+//! per-record chain is bootstrapped with a genesis entry, the relational
+//! index is refreshed, the search FTS is upserted, and (in external storage
+//! mode) the record is auto-committed in the data-repo clone. This matches
+//! the M2 contract that every on-disk record carries at least a Create
+//! entry and keeps `firetrail search` / `firetrail sync` in sync with the
+//! same atomic write.
 
 use std::io::Read as _;
 
@@ -14,7 +18,6 @@ use ft_core::{
     Runbook, Severity,
 };
 use ft_history::{HistoryDraft, HistoryEntryKind};
-use ft_storage::write_with_history;
 
 use crate::cli::{
     CaptureArgs, CreateDecisionArgs, CreateFindingArgs, CreateGotchaArgs, CreateIncidentArgs,
@@ -362,7 +365,11 @@ pub fn capture(args: &CaptureArgs, global: &GlobalOpts) -> Result<CommandOutcome
 }
 
 /// Shared post-build write path: append a Create history entry and persist.
-/// Also refreshes the index from the resulting on-disk path.
+///
+/// Routes through [`WorkCtx::save_record_with_history`] so the write is
+/// auto-committed in external mode, the relational index is refreshed, and
+/// the search FTS rows are upserted alongside — keeping `firetrail search`
+/// (and the external-mode `sync` push) in sync without a manual rebuild.
 pub(crate) fn write_with_create(
     ctx: &mut WorkCtx,
     record: &mut ft_core::Record,
@@ -370,6 +377,7 @@ pub(crate) fn write_with_create(
     command: &'static str,
     summary: &str,
 ) -> Result<(), CliError> {
+    let _ = command; // command name is already on the ctx for error framing.
     let draft = HistoryDraft {
         merged_via_pr: None,
         timestamp: Utc::now(),
@@ -379,11 +387,7 @@ pub(crate) fn write_with_create(
         ops_count: 1,
         kind: HistoryEntryKind::Create,
     };
-    let path = write_with_history(&ctx.storage, record, draft)
-        .map_err(|e| CliError::internal(command, format!("write: {e}")))?;
-    ctx.index
-        .refresh(&ctx.storage, std::slice::from_ref(&path), &[])
-        .map_err(|e| CliError::internal(command, format!("refresh index: {e}")))?;
+    ctx.save_record_with_history(record, draft)?;
     Ok(())
 }
 

@@ -30,6 +30,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
 use ft_core::{Identity, Record, RecordId, Relation, state_hash};
+use ft_history::{HistoryDraft, append_history};
 use ft_identity::{DefaultResolver, IdentityResolver};
 use ft_index::Index;
 use ft_search::SearchEngine;
@@ -176,6 +177,25 @@ impl WorkCtx {
     /// Resolve an id string (full or prefix) against on-disk storage.
     pub fn resolve_id(&self, raw: &str) -> Result<RecordId, CliError> {
         resolve_record_id(&self.command, &self.storage, raw)
+    }
+
+    /// Persist `record` after appending a history entry built from `draft`.
+    ///
+    /// This is the canonical "memory create / trust transition / runbook step"
+    /// write path: it appends the history entry (which updates `state_hash`
+    /// and `prev_state_hash`), then routes through [`Self::save_record`] so the
+    /// write benefits from the same external auto-commit, index refresh, and
+    /// search FTS upsert as work-graph writes.
+    pub fn save_record_with_history(
+        &mut self,
+        record: &mut Record,
+        draft: HistoryDraft,
+    ) -> Result<PathBuf, CliError> {
+        append_history(record, draft)
+            .map_err(|e| CliError::internal(&self.command, format!("history append: {e}")))?;
+        // `append_history` has already rebuilt state_hash; clear+recompute in
+        // save_record is idempotent, so this round-trips cleanly.
+        self.save_record(record)
     }
 
     /// Persist `record`, recomputing its `state_hash` first, and refresh the

@@ -7,6 +7,7 @@
 //! against `state_hash` and chain integrity).
 
 use ft_pr::{PrReport, PrValidatorOptions, default_secret_patterns, validate_pr};
+use ft_scope::ScopeRegistry;
 use ft_storage::{ChangeClass, validate_pre_commit};
 use serde::Serialize;
 
@@ -20,7 +21,21 @@ const COMMAND_PATHS: &str = "check paths";
 
 /// `firetrail check pr` — full ft-pr validation.
 pub fn pr(args: &CheckPrArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
-    let ctx = WorkCtx::open(COMMAND_PR, global.workspace.as_deref())?;
+    let mut ctx = WorkCtx::open(COMMAND_PR, global.workspace.as_deref())?;
+
+    // Load scopes.yaml (best-effort): a parse failure becomes a warning and
+    // we proceed with no pilot filter. A missing file is fine and yields an
+    // empty registry whose `enabled_scopes_list` is `None`, matching the
+    // legacy "validate every record" surface.
+    let enabled_scopes = match ScopeRegistry::load(&ctx.ws.root) {
+        Ok(reg) => reg.enabled_scopes_list().map(<[String]>::to_vec),
+        Err(e) => {
+            ctx.warnings.push(format!(
+                "scope registry unavailable: {e}; ignoring pilot filter"
+            ));
+            None
+        }
+    };
     let warnings = ctx.warnings.clone();
 
     let git = ft_git::Repo::open(&ctx.ws.root)
@@ -29,6 +44,7 @@ pub fn pr(args: &CheckPrArgs, global: &GlobalOpts) -> Result<CommandOutcome, Cli
     let mut opts = PrValidatorOptions {
         strict: args.strict,
         enable_secret_scan: !args.no_secret_scan,
+        enabled_scopes,
         ..PrValidatorOptions::default()
     };
     // Keep secret patterns in sync with the toggle so JSON consumers see a

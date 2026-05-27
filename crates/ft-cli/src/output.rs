@@ -68,14 +68,14 @@ impl Formatter {
 
     /// Currently selected format.
     #[must_use]
-    #[allow(dead_code)] // used by work-graph subcommands (firetrail-1xc).
+    #[allow(dead_code)] // Exposed for tests / future commands; not exercised by the M1 surface.
     pub fn format(&self) -> OutputFormat {
         self.format
     }
 
     /// Whether quiet mode is on.
     #[must_use]
-    #[allow(dead_code)] // used by work-graph subcommands (firetrail-1xc).
+    #[allow(dead_code)] // Exposed for tests / future commands; not exercised by the M1 surface.
     pub fn quiet(&self) -> bool {
         self.quiet
     }

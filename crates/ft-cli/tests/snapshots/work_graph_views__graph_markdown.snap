@@ -1,0 +1,10 @@
+---
+source: crates/ft-cli/tests/work_graph_views.rs
+assertion_line: 131
+expression: out.stdout
+---
+# graph `EPIC-<hash>` (depth=3, direction=both)
+
+EPIC-<hash>
+└── [parent-of] TASK-<hash>
+    └── [child-of] EPIC-<hash>

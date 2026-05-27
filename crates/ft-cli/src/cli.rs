@@ -61,10 +61,6 @@ pub struct Cli {
 }
 
 /// All `firetrail` subcommands.
-///
-/// The work-graph epic (firetrail-1xc) appends additional variants here; the
-/// dispatcher in `main.rs` and the [`crate::commands::CommandOutcome`] enum
-/// are the only other places that need to learn about new commands.
 #[derive(Debug, Subcommand)]
 pub enum Command {
     /// Initialise a Firetrail workspace in the current git repo.
@@ -72,6 +68,63 @@ pub enum Command {
 
     /// Verify the workspace is healthy and report any actionable issues.
     Doctor(DoctorArgs),
+
+    /// Create / inspect epics.
+    #[command(subcommand)]
+    Epic(EpicCmd),
+
+    /// Create / inspect tasks.
+    #[command(subcommand)]
+    Task(TaskCmd),
+
+    /// Create / inspect subtasks.
+    #[command(subcommand)]
+    Subtask(SubtaskCmd),
+
+    /// Create / inspect bugs.
+    #[command(subcommand)]
+    Bug(BugCmd),
+
+    /// Update an existing record's fields.
+    Update(UpdateArgs),
+
+    /// Close a record (validates acceptance criteria).
+    Close(CloseArgs),
+
+    /// Re-open a closed record.
+    Reopen(ReopenArgs),
+
+    /// Claim a record (mints a Claim).
+    Claim(ClaimArgs),
+
+    /// Release the active claim on a record.
+    Unclaim(UnclaimArgs),
+
+    /// Acceptance-criteria management.
+    #[command(subcommand)]
+    Criteria(CriteriaCmd),
+
+    /// Create a relation between two records.
+    Link(LinkArgs),
+
+    /// Dependency-relation shortcuts.
+    #[command(subcommand)]
+    Dep(DepCmd),
+
+    /// Show a record's full envelope, body, and relations.
+    Show(ShowArgs),
+
+    /// List records matching a filter.
+    List(ListArgs),
+
+    /// List records ready to be picked up (no active blockers).
+    Ready(ReadyArgs),
+
+    /// Render a kanban-style board.
+    Board(BoardArgs),
+
+    /// Render an ASCII dependency tree.
+    Graph(GraphArgs),
 }
 
 /// Arguments for `firetrail init`.
@@ -115,4 +168,541 @@ pub enum StorageModeArg {
     Embedded,
     /// Records live in a separate repository (M5; not yet available).
     External,
+}
+
+/// Priority selector.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[clap(rename_all = "lower")]
+pub enum PriorityArg {
+    /// Critical, top-of-queue.
+    P0,
+    /// High priority.
+    P1,
+    /// Normal priority.
+    P2,
+    /// Low priority.
+    P3,
+    /// Backlog.
+    P4,
+}
+
+impl PriorityArg {
+    /// Convert to `ft_core::Priority`.
+    #[must_use]
+    pub fn to_core(self) -> ft_core::Priority {
+        match self {
+            Self::P0 => ft_core::Priority::P0,
+            Self::P1 => ft_core::Priority::P1,
+            Self::P2 => ft_core::Priority::P2,
+            Self::P3 => ft_core::Priority::P3,
+            Self::P4 => ft_core::Priority::P4,
+        }
+    }
+}
+
+/// Workflow status selector.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[clap(rename_all = "snake_case")]
+pub enum StatusArg {
+    /// Open.
+    Open,
+    /// Ready (triaged).
+    Ready,
+    /// In progress.
+    InProgress,
+    /// In review.
+    Review,
+    /// Blocked.
+    Blocked,
+    /// Closed.
+    Closed,
+    /// Deferred.
+    Deferred,
+    /// Archived.
+    Archived,
+}
+
+impl StatusArg {
+    /// Convert to `ft_core::Status`.
+    #[must_use]
+    pub fn to_core(self) -> ft_core::Status {
+        match self {
+            Self::Open => ft_core::Status::Open,
+            Self::Ready => ft_core::Status::Ready,
+            Self::InProgress => ft_core::Status::InProgress,
+            Self::Review => ft_core::Status::Review,
+            Self::Blocked => ft_core::Status::Blocked,
+            Self::Closed => ft_core::Status::Closed,
+            Self::Deferred => ft_core::Status::Deferred,
+            Self::Archived => ft_core::Status::Archived,
+        }
+    }
+}
+
+/// Record-kind selector for filters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[clap(rename_all = "lower")]
+pub enum KindArg {
+    /// Epic.
+    Epic,
+    /// Task.
+    Task,
+    /// Subtask.
+    Subtask,
+    /// Bug.
+    Bug,
+}
+
+impl KindArg {
+    /// Convert to `ft_core::RecordKind`.
+    #[must_use]
+    pub fn to_core(self) -> ft_core::RecordKind {
+        match self {
+            Self::Epic => ft_core::RecordKind::Epic,
+            Self::Task => ft_core::RecordKind::Task,
+            Self::Subtask => ft_core::RecordKind::Subtask,
+            Self::Bug => ft_core::RecordKind::Bug,
+        }
+    }
+}
+
+/// Relation-kind selector for `link` / `dep`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[clap(rename_all = "kebab-case")]
+pub enum RelationKindArg {
+    /// blocks
+    Blocks,
+    /// blocked-by
+    BlockedBy,
+    /// parent-of
+    ParentOf,
+    /// child-of
+    ChildOf,
+    /// related-to
+    RelatedTo,
+    /// duplicates
+    Duplicates,
+    /// supersedes
+    Supersedes,
+    /// fixed-by
+    FixedBy,
+    /// caused-by
+    CausedBy,
+}
+
+impl RelationKindArg {
+    /// Convert to `ft_core::RelationKind`.
+    #[must_use]
+    pub fn to_core(self) -> ft_core::RelationKind {
+        match self {
+            Self::Blocks => ft_core::RelationKind::Blocks,
+            Self::BlockedBy => ft_core::RelationKind::BlockedBy,
+            Self::ParentOf => ft_core::RelationKind::ParentOf,
+            Self::ChildOf => ft_core::RelationKind::ChildOf,
+            Self::RelatedTo => ft_core::RelationKind::RelatedTo,
+            Self::Duplicates => ft_core::RelationKind::Duplicates,
+            Self::Supersedes => ft_core::RelationKind::Supersedes,
+            Self::FixedBy => ft_core::RelationKind::FixedBy,
+            Self::CausedBy => ft_core::RelationKind::CausedBy,
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Per-command argument groups
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// `firetrail epic …`
+#[derive(Debug, Subcommand)]
+pub enum EpicCmd {
+    /// Create a new epic.
+    Create(CreateRecordArgs),
+}
+
+/// `firetrail task …`
+#[derive(Debug, Subcommand)]
+pub enum TaskCmd {
+    /// Create a new task.
+    Create(CreateTaskArgs),
+}
+
+/// `firetrail subtask …`
+#[derive(Debug, Subcommand)]
+pub enum SubtaskCmd {
+    /// Create a new subtask under a parent task.
+    Create(CreateSubtaskArgs),
+}
+
+/// `firetrail bug …`
+#[derive(Debug, Subcommand)]
+pub enum BugCmd {
+    /// Create a new bug.
+    Create(CreateBugArgs),
+}
+
+/// Common arguments for record-creation commands without kind-specific fields.
+#[derive(Debug, Args)]
+pub struct CreateRecordArgs {
+    /// Title (required).
+    pub title: String,
+
+    /// Free-form description.
+    #[arg(long)]
+    pub description: Option<String>,
+
+    /// Priority.
+    #[arg(long, value_enum)]
+    pub priority: Option<PriorityArg>,
+
+    /// Owning scope.
+    #[arg(long)]
+    pub scope: Option<String>,
+
+    /// Free-form `key=value` label. May be repeated.
+    #[arg(long = "label", value_name = "KEY=VALUE")]
+    pub labels: Vec<String>,
+}
+
+/// Task-specific creation arguments.
+#[derive(Debug, Args)]
+pub struct CreateTaskArgs {
+    /// Title (required).
+    pub title: String,
+
+    /// Free-form description.
+    #[arg(long)]
+    pub description: Option<String>,
+
+    /// Parent epic id (full id or unambiguous prefix).
+    #[arg(long)]
+    pub epic: Option<String>,
+
+    /// Priority.
+    #[arg(long, value_enum)]
+    pub priority: Option<PriorityArg>,
+
+    /// Owner identity.
+    #[arg(long)]
+    pub owner: Option<String>,
+
+    /// Owning scope.
+    #[arg(long)]
+    pub scope: Option<String>,
+
+    /// Free-form `key=value` label. May be repeated.
+    #[arg(long = "label", value_name = "KEY=VALUE")]
+    pub labels: Vec<String>,
+}
+
+/// Subtask-specific creation arguments.
+#[derive(Debug, Args)]
+pub struct CreateSubtaskArgs {
+    /// Title (required).
+    pub title: String,
+
+    /// Parent task id (required, full id or unambiguous prefix).
+    #[arg(long)]
+    pub parent: String,
+
+    /// Free-form description.
+    #[arg(long)]
+    pub description: Option<String>,
+
+    /// Priority.
+    #[arg(long, value_enum)]
+    pub priority: Option<PriorityArg>,
+
+    /// Owner identity.
+    #[arg(long)]
+    pub owner: Option<String>,
+
+    /// Owning scope.
+    #[arg(long)]
+    pub scope: Option<String>,
+
+    /// Free-form `key=value` label. May be repeated.
+    #[arg(long = "label", value_name = "KEY=VALUE")]
+    pub labels: Vec<String>,
+}
+
+/// Bug-specific creation arguments.
+#[derive(Debug, Args)]
+pub struct CreateBugArgs {
+    /// Title (required).
+    pub title: String,
+
+    /// Free-form description.
+    #[arg(long)]
+    pub description: Option<String>,
+
+    /// Affected service.
+    #[arg(long)]
+    pub service: Option<String>,
+
+    /// Severity (`sev1`, `sev2`, `sev3` — free-form at M1).
+    #[arg(long)]
+    pub severity: Option<String>,
+
+    /// Priority.
+    #[arg(long, value_enum)]
+    pub priority: Option<PriorityArg>,
+
+    /// Owning scope.
+    #[arg(long)]
+    pub scope: Option<String>,
+
+    /// Free-form `key=value` label. May be repeated.
+    #[arg(long = "label", value_name = "KEY=VALUE")]
+    pub labels: Vec<String>,
+}
+
+/// `firetrail update <id> [...flags]`
+#[derive(Debug, Args)]
+pub struct UpdateArgs {
+    /// Record id (full or unambiguous prefix).
+    pub id: String,
+
+    /// New title.
+    #[arg(long)]
+    pub title: Option<String>,
+
+    /// New status.
+    #[arg(long, value_enum)]
+    pub status: Option<StatusArg>,
+
+    /// New priority.
+    #[arg(long, value_enum)]
+    pub priority: Option<PriorityArg>,
+
+    /// New owner identity.
+    #[arg(long)]
+    pub owner: Option<String>,
+}
+
+/// `firetrail close <id> [--force --reason <text>]`
+#[derive(Debug, Args)]
+pub struct CloseArgs {
+    /// Record id.
+    pub id: String,
+
+    /// Skip acceptance-criteria validation.
+    #[arg(long, requires = "reason")]
+    pub force: bool,
+
+    /// Reason for forcing close. Required when `--force` is supplied.
+    #[arg(long)]
+    pub reason: Option<String>,
+}
+
+/// `firetrail reopen <id>`
+#[derive(Debug, Args)]
+pub struct ReopenArgs {
+    /// Record id.
+    pub id: String,
+}
+
+/// `firetrail claim <id> [--expires <duration>]`
+#[derive(Debug, Args)]
+pub struct ClaimArgs {
+    /// Record id.
+    pub id: String,
+
+    /// Human-readable duration override (e.g. `7d`, `12h`).
+    #[arg(long)]
+    pub expires: Option<String>,
+}
+
+/// `firetrail unclaim <id>`
+#[derive(Debug, Args)]
+pub struct UnclaimArgs {
+    /// Record id.
+    pub id: String,
+
+    /// Take over another actor's claim (M5; M1 refuses).
+    #[arg(long)]
+    pub takeover: bool,
+
+    /// Reason for takeover. Required with `--takeover`.
+    #[arg(long)]
+    pub reason: Option<String>,
+}
+
+/// `firetrail criteria …`
+#[derive(Debug, Subcommand)]
+pub enum CriteriaCmd {
+    /// Add a new acceptance criterion.
+    Add(CriteriaAddArgs),
+    /// List all criteria for a record.
+    List(CriteriaListArgs),
+    /// Mark a criterion as checked.
+    Check(CriteriaToggleArgs),
+    /// Mark a criterion as unchecked.
+    Uncheck(CriteriaToggleArgs),
+    /// Attach an evidence URL to a criterion.
+    Evidence(CriteriaEvidenceArgs),
+}
+
+/// Arguments for `firetrail criteria add`.
+#[derive(Debug, Args)]
+pub struct CriteriaAddArgs {
+    /// Record id.
+    pub id: String,
+    /// Criterion text.
+    pub text: String,
+}
+
+/// Arguments for `firetrail criteria list`.
+#[derive(Debug, Args)]
+pub struct CriteriaListArgs {
+    /// Record id.
+    pub id: String,
+}
+
+/// Arguments for `firetrail criteria {check,uncheck}`.
+#[derive(Debug, Args)]
+pub struct CriteriaToggleArgs {
+    /// Record id.
+    pub id: String,
+    /// AC id (`ac-02`) or 1-based index.
+    pub which: String,
+}
+
+/// Arguments for `firetrail criteria evidence`.
+#[derive(Debug, Args)]
+pub struct CriteriaEvidenceArgs {
+    /// Record id.
+    pub id: String,
+    /// AC id or 1-based index.
+    pub which: String,
+    /// Evidence URL.
+    #[arg(long)]
+    pub url: String,
+}
+
+/// `firetrail link <from> <to> --type <kind>`
+#[derive(Debug, Args)]
+pub struct LinkArgs {
+    /// Source record id.
+    pub from: String,
+    /// Target record id.
+    pub to: String,
+    /// Relation kind.
+    #[arg(long = "type", value_enum)]
+    pub kind: RelationKindArg,
+}
+
+/// `firetrail dep …`
+#[derive(Debug, Subcommand)]
+pub enum DepCmd {
+    /// Add a dependency edge.
+    Add(DepAddArgs),
+    /// Remove a dependency edge.
+    Remove(DepRemoveArgs),
+}
+
+/// Arguments for `firetrail dep add`.
+#[derive(Debug, Args)]
+pub struct DepAddArgs {
+    /// Source record id.
+    pub from: String,
+    /// Target record id.
+    pub to: String,
+    /// Relation kind (defaults to `blocked-by`).
+    #[arg(long = "type", value_enum, default_value_t = RelationKindArg::BlockedBy)]
+    pub kind: RelationKindArg,
+}
+
+/// Arguments for `firetrail dep remove`.
+#[derive(Debug, Args)]
+pub struct DepRemoveArgs {
+    /// Source record id.
+    pub from: String,
+    /// Target record id.
+    pub to: String,
+    /// Specific relation kind to remove (optional; removes all matching when omitted).
+    #[arg(long = "type", value_enum)]
+    pub kind: Option<RelationKindArg>,
+}
+
+/// `firetrail show <id>`
+#[derive(Debug, Args)]
+pub struct ShowArgs {
+    /// Record id.
+    pub id: String,
+}
+
+/// `firetrail list …`
+#[derive(Debug, Args)]
+pub struct ListArgs {
+    /// Filter by kind.
+    #[arg(long = "type", value_enum)]
+    pub kind: Option<KindArg>,
+    /// Filter by status.
+    #[arg(long, value_enum)]
+    pub status: Option<StatusArg>,
+    /// Filter by owner.
+    #[arg(long)]
+    pub owner: Option<String>,
+    /// Filter by scope.
+    #[arg(long)]
+    pub scope: Option<String>,
+    /// Cap the number of results.
+    #[arg(long)]
+    pub limit: Option<u64>,
+    /// Skip the first N results.
+    #[arg(long)]
+    pub offset: Option<u64>,
+}
+
+/// `firetrail ready …`
+#[derive(Debug, Args)]
+pub struct ReadyArgs {
+    /// Filter by kind.
+    #[arg(long = "type", value_enum)]
+    pub kind: Option<KindArg>,
+    /// Filter by owner.
+    #[arg(long)]
+    pub owner: Option<String>,
+    /// Filter by scope.
+    #[arg(long)]
+    pub scope: Option<String>,
+    /// Cap the number of results.
+    #[arg(long)]
+    pub limit: Option<u64>,
+}
+
+/// `firetrail board …`
+#[derive(Debug, Args)]
+pub struct BoardArgs {
+    /// Filter by scope.
+    #[arg(long)]
+    pub scope: Option<String>,
+    /// Filter by owner.
+    #[arg(long)]
+    pub owner: Option<String>,
+}
+
+/// Walk direction for `firetrail graph`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[clap(rename_all = "lower")]
+pub enum GraphDirArg {
+    /// Walk upstream blockers.
+    Up,
+    /// Walk downstream dependents.
+    Down,
+    /// Both directions.
+    Both,
+}
+
+/// `firetrail graph <id>`
+#[derive(Debug, Args)]
+pub struct GraphArgs {
+    /// Root record id.
+    pub id: String,
+    /// Walk direction (default: both).
+    #[arg(long, value_enum, default_value_t = GraphDirArg::Both)]
+    pub direction: GraphDirArg,
+    /// Walk depth (default: 3).
+    #[arg(long, default_value_t = 3)]
+    pub depth: u32,
 }

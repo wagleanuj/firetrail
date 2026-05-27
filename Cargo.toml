@@ -87,6 +87,10 @@ rand = "0.8"
 
 # Time
 chrono = { version = "0.4", features = ["serde"] }
+humantime = "2.1"
+
+# File locking
+fs2 = "0.4"
 
 # Diagnostics
 tracing = "0.1"

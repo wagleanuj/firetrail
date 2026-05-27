@@ -1,0 +1,10 @@
+---
+source: crates/ft-cli/tests/work_graph_views.rs
+assertion_line: 107
+expression: out.stdout
+---
+TODO                   IN PROGRESS            REVIEW                 DONE                   
+───────────────────────────────────────────────────────────────────────────────────────────
+TASK-<hash>          TASK-<hash>                                                        
+A                      B                                                                    
+p2                     p2

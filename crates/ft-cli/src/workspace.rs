@@ -43,7 +43,6 @@ impl Workspace {
     /// Whether the workspace has been initialised (the marker is
     /// `.firetrail/config.yml`).
     #[must_use]
-    #[allow(dead_code)] // used by work-graph subcommands (firetrail-1xc).
     pub fn is_initialised(&self) -> bool {
         self.config_path().exists()
     }
@@ -75,7 +74,6 @@ pub fn locate(command: &str, override_path: Option<&Path>) -> Result<Workspace, 
 
 /// Like [`locate`] but additionally enforces that `.firetrail/` exists and
 /// has been initialised.
-#[allow(dead_code)] // used by work-graph subcommands (firetrail-1xc).
 pub fn require_initialised(
     command: &str,
     override_path: Option<&Path>,

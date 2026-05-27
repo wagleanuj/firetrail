@@ -30,8 +30,11 @@ ft-storage = { path = "../ft-storage", version = "0.0.0" }
 ft-index = { path = "../ft-index", version = "0.0.0" }
 ft-identity = { path = "../ft-identity", version = "0.0.0" }
 ft-git = { path = "../ft-git", version = "0.0.0" }
+humantime = { workspace = true }
+fs2 = { workspace = true }
 
 [dev-dependencies]
 ft-testkit = { path = "../ft-testkit", version = "0.0.0" }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
+insta = { workspace = true, features = ["filters"] }

@@ -40,12 +40,7 @@ impl ErrorKind {
 }
 
 /// All recoverable errors surfaced by the CLI.
-///
-/// Some variants are only used by the work-graph epic (firetrail-1xc); they
-/// are kept in the scaffold so the dispatcher and formatter never need to
-/// learn new shapes when those commands land.
 #[derive(Debug, Error)]
-#[allow(dead_code)]
 pub enum CliError {
     /// The user supplied invalid arguments or the command refused for a
     /// validation reason (e.g. AC incomplete).
@@ -150,7 +145,6 @@ impl CliError {
     }
 
     /// Construct a user error.
-    #[allow(dead_code)] // used by work-graph subcommands (firetrail-1xc).
     pub fn user(command: impl Into<String>, message: impl Into<String>) -> Self {
         CliError::UserError {
             command: command.into(),

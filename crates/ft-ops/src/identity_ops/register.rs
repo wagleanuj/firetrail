@@ -228,10 +228,30 @@ pub fn capabilities(
     let mut rows: Vec<CapabilityRow> = Vec::new();
 
     let well_known = [
-        ("can_promote_verified", defaults.can_promote_verified, effective.can_promote_verified, ident.capabilities.can_promote_verified.is_some()),
-        ("can_close_high_risk", defaults.can_close_high_risk, effective.can_close_high_risk, ident.capabilities.can_close_high_risk.is_some()),
-        ("can_force_push", defaults.can_force_push, effective.can_force_push, ident.capabilities.can_force_push.is_some()),
-        ("can_redact", defaults.can_redact, effective.can_redact, ident.capabilities.can_redact.is_some()),
+        (
+            "can_promote_verified",
+            defaults.can_promote_verified,
+            effective.can_promote_verified,
+            ident.capabilities.can_promote_verified.is_some(),
+        ),
+        (
+            "can_close_high_risk",
+            defaults.can_close_high_risk,
+            effective.can_close_high_risk,
+            ident.capabilities.can_close_high_risk.is_some(),
+        ),
+        (
+            "can_force_push",
+            defaults.can_force_push,
+            effective.can_force_push,
+            ident.capabilities.can_force_push.is_some(),
+        ),
+        (
+            "can_redact",
+            defaults.can_redact,
+            effective.can_redact,
+            ident.capabilities.can_redact.is_some(),
+        ),
     ];
     for (name, _default_v, effective_v, overridden) in well_known {
         rows.push(CapabilityRow {
@@ -259,12 +279,7 @@ pub fn capabilities(
     })
 }
 
-pub(super) fn emit_updated(
-    bus: &EventBus,
-    request_id: Option<&str>,
-    id: &str,
-    fields: &[&str],
-) {
+pub(super) fn emit_updated(bus: &EventBus, request_id: Option<&str>, id: &str, fields: &[&str]) {
     let event = Event::IdentityUpdated {
         identity: id.to_string(),
         fields: fields.iter().map(|s| (*s).to_string()).collect(),

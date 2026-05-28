@@ -70,10 +70,7 @@ pub fn router() -> Router<Arc<AppState>> {
             "/criteria/:id",
             get(criteria_list_handler).post(criteria_add_handler),
         )
-        .route(
-            "/criteria/:id/:which",
-            patch(criteria_toggle_handler),
-        )
+        .route("/criteria/:id/:which", patch(criteria_toggle_handler))
         .route(
             "/criteria/:id/:which/evidence",
             post(criteria_evidence_handler),

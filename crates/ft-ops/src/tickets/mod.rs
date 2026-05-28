@@ -49,11 +49,8 @@ pub(crate) fn ctx_for_criteria<'a>(
     ctx::TicketCtx::open(ws, identity, op)
 }
 
-
 pub use board::{BoardCard, BoardInput, BoardOutput, board};
-pub use claim::{
-    ClaimInput, ClaimOutput, UnclaimInput, UnclaimOutput, claim, unclaim,
-};
+pub use claim::{ClaimInput, ClaimOutput, UnclaimInput, UnclaimOutput, claim, unclaim};
 pub use close::{CloseInput, CloseOutput, close};
 pub use create::{
     CreateBugInput, CreateEpicInput, CreateSubtaskInput, CreateTaskInput, CreatedTicket,

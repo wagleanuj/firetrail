@@ -112,9 +112,7 @@ impl<'a> MemoryCtx<'a> {
                 "id",
                 format!("hex prefix is required after kind tag `{kind}`"),
             )),
-            Err(ResolveError::Unknown(_)) => {
-                Err(OpsError::not_found("memory", raw.to_string()))
-            }
+            Err(ResolveError::Unknown(_)) => Err(OpsError::not_found("memory", raw.to_string())),
             Err(ResolveError::Ambiguous { matches, .. }) => Err(OpsError::Conflict {
                 reason: format!("`{raw}` is ambiguous; matches {} records", matches.len()),
             }),

@@ -160,7 +160,14 @@ pub fn list(
     _events: &EventBus,
 ) -> Result<ListOutput, OpsError> {
     let ctx = MemoryCtx::open(ws, identity, "memory list")?;
-    let rows = scan(&ctx, input.kind, input.trust, input.risk_class, input.stale, input.limit)?;
+    let rows = scan(
+        &ctx,
+        input.kind,
+        input.trust,
+        input.risk_class,
+        input.stale,
+        input.limit,
+    )?;
     Ok(ListOutput { rows })
 }
 
@@ -238,7 +245,9 @@ fn scan(
         if stale_only && !row_stale {
             continue;
         }
-        rows.push(MemoryRowOut::from_record(&record, row_trust, row_risk, row_stale));
+        rows.push(MemoryRowOut::from_record(
+            &record, row_trust, row_risk, row_stale,
+        ));
         if let Some(cap) = limit {
             if rows.len() as u64 >= cap {
                 break;

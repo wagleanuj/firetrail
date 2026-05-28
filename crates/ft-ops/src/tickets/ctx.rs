@@ -102,21 +102,14 @@ impl<'a> TicketCtx<'a> {
             .map_err(|e| OpsError::Internal(anyhow::anyhow!("scan storage: {e}")))?;
         match resolve_prefix(raw, &candidates) {
             Ok(id) => Ok(id),
-            Err(ResolveError::Empty) => {
-                Err(OpsError::validation("id", "empty record id"))
-            }
+            Err(ResolveError::Empty) => Err(OpsError::validation("id", "empty record id")),
             Err(ResolveError::EmptyHexPrefix(kind)) => Err(OpsError::validation(
                 "id",
                 format!("hex prefix is required after kind tag `{kind}`"),
             )),
-            Err(ResolveError::Unknown(_)) => {
-                Err(OpsError::not_found("ticket", raw.to_string()))
-            }
+            Err(ResolveError::Unknown(_)) => Err(OpsError::not_found("ticket", raw.to_string())),
             Err(ResolveError::Ambiguous { matches, .. }) => Err(OpsError::Conflict {
-                reason: format!(
-                    "`{raw}` is ambiguous; matches {} records",
-                    matches.len()
-                ),
+                reason: format!("`{raw}` is ambiguous; matches {} records", matches.len()),
             }),
         }
     }
@@ -175,8 +168,8 @@ impl<'a> TicketCtx<'a> {
 
     fn persist_record(&mut self, record: &mut Record) -> Result<PathBuf, OpsError> {
         record.envelope.state_hash = String::new();
-        let new_hash = state_hash(record)
-            .map_err(|e| OpsError::Internal(anyhow::anyhow!("hash: {e}")))?;
+        let new_hash =
+            state_hash(record).map_err(|e| OpsError::Internal(anyhow::anyhow!("hash: {e}")))?;
         record.envelope.state_hash = new_hash;
 
         let path = self
@@ -234,11 +227,7 @@ pub(crate) struct LockHandle {
 }
 
 impl LockHandle {
-    pub fn acquire(
-        ws: &Workspace,
-        id: &RecordId,
-        suffix: &str,
-    ) -> Result<Self, OpsError> {
+    pub fn acquire(ws: &Workspace, id: &RecordId, suffix: &str) -> Result<Self, OpsError> {
         let lower = id.as_str().to_lowercase();
         let path = ws
             .firetrail_dir()
@@ -253,9 +242,7 @@ impl LockHandle {
             Err(e) if e.kind() == ErrorKind::AlreadyExists => Err(OpsError::Conflict {
                 reason: format!("another `{suffix}` is in-flight for {}", id.as_str()),
             }),
-            Err(e) => Err(OpsError::Internal(anyhow::anyhow!(
-                "lockfile error: {e}"
-            ))),
+            Err(e) => Err(OpsError::Internal(anyhow::anyhow!("lockfile error: {e}"))),
         }
     }
 }
@@ -301,16 +288,13 @@ pub(crate) fn load_relations(ws: &Workspace) -> Result<Vec<Relation>, OpsError> 
         .map_err(|e| OpsError::Internal(anyhow::anyhow!("open relations log: {e}")))?;
     let mut out = Vec::new();
     for (lineno, line) in BufReader::new(f).lines().enumerate() {
-        let line = line
-            .map_err(|e| OpsError::Internal(anyhow::anyhow!("read relations line: {e}")))?;
+        let line =
+            line.map_err(|e| OpsError::Internal(anyhow::anyhow!("read relations line: {e}")))?;
         if line.trim().is_empty() {
             continue;
         }
         let rel: Relation = serde_json::from_str(&line).map_err(|e| {
-            OpsError::Internal(anyhow::anyhow!(
-                "parse relations line {}: {e}",
-                lineno + 1
-            ))
+            OpsError::Internal(anyhow::anyhow!("parse relations line {}: {e}", lineno + 1))
         })?;
         out.push(rel);
     }

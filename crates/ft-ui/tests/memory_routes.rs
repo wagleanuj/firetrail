@@ -12,9 +12,9 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use futures_util::StreamExt;
 use ft_testkit::TestRepo;
 use ft_ui::server::{AppState, test_app};
+use futures_util::StreamExt;
 use tokio::net::TcpListener;
 
 const TEST_IDENTITY: &str = "alice@firetrail.test";
@@ -130,7 +130,10 @@ async fn create_then_list_then_show_round_trip() {
         .as_str()
         .expect("id")
         .to_string();
-    assert!(id.starts_with("GOTCHA-"), "expected GOTCHA- prefix, got {id}");
+    assert!(
+        id.starts_with("GOTCHA-"),
+        "expected GOTCHA- prefix, got {id}"
+    );
 
     // List should include it.
     let resp = client
@@ -261,7 +264,10 @@ async fn capture_defaults_to_memory_kind() {
     assert_eq!(resp.status(), reqwest::StatusCode::CREATED);
     let body: serde_json::Value = resp.json().await.unwrap();
     let id = body["record"]["envelope"]["id"].as_str().unwrap();
-    assert!(id.starts_with("MEM-"), "default kind should be memory, got {id}");
+    assert!(
+        id.starts_with("MEM-"),
+        "default kind should be memory, got {id}"
+    );
 }
 
 #[tokio::test]
@@ -303,7 +309,9 @@ async fn search_lexical_finds_created_record() {
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     let resp = client
-        .get(format!("http://{addr}/api/memory/search?q=frobnicator&mode=lexical"))
+        .get(format!(
+            "http://{addr}/api/memory/search?q=frobnicator&mode=lexical"
+        ))
         .header("Host", addr.to_string())
         .send()
         .await
@@ -319,7 +327,9 @@ async fn search_semantic_succeeds_or_degrades_gracefully() {
     let (addr, _state, client, _tr) = boot().await;
 
     let resp = client
-        .get(format!("http://{addr}/api/memory/search?q=anything&mode=semantic"))
+        .get(format!(
+            "http://{addr}/api/memory/search?q=anything&mode=semantic"
+        ))
         .header("Host", addr.to_string())
         .send()
         .await

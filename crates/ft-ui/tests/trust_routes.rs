@@ -5,9 +5,9 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use futures_util::StreamExt;
 use ft_testkit::TestRepo;
 use ft_ui::server::{AppState, test_app};
+use futures_util::StreamExt;
 use tokio::net::TcpListener;
 
 const TEST_IDENTITY: &str = "alice@firetrail.test";

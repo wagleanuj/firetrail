@@ -5,9 +5,9 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use futures_util::StreamExt;
 use ft_ops::{Event, EventBus};
 use ft_ui::server::{AppState, ServerOpts};
+use futures_util::StreamExt;
 use tempfile::TempDir;
 use tokio::net::TcpListener;
 
@@ -167,9 +167,7 @@ async fn test_sse_keeps_open() {
     let events: EventBus = state.events.clone();
     tokio::spawn(async move {
         tokio::time::sleep(Duration::from_millis(200)).await;
-        events.emit(Event::TicketCreated {
-            id: "tk-1".into(),
-        });
+        events.emit(Event::TicketCreated { id: "tk-1".into() });
     });
 
     let start = Instant::now();

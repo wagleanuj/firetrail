@@ -12,9 +12,9 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use futures_util::StreamExt;
 use ft_testkit::TestRepo;
 use ft_ui::server::{AppState, test_app};
+use futures_util::StreamExt;
 use tokio::net::TcpListener;
 
 const TEST_IDENTITY: &str = "alice@firetrail.test";
@@ -80,11 +80,7 @@ async fn boot() -> (SocketAddr, Arc<AppState>, reqwest::Client, TestRepo) {
     (addr, state, client, tr)
 }
 
-async fn create_task(
-    client: &reqwest::Client,
-    addr: SocketAddr,
-    title: &str,
-) -> serde_json::Value {
+async fn create_task(client: &reqwest::Client, addr: SocketAddr, title: &str) -> serde_json::Value {
     let resp = client
         .post(format!("http://{addr}/api/tickets"))
         .header("Host", addr.to_string())
@@ -116,7 +112,10 @@ async fn board_returns_empty_columns_on_fresh_workspace() {
     assert_eq!(resp.status(), reqwest::StatusCode::OK);
     let body: serde_json::Value = resp.json().await.unwrap();
     for col in ["todo", "in_progress", "review", "done"] {
-        assert!(body.get(col).and_then(|v| v.as_array()).is_some(), "col {col}");
+        assert!(
+            body.get(col).and_then(|v| v.as_array()).is_some(),
+            "col {col}"
+        );
     }
 }
 
@@ -188,7 +187,10 @@ async fn create_with_unknown_kind_is_400() {
 async fn patch_updates_title() {
     let (addr, _state, client, _tr) = boot().await;
     let body = create_task(&client, addr, "old").await;
-    let id = body["record"]["envelope"]["id"].as_str().unwrap().to_string();
+    let id = body["record"]["envelope"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     let resp = client
         .patch(format!("http://{addr}/api/tickets/{id}"))
@@ -206,7 +208,10 @@ async fn patch_updates_title() {
 async fn patch_with_empty_body_is_400() {
     let (addr, _state, client, _tr) = boot().await;
     let body = create_task(&client, addr, "x").await;
-    let id = body["record"]["envelope"]["id"].as_str().unwrap().to_string();
+    let id = body["record"]["envelope"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     let resp = client
         .patch(format!("http://{addr}/api/tickets/{id}"))
@@ -222,7 +227,10 @@ async fn patch_with_empty_body_is_400() {
 async fn close_twice_yields_conflict() {
     let (addr, _state, client, _tr) = boot().await;
     let body = create_task(&client, addr, "to-close").await;
-    let id = body["record"]["envelope"]["id"].as_str().unwrap().to_string();
+    let id = body["record"]["envelope"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     let resp = client
         .post(format!("http://{addr}/api/tickets/{id}/close"))
@@ -284,7 +292,10 @@ async fn link_round_trip_via_show() {
 async fn claim_threads_request_id_into_sse_envelope() {
     let (addr, _state, client, _tr) = boot().await;
     let body = create_task(&client, addr, "claimable").await;
-    let id = body["record"]["envelope"]["id"].as_str().unwrap().to_string();
+    let id = body["record"]["envelope"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     // Open SSE first so we don't miss the emission.
     let sse_resp = client

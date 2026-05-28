@@ -13,13 +13,13 @@
 //! default build (no bundled-ui) compiles and runs cleanly — useful for
 //! `cargo check` and headless tests.
 
+#[cfg(feature = "bundled-ui")]
+use axum::http::header;
 use axum::{
     extract::Path,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-#[cfg(feature = "bundled-ui")]
-use axum::http::header;
 
 /// Serve `index.html` for the SPA root after auth bootstrap.
 pub fn serve_index() -> Response {

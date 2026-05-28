@@ -138,9 +138,7 @@ pub fn graph(
     let root = resolve_id(&storage, &input.id)?;
     // Verify root exists before walking.
     let _ = storage.read(&root).map_err(|e| match e {
-        ft_storage::StorageError::NotFound(_) => {
-            OpsError::not_found("memory", input.id.clone())
-        }
+        ft_storage::StorageError::NotFound(_) => OpsError::not_found("memory", input.id.clone()),
         other => OpsError::Internal(anyhow::anyhow!("read root: {other}")),
     })?;
 

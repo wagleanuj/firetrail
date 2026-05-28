@@ -25,10 +25,10 @@ use axum::{
 };
 use ft_identity::{DefaultResolver, IdentityResolver};
 use ft_ops::identity_ops::{
-    self, CapabilitiesInput as IdentityCapabilitiesInput, IdentityKindInput,
-    ListInput as IdentityListInput, OffboardInput as IdentityOffboardInput,
-    RegisterInput as IdentityRegisterInput, ShowInput as IdentityShowInput,
-    CapabilityOverrideInput, IdentityStatusFilter,
+    self, CapabilitiesInput as IdentityCapabilitiesInput, CapabilityOverrideInput,
+    IdentityKindInput, IdentityStatusFilter, ListInput as IdentityListInput,
+    OffboardInput as IdentityOffboardInput, RegisterInput as IdentityRegisterInput,
+    ShowInput as IdentityShowInput,
 };
 use ft_ops::{Identity, Workspace};
 use serde::Deserialize;

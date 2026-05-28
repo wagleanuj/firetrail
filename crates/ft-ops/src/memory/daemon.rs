@@ -41,9 +41,8 @@ pub(crate) fn ensure_running(ws: &Workspace) -> Result<DaemonStatus, OpsError> {
     }
 
     if let Some(parent) = socket.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| {
-            OpsError::Internal(anyhow::anyhow!("create runtime dir: {e}"))
-        })?;
+        std::fs::create_dir_all(parent)
+            .map_err(|e| OpsError::Internal(anyhow::anyhow!("create runtime dir: {e}")))?;
     }
 
     if !spawn_detached(ws, &socket) {
@@ -66,7 +65,10 @@ pub(crate) fn ensure_running(ws: &Workspace) -> Result<DaemonStatus, OpsError> {
 fn spawn_detached(ws: &Workspace, socket: &Path) -> bool {
     use std::process::{Command, Stdio};
     let Ok(exe) = std::env::current_exe() else {
-        tracing::warn!(op = "memory::search", "current_exe unavailable; cannot spawn daemon");
+        tracing::warn!(
+            op = "memory::search",
+            "current_exe unavailable; cannot spawn daemon"
+        );
         return false;
     };
     let workspace_arg = ws.root.display().to_string();

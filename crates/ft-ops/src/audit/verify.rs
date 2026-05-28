@@ -80,9 +80,7 @@ pub fn verify(
         let id = ft_core::RecordId::from_string(raw.clone())
             .map_err(|e| OpsError::validation("id", e.to_string()))?;
         let record = storage.read(&id).map_err(|e| match e {
-            ft_storage::StorageError::NotFound(_) => {
-                OpsError::not_found("memory", raw.clone())
-            }
+            ft_storage::StorageError::NotFound(_) => OpsError::not_found("memory", raw.clone()),
             other => OpsError::Internal(anyhow::anyhow!("read record: {other}")),
         })?;
         let (ok, reason) = match verify_chain(&record) {

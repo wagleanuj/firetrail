@@ -102,8 +102,8 @@ mod common {
             .stderr(Stdio::piped());
 
         let mut child = cmd.spawn().expect("spawn ft-ui");
-        let url = wait_for_ready_url(&mut child, Duration::from_secs(10))
-            .expect("ready line within 10s");
+        let url =
+            wait_for_ready_url(&mut child, Duration::from_secs(10)).expect("ready line within 10s");
 
         let host_port = url
             .trim_start_matches("http://")

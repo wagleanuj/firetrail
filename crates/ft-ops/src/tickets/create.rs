@@ -185,8 +185,8 @@ pub fn create_task(
     )
     .task(body);
     if let Some(owner) = input.owner {
-        let id = CoreIdentity::new(owner)
-            .map_err(|e| OpsError::validation("owner", e.to_string()))?;
+        let id =
+            CoreIdentity::new(owner).map_err(|e| OpsError::validation("owner", e.to_string()))?;
         builder = builder.owner(id);
     }
     let mut record = build_with_labels(builder, &input.labels)?;
@@ -264,8 +264,8 @@ pub fn create_subtask(
     )
     .subtask(body);
     if let Some(owner) = input.owner {
-        let id = CoreIdentity::new(owner)
-            .map_err(|e| OpsError::validation("owner", e.to_string()))?;
+        let id =
+            CoreIdentity::new(owner).map_err(|e| OpsError::validation("owner", e.to_string()))?;
         builder = builder.owner(id);
     }
     let mut record = build_with_labels(builder, &input.labels)?;

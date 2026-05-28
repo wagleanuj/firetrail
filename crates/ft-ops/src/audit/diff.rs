@@ -104,8 +104,8 @@ pub fn diff(
     input: DiffInput,
     _events: &EventBus,
 ) -> Result<DiffOutput, OpsError> {
-    let git = Repo::open(&ws.root)
-        .map_err(|e| OpsError::Internal(anyhow::anyhow!("open git: {e}")))?;
+    let git =
+        Repo::open(&ws.root).map_err(|e| OpsError::Internal(anyhow::anyhow!("open git: {e}")))?;
     let entries = git
         .diff(&input.base, &input.head, None)
         .map_err(|e| OpsError::Internal(anyhow::anyhow!("diff: {e}")))?;

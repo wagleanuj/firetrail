@@ -125,8 +125,8 @@ fn test_ui_emits_url_then_keepalive() {
     firetrail_init(tr.root());
 
     let mut child = spawn_firetrail_ui(tr.root(), &[]);
-    let url = wait_for_ready_url(&mut child, Duration::from_secs(10))
-        .expect("ready line within 10s");
+    let url =
+        wait_for_ready_url(&mut child, Duration::from_secs(10)).expect("ready line within 10s");
     assert!(url.starts_with("http://127.0.0.1:"), "got: {url}");
 
     // Confirm the server is actually listening — a TCP connect is enough

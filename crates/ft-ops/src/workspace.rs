@@ -35,10 +35,7 @@ impl Workspace {
     pub fn open(root: impl AsRef<Path>) -> Result<Self, OpsError> {
         let root = root.as_ref();
         if !root.exists() {
-            return Err(OpsError::not_found(
-                "workspace",
-                root.display().to_string(),
-            ));
+            return Err(OpsError::not_found("workspace", root.display().to_string()));
         }
         let ws = Self {
             root: root.to_path_buf(),
@@ -62,10 +59,7 @@ impl Workspace {
     pub fn open_uninitialised(root: impl AsRef<Path>) -> Result<Self, OpsError> {
         let root = root.as_ref();
         if !root.exists() {
-            return Err(OpsError::not_found(
-                "workspace",
-                root.display().to_string(),
-            ));
+            return Err(OpsError::not_found("workspace", root.display().to_string()));
         }
         Ok(Self {
             root: root.to_path_buf(),

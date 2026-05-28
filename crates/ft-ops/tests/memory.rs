@@ -7,8 +7,8 @@
 
 use ft_ops::memory::{
     self, CaptureInput, CreateDecisionInput, CreateFindingInput, CreateGotchaInput,
-    CreateIncidentInput, CreateMemoryInput, CreateRunbookInput, ListInput, MemoryKind,
-    SearchInput, SearchMode, ShowInput, SimilarInput,
+    CreateIncidentInput, CreateMemoryInput, CreateRunbookInput, ListInput, MemoryKind, SearchInput,
+    SearchMode, ShowInput, SimilarInput,
 };
 use ft_ops::{EventBus, Identity, Workspace};
 use ft_testkit::TestRepo;
@@ -57,13 +57,7 @@ fn create_memory_round_trip_with_show() {
     let mid = out.record.envelope.id.as_str().to_string();
     assert!(mid.starts_with("MEM-"), "expected MEM- prefix, got {mid}");
 
-    let shown = memory::show(
-        &ws,
-        &id,
-        ShowInput { id: mid.clone() },
-        &bus,
-    )
-    .expect("show");
+    let shown = memory::show(&ws, &id, ShowInput { id: mid.clone() }, &bus).expect("show");
     assert_eq!(shown.record.envelope.id.as_str(), mid);
     assert_eq!(shown.record.envelope.title, "hello");
 }

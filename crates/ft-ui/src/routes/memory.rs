@@ -65,8 +65,7 @@ use ft_identity::{DefaultResolver, IdentityResolver};
 use ft_ops::memory::{
     self, CaptureInput, CreateDecisionInput, CreateFindingInput, CreateGotchaInput,
     CreateIncidentInput, CreateMemoryInput, CreateRunbookInput, ListInput, MemoryKind,
-    SalvageInput, SearchInput, SearchMode, ShowInput, SimilarInput, StaleInput,
-    TrustStateInput,
+    SalvageInput, SearchInput, SearchMode, ShowInput, SimilarInput, StaleInput, TrustStateInput,
 };
 use ft_ops::{Identity, Workspace};
 use serde::Deserialize;
@@ -148,12 +147,7 @@ pub async fn show_handler(
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, AppError> {
     let identity = resolve_identity(&state.workspace)?;
-    let out = memory::views::show(
-        &state.workspace,
-        &identity,
-        ShowInput { id },
-        &state.events,
-    )?;
+    let out = memory::views::show(&state.workspace, &identity, ShowInput { id }, &state.events)?;
     Ok((StatusCode::OK, Json(out)))
 }
 

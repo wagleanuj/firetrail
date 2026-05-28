@@ -297,7 +297,10 @@ fn read_ready_url(
     let url = match rx.recv_timeout(READY_TIMEOUT) {
         Ok(Ok(url)) => url,
         Ok(Err(e)) => {
-            return Err(CliError::internal(CMD_UI, format!("read ft-ui stdout: {e}")));
+            return Err(CliError::internal(
+                CMD_UI,
+                format!("read ft-ui stdout: {e}"),
+            ));
         }
         Err(mpsc::RecvTimeoutError::Timeout) => {
             return Err(CliError::internal(
@@ -316,9 +319,9 @@ fn read_ready_url(
         }
     };
 
-    let reader = reader_rx.recv().map_err(|_| {
-        CliError::internal(CMD_UI, "ft-ui reader channel closed unexpectedly")
-    })?;
+    let reader = reader_rx
+        .recv()
+        .map_err(|_| CliError::internal(CMD_UI, "ft-ui reader channel closed unexpectedly"))?;
     Ok((url, reader))
 }
 

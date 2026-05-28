@@ -247,7 +247,11 @@ async fn create_memory_emits_memory_created_with_request_id() {
 
     let mut got = None;
     while let Ok(env) = rx.try_recv() {
-        if let Event::MemoryCreated { id: mid, record_kind } = env.event {
+        if let Event::MemoryCreated {
+            id: mid,
+            record_kind,
+        } = env.event
+        {
             got = Some((mid, record_kind, env.request_id));
             break;
         }

@@ -9,12 +9,10 @@
 //! Quarantine filtering (ADR-0014) is applied at this layer so the search
 //! engine remains oblivious to import labels.
 
-use ft_embed::{DaemonStatus, MockEmbedder, daemon as embed_daemon};
 use ft_embed::Embedder as _;
+use ft_embed::{DaemonStatus, MockEmbedder, daemon as embed_daemon};
 use ft_import::is_quarantined;
-use ft_search::{
-    EMBEDDING_DIM, HitMode, SearchHit, SearchMode as CoreSearchMode, SearchQuery,
-};
+use ft_search::{EMBEDDING_DIM, HitMode, SearchHit, SearchMode as CoreSearchMode, SearchQuery};
 use ft_storage::Storage as _;
 use serde::{Deserialize, Serialize};
 
@@ -23,9 +21,9 @@ use crate::events::EventBus;
 use crate::identity::Identity;
 use crate::workspace::Workspace;
 
+use super::create::MemoryKind;
 use super::ctx::MemoryCtx;
 use super::views::TrustStateInput;
-use super::create::MemoryKind;
 
 /// Wire shape for the requested search mode.
 #[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]

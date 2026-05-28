@@ -16,20 +16,6 @@ use std::process::ExitCode;
 
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
-use ft_ops::memory::{
-    CaptureInput, CreateDecisionInput, CreateFindingInput, CreateGotchaInput,
-    CreateIncidentInput, CreateMemoryInput, CreateRunbookInput, ListInput as MemoryListInput,
-    ListOutput as MemoryListOutput, MemoryKind, MemoryRowOut, RiskClassInput, SalvageEntry,
-    SalvageEntryAction, SalvageInput, SalvageOutput, SearchHitOut, SearchInput, SearchMode,
-    SearchOutput, SeverityInput, ShowInput as MemoryShowInput, SimilarInput, StaleInput,
-    TrustStateInput,
-};
-use ft_ops::tickets::{
-    BoardCard, BoardInput, BoardOutput, ClaimInput, CloseInput, CreateBugInput, CreateEpicInput,
-    CreateSubtaskInput, CreateTaskInput, LinkInput, ListInput, ListedTicket, ShowInput,
-    TicketKindFilter, TicketPriority, TicketRelationKind, TicketStatusFilter, UnclaimInput,
-    UpdateInput,
-};
 use ft_ops::audit::{
     CriteriaAddInput, CriteriaEvidenceInput, CriteriaListInput, CriteriaListOutput,
     CriteriaListRow, CriteriaToggleInput, DiffChange, DiffInput, DiffOutput, DiffRow,
@@ -42,17 +28,30 @@ use ft_ops::events::SalvageDecision;
 use ft_ops::identity_ops::{
     CapabilitiesInput, CapabilitiesOutput, CapabilityRow, IdentityKindInput, IdentityListOutput,
     IdentityRegisterOutput, IdentityShowOutput, IdentityStatusFilter, IdentityView,
-    ListInput as IdentityListInput, OffboardInput, RegisterInput,
-    ShowInput as IdentityShowInput,
+    ListInput as IdentityListInput, OffboardInput, RegisterInput, ShowInput as IdentityShowInput,
+};
+use ft_ops::memory::{
+    CaptureInput, CreateDecisionInput, CreateFindingInput, CreateGotchaInput, CreateIncidentInput,
+    CreateMemoryInput, CreateRunbookInput, ListInput as MemoryListInput,
+    ListOutput as MemoryListOutput, MemoryKind, MemoryRowOut, RiskClassInput, SalvageEntry,
+    SalvageEntryAction, SalvageInput, SalvageOutput, SearchHitOut, SearchInput, SearchMode,
+    SearchOutput, SeverityInput, ShowInput as MemoryShowInput, SimilarInput, StaleInput,
+    TrustStateInput,
 };
 use ft_ops::scope::{
     AliasEntry, AliasesInput, AliasesOutput, CodeOwnersRow, ListInput as ScopeListInput,
     ListOutput as ScopeListOutput, OwnersInput, OwnersOutput, ScopeDetail, ScopeSummary,
     ShowInput as ScopeShowInput, ShowOutput as ScopeShowOutput,
 };
+use ft_ops::tickets::{
+    BoardCard, BoardInput, BoardOutput, ClaimInput, CloseInput, CreateBugInput, CreateEpicInput,
+    CreateSubtaskInput, CreateTaskInput, LinkInput, ListInput, ListedTicket, ShowInput,
+    TicketKindFilter, TicketPriority, TicketRelationKind, TicketStatusFilter, UnclaimInput,
+    UpdateInput,
+};
 use ft_ops::trust::{
-    EvidenceKindInput, MergeInput, PromoteInput, ReasonInput,
-    ReviewInput as TrustReviewInput, SupersedeInput,
+    EvidenceKindInput, MergeInput, PromoteInput, ReasonInput, ReviewInput as TrustReviewInput,
+    SupersedeInput,
 };
 use ft_ops::{EmittedEvent, Event};
 use ts_rs::TS;

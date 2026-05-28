@@ -137,8 +137,8 @@ pub fn salvage(
     events: &EventBus,
 ) -> Result<SalvageOutput, OpsError> {
     let mut warnings: Vec<String> = Vec::new();
-    let repo = Repo::open(&ws.root)
-        .map_err(|e| OpsError::Internal(anyhow::anyhow!("open repo: {e}")))?;
+    let repo =
+        Repo::open(&ws.root).map_err(|e| OpsError::Internal(anyhow::anyhow!("open repo: {e}")))?;
 
     // Resolve source ref.
     let (source_branch, source_ref) = match &input.branch {
@@ -208,16 +208,10 @@ pub fn salvage(
     for path in source_paths {
         if base_paths.contains(&path) {
             let src_blob = repo.read_file_at_ref(&source_ref, &path).map_err(|e| {
-                OpsError::Internal(anyhow::anyhow!(
-                    "read source {}: {e}",
-                    path.display()
-                ))
+                OpsError::Internal(anyhow::anyhow!("read source {}: {e}", path.display()))
             })?;
             let base_blob = repo.read_file_at_ref(&input.base, &path).map_err(|e| {
-                OpsError::Internal(anyhow::anyhow!(
-                    "read base {}: {e}",
-                    path.display()
-                ))
+                OpsError::Internal(anyhow::anyhow!("read base {}: {e}", path.display()))
             })?;
             if src_blob == base_blob {
                 continue;
@@ -332,10 +326,7 @@ fn perform_salvage(
     for e in entries {
         let path = PathBuf::from(&e.path);
         let bytes = repo.read_file_at_ref(source_ref, &path).map_err(|err| {
-            OpsError::Internal(anyhow::anyhow!(
-                "read {} at source: {err}",
-                path.display()
-            ))
+            OpsError::Internal(anyhow::anyhow!("read {} at source: {err}", path.display()))
         })?;
         blobs.push((path, bytes));
     }
@@ -349,13 +340,15 @@ fn perform_salvage(
         .map_err(|e| OpsError::Internal(anyhow::anyhow!("is_clean: {e}")))?
     {
         return Err(OpsError::Conflict {
-            reason:
-                "working tree has uncommitted changes; commit or stash before running salvage"
-                    .to_string(),
+            reason: "working tree has uncommitted changes; commit or stash before running salvage"
+                .to_string(),
         });
     }
 
-    git(repo_root, &["checkout", "--quiet", "-b", &branch_name, base])?;
+    git(
+        repo_root,
+        &["checkout", "--quiet", "-b", &branch_name, base],
+    )?;
 
     for (rel, bytes) in &blobs {
         let abs = repo_root.join(rel);
@@ -364,9 +357,8 @@ fn perform_salvage(
                 OpsError::Internal(anyhow::anyhow!("mkdir {}: {e}", parent.display()))
             })?;
         }
-        std::fs::write(&abs, bytes).map_err(|e| {
-            OpsError::Internal(anyhow::anyhow!("write {}: {e}", abs.display()))
-        })?;
+        std::fs::write(&abs, bytes)
+            .map_err(|e| OpsError::Internal(anyhow::anyhow!("write {}: {e}", abs.display())))?;
         git(repo_root, &["add", "--", rel.to_string_lossy().as_ref()])?;
     }
 

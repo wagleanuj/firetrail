@@ -6,9 +6,9 @@
 //! ops should be testable without the binary.
 
 use ft_ops::tickets::{
-    self, BoardInput, ClaimInput, CloseInput, CreateBugInput, CreateEpicInput,
-    CreateSubtaskInput, CreateTaskInput, LinkInput, ListInput, ShowInput, TicketPriority,
-    TicketRelationKind, TicketStatusFilter, UnclaimInput, UpdateInput,
+    self, BoardInput, ClaimInput, CloseInput, CreateBugInput, CreateEpicInput, CreateSubtaskInput,
+    CreateTaskInput, LinkInput, ListInput, ShowInput, TicketPriority, TicketRelationKind,
+    TicketStatusFilter, UnclaimInput, UpdateInput,
 };
 use ft_ops::{EventBus, Identity, OpsError, Workspace};
 use ft_testkit::TestRepo;
@@ -59,19 +59,14 @@ fn create_task_round_trip_with_show() {
     )
     .expect("create_task");
     let new_id = out.record.envelope.id.as_str().to_string();
-    assert!(new_id.starts_with("TASK-"), "id should be TASK-prefixed: {new_id}");
+    assert!(
+        new_id.starts_with("TASK-"),
+        "id should be TASK-prefixed: {new_id}"
+    );
     assert_eq!(out.record.envelope.title, "demo task");
     assert_eq!(out.record.envelope.labels.len(), 1);
 
-    let shown = tickets::show(
-        &ws,
-        &id,
-        ShowInput {
-            id: new_id.clone(),
-        },
-        &bus,
-    )
-    .expect("show");
+    let shown = tickets::show(&ws, &id, ShowInput { id: new_id.clone() }, &bus).expect("show");
     assert_eq!(shown.record.envelope.id.as_str(), new_id);
     assert!(shown.relations.is_empty());
 }
@@ -115,7 +110,10 @@ fn create_epic_then_task_with_epic_parent() {
     )
     .expect("create_task");
     if let ft_core::RecordBody::Task(t) = &task.record.body {
-        assert_eq!(t.parent_epic.as_ref().map(|p| p.as_str()), Some(epic_id.as_str()));
+        assert_eq!(
+            t.parent_epic.as_ref().map(|p| p.as_str()),
+            Some(epic_id.as_str())
+        );
     } else {
         panic!("expected Task body");
     }
@@ -492,13 +490,7 @@ fn link_persists_and_show_surfaces_relations() {
     .expect("link");
     assert_eq!(link.kind, ft_core::RelationKind::RelatedTo);
 
-    let shown = tickets::show(
-        &ws,
-        &id,
-        ShowInput { id: a_id.clone() },
-        &bus,
-    )
-    .unwrap();
+    let shown = tickets::show(&ws, &id, ShowInput { id: a_id.clone() }, &bus).unwrap();
     assert_eq!(shown.relations.len(), 1);
     assert_eq!(shown.relations[0].kind, ft_core::RelationKind::RelatedTo);
 
@@ -543,23 +535,14 @@ fn list_and_board_reflect_created_tickets() {
         .unwrap();
     }
 
-    let listed = tickets::list(
-        &ws,
-        &id,
-        ListInput::default(),
-        &bus,
-    )
-    .unwrap();
+    let listed = tickets::list(&ws, &id, ListInput::default(), &bus).unwrap();
     assert_eq!(listed.rows.len(), 3);
 
-    let boarded = tickets::board(
-        &ws,
-        &id,
-        BoardInput::default(),
-        &bus,
-    )
-    .unwrap();
-    assert_eq!(boarded.todo.len() + boarded.in_progress.len() + boarded.review.len() + boarded.done.len(), 3);
+    let boarded = tickets::board(&ws, &id, BoardInput::default(), &bus).unwrap();
+    assert_eq!(
+        boarded.todo.len() + boarded.in_progress.len() + boarded.review.len() + boarded.done.len(),
+        3
+    );
 
     // Status filter
     let listed = tickets::list(

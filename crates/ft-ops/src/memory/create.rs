@@ -173,7 +173,9 @@ pub fn create_incident(
     let actor = ctx.actor.clone();
     let body = Incident {
         summary: input.summary.clone(),
-        severity: input.severity.map_or(Severity::Sev3, SeverityInput::to_core),
+        severity: input
+            .severity
+            .map_or(Severity::Sev3, SeverityInput::to_core),
         started_at: input.started_at.unwrap_or_else(Utc::now),
         resolved_at: None,
         services_affected: input.services,
@@ -549,8 +551,8 @@ pub fn capture(
     let risk = input.risk_class.map(RiskClassInput::to_core);
     let body_text = input.body.clone();
 
-    let mut builder = RecordBuilder::new(input.kind.to_core(), &input.title, actor)
-        .origin(Origin::Human);
+    let mut builder =
+        RecordBuilder::new(input.kind.to_core(), &input.title, actor).origin(Origin::Human);
     if let Some(s) = input.scope {
         builder = builder.owning_scope(s);
     }

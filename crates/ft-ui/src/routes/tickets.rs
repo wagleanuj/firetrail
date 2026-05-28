@@ -57,9 +57,9 @@ use axum::{
 };
 use ft_identity::{DefaultResolver, IdentityResolver};
 use ft_ops::tickets::{
-    self, BoardInput, ClaimInput, CloseInput, CreateBugInput, CreateEpicInput,
-    CreateSubtaskInput, CreateTaskInput, LinkInput, ListInput, ShowInput, TicketRelationKind,
-    UnclaimInput, UpdateInput,
+    self, BoardInput, ClaimInput, CloseInput, CreateBugInput, CreateEpicInput, CreateSubtaskInput,
+    CreateTaskInput, LinkInput, ListInput, ShowInput, TicketRelationKind, UnclaimInput,
+    UpdateInput,
 };
 use ft_ops::{Identity, Workspace};
 use serde::Deserialize;

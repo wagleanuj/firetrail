@@ -49,9 +49,11 @@ pub async fn events_handler(
     let seq_counter = state.sse_seq.clone();
     let ring = state.sse_ring.clone();
 
-    let replay_stream = futures_util::stream::iter(replay.into_iter().map(|(seq, env)| {
-        Ok::<_, Infallible>(encode_event(seq, &env))
-    }));
+    let replay_stream = futures_util::stream::iter(
+        replay
+            .into_iter()
+            .map(|(seq, env)| Ok::<_, Infallible>(encode_event(seq, &env))),
+    );
 
     let live_stream = async_stream::stream! {
         let mut s = live;
@@ -82,7 +84,10 @@ pub async fn events_handler(
 
 fn encode_event(seq: u64, env: &EmittedEvent) -> SseEvent {
     let data = serde_json::to_string(env).unwrap_or_else(|_| "{}".to_string());
-    SseEvent::default().id(seq.to_string()).event("emitted").data(data)
+    SseEvent::default()
+        .id(seq.to_string())
+        .event("emitted")
+        .data(data)
 }
 
 /// Bounded in-memory ring buffer of recent emitted events for SSE replay.

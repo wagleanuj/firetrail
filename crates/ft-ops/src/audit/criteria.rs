@@ -126,10 +126,16 @@ pub fn criteria_add(
 
     let text = input.text.trim();
     if text.is_empty() {
-        return Err(OpsError::validation("text", "criterion text cannot be empty"));
+        return Err(OpsError::validation(
+            "text",
+            "criterion text cannot be empty",
+        ));
     }
     let acs = criteria_mut(&mut record.body).ok_or_else(|| {
-        OpsError::validation("id", "this record kind does not support acceptance criteria")
+        OpsError::validation(
+            "id",
+            "this record kind does not support acceptance criteria",
+        )
     })?;
     let next_index = acs.len() + 1;
     let new_id = format!("ac-{next_index:02}");
@@ -217,7 +223,10 @@ fn toggle(
 
     {
         let acs = criteria_mut(&mut record.body).ok_or_else(|| {
-            OpsError::validation("id", "this record kind does not support acceptance criteria")
+            OpsError::validation(
+                "id",
+                "this record kind does not support acceptance criteria",
+            )
         })?;
         let ac = find_criterion_mut(acs, &input.which)?;
         ac.status = if checked {
@@ -255,7 +264,10 @@ pub fn criteria_evidence(
 
     {
         let acs = criteria_mut(&mut record.body).ok_or_else(|| {
-            OpsError::validation("id", "this record kind does not support acceptance criteria")
+            OpsError::validation(
+                "id",
+                "this record kind does not support acceptance criteria",
+            )
         })?;
         let ac = find_criterion_mut(acs, &input.which)?;
         let url = input.url.trim();

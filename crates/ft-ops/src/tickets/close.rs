@@ -69,10 +69,7 @@ pub fn close(
     let incomplete = unchecked_criteria(&record.body);
     if !incomplete.is_empty() && !input.force {
         return Err(OpsError::Conflict {
-            reason: format!(
-                "{} acceptance criteria are incomplete",
-                incomplete.len()
-            ),
+            reason: format!("{} acceptance criteria are incomplete", incomplete.len()),
         });
     }
 

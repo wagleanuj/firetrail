@@ -9,8 +9,8 @@ use crate::events::{Event, EventBus};
 use crate::identity::Identity;
 use crate::workspace::Workspace;
 
-use super::ctx::TicketCtx;
 use super::create::TicketPriority;
+use super::ctx::TicketCtx;
 use super::list::TicketStatusFilter;
 
 /// Input for [`update`].

@@ -119,9 +119,7 @@ pub async fn bootstrap_handler(
         return Ok(crate::assets::serve_index());
     }
 
-    Err(AppError::Unauthorized(
-        "missing or invalid session".into(),
-    ))
+    Err(AppError::Unauthorized("missing or invalid session".into()))
 }
 
 /// Build the signed `Set-Cookie` value for the session.
@@ -134,9 +132,7 @@ fn build_session_cookie(key: &Key) -> String {
 
     let mut jar = CookieJar::new();
     jar.signed_mut(key).add(cookie);
-    jar.get(SESSION_COOKIE)
-        .expect("just inserted")
-        .to_string()
+    jar.get(SESSION_COOKIE).expect("just inserted").to_string()
 }
 
 /// Verify a signed session cookie on the request.

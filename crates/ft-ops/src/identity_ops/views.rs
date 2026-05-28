@@ -24,8 +24,7 @@ impl IdentityStatusFilter {
     pub(crate) fn matches(self, s: IdentityStatus) -> bool {
         matches!(
             (self, s),
-            (Self::Active, IdentityStatus::Active)
-                | (Self::Offboarded, IdentityStatus::Offboarded)
+            (Self::Active, IdentityStatus::Active) | (Self::Offboarded, IdentityStatus::Offboarded)
         )
     }
 }

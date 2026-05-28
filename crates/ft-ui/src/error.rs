@@ -45,30 +45,19 @@ impl AppError {
                 format!("validation failed on field `{field}`: {reason}"),
                 Some(field.clone()),
             ),
-            Self::Ops(OpsError::Conflict { reason }) => (
-                StatusCode::CONFLICT,
-                "conflict",
-                reason.clone(),
-                None,
-            ),
+            Self::Ops(OpsError::Conflict { reason }) => {
+                (StatusCode::CONFLICT, "conflict", reason.clone(), None)
+            }
             Self::Ops(OpsError::PermissionDenied { reason }) => (
                 StatusCode::FORBIDDEN,
                 "permission_denied",
                 reason.clone(),
                 None,
             ),
-            Self::Unauthorized(msg) => (
-                StatusCode::UNAUTHORIZED,
-                "unauthorized",
-                msg.clone(),
-                None,
-            ),
-            Self::Forbidden(msg) => (
-                StatusCode::FORBIDDEN,
-                "forbidden",
-                msg.clone(),
-                None,
-            ),
+            Self::Unauthorized(msg) => {
+                (StatusCode::UNAUTHORIZED, "unauthorized", msg.clone(), None)
+            }
+            Self::Forbidden(msg) => (StatusCode::FORBIDDEN, "forbidden", msg.clone(), None),
             Self::Ops(OpsError::Internal(e)) | Self::Internal(e) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal",

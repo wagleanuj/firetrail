@@ -76,6 +76,12 @@ steps:
     # `pkill` exits 1 when no process matched; that is the expected case
     # when `daemon stop` already caused the child to exit. We treat both
     # exit codes (0 = killed, 1 = nothing to kill) as success.
-    run: sh -c "pkill -f 'firetrail daemon start --foreground' ; exit 0"
+    #
+    # The `[f]` bracket trick makes the regex match literal `firetrail` while
+    # the argv of this very `sh -c` (and of pkill itself) contains the literal
+    # text `[f]iretrail` — which does NOT contain `firetrail`. Without this,
+    # on Linux pkill matches its own parent shell and kills it with SIGTERM,
+    # producing exit code -1.
+    run: sh -c "pkill -f '[f]iretrail daemon start --foreground' ; exit 0"
     expect:
       exit: 0

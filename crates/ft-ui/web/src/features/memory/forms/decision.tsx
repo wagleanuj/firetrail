@@ -1,6 +1,7 @@
 import { useForm, type SubmitHandler } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Input } from '@/components/ui/input'
+import { ScopeCombobox } from '@/components/ui/autocomplete'
 import { MarkdownEditor } from '@/components/markdown-editor'
 import { useCreateMemory } from '../use-memory-mutations'
 import { decisionSchema, type DecisionValues } from '../schemas'
@@ -66,7 +67,10 @@ export function DecisionForm({ onDone }: { onDone: () => void }) {
             />
           </Field>
           <Field label="Scope">
-            <Input {...form.register('scope')} />
+            <ScopeCombobox
+              value={form.watch('scope') ?? ''}
+              onValueChange={(v) => form.setValue('scope', v)}
+            />
           </Field>
         </div>
       </FormShell>

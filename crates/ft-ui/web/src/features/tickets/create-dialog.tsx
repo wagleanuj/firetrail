@@ -23,6 +23,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
+import { OwnerCombobox, ScopeCombobox } from '@/components/ui/autocomplete'
 import {
   Select,
   SelectContent,
@@ -218,10 +219,16 @@ function TaskForm({ onDone }: { onDone: () => void }) {
             />
           </Field>
           <Field label="Owner">
-            <Input {...form.register('owner')} placeholder="identity (optional)" />
+            <OwnerCombobox
+              value={form.watch('owner') ?? ''}
+              onValueChange={(v) => form.setValue('owner', v)}
+            />
           </Field>
           <Field label="Scope">
-            <Input {...form.register('scope')} placeholder="scope id (optional)" />
+            <ScopeCombobox
+              value={form.watch('scope') ?? ''}
+              onValueChange={(v) => form.setValue('scope', v)}
+            />
           </Field>
         </div>
         <Field label="Labels" error={form.formState.errors.labels?.message}>
@@ -270,7 +277,10 @@ function EpicForm({ onDone }: { onDone: () => void }) {
             />
           </Field>
           <Field label="Scope">
-            <Input {...form.register('scope')} />
+            <ScopeCombobox
+              value={form.watch('scope') ?? ''}
+              onValueChange={(v) => form.setValue('scope', v)}
+            />
           </Field>
         </div>
         <Field label="Labels" error={form.formState.errors.labels?.message}>
@@ -324,11 +334,17 @@ function SubtaskForm({ onDone }: { onDone: () => void }) {
             />
           </Field>
           <Field label="Owner">
-            <Input {...form.register('owner')} />
+            <OwnerCombobox
+              value={form.watch('owner') ?? ''}
+              onValueChange={(v) => form.setValue('owner', v)}
+            />
           </Field>
         </div>
         <Field label="Scope">
-          <Input {...form.register('scope')} />
+          <ScopeCombobox
+            value={form.watch('scope') ?? ''}
+            onValueChange={(v) => form.setValue('scope', v)}
+          />
         </Field>
         <Field label="Labels" error={form.formState.errors.labels?.message}>
           <Input {...form.register('labels')} placeholder="key=value, key=value" />
@@ -384,7 +400,10 @@ function BugForm({ onDone }: { onDone: () => void }) {
             />
           </Field>
           <Field label="Scope">
-            <Input {...form.register('scope')} />
+            <ScopeCombobox
+              value={form.watch('scope') ?? ''}
+              onValueChange={(v) => form.setValue('scope', v)}
+            />
           </Field>
         </div>
         <Field label="Labels" error={form.formState.errors.labels?.message}>

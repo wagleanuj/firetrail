@@ -18,6 +18,9 @@ ft-history = { path = "../ft-history", version = "0.1.0" }
 ft-search = { path = "../ft-search", version = "0.1.0" }
 ft-identity = { path = "../ft-identity", version = "0.1.0" }
 ft-embed = { path = "../ft-embed", version = "0.1.0" }
+ft-trust = { path = "../ft-trust", version = "0.1.0" }
+ft-import = { path = "../ft-import", version = "0.1.0" }
+ft-git = { path = "../ft-git", version = "0.1.0" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }

@@ -16,12 +16,21 @@ use std::process::ExitCode;
 
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
+use ft_ops::memory::{
+    CaptureInput, CreateDecisionInput, CreateFindingInput, CreateGotchaInput,
+    CreateIncidentInput, CreateMemoryInput, CreateRunbookInput, ListInput as MemoryListInput,
+    ListOutput as MemoryListOutput, MemoryKind, MemoryRowOut, RiskClassInput, SalvageEntry,
+    SalvageEntryAction, SalvageInput, SalvageOutput, SearchHitOut, SearchInput, SearchMode,
+    SearchOutput, SeverityInput, ShowInput as MemoryShowInput, SimilarInput, StaleInput,
+    TrustStateInput,
+};
 use ft_ops::tickets::{
     BoardCard, BoardInput, BoardOutput, ClaimInput, CloseInput, CreateBugInput, CreateEpicInput,
     CreateSubtaskInput, CreateTaskInput, LinkInput, ListInput, ListedTicket, ShowInput,
     TicketKindFilter, TicketPriority, TicketRelationKind, TicketStatusFilter, UnclaimInput,
     UpdateInput,
 };
+use ft_ops::events::SalvageDecision;
 use ft_ops::{EmittedEvent, Event};
 use ts_rs::TS;
 
@@ -121,6 +130,33 @@ fn export_into(dir: &Path) -> Result<()> {
     TicketStatusFilter::export_all_to(dir).context("export TicketStatusFilter")?;
     ShowInput::export_all_to(dir).context("export ShowInput")?;
     UpdateInput::export_all_to(dir).context("export UpdateInput")?;
+    // Memory ops Inputs/Outputs (W2-A).
+    SalvageDecision::export_all_to(dir).context("export SalvageDecision")?;
+    SeverityInput::export_all_to(dir).context("export SeverityInput")?;
+    RiskClassInput::export_all_to(dir).context("export RiskClassInput")?;
+    TrustStateInput::export_all_to(dir).context("export TrustStateInput")?;
+    MemoryKind::export_all_to(dir).context("export MemoryKind")?;
+    CreateIncidentInput::export_all_to(dir).context("export CreateIncidentInput")?;
+    CreateFindingInput::export_all_to(dir).context("export CreateFindingInput")?;
+    CreateRunbookInput::export_all_to(dir).context("export CreateRunbookInput")?;
+    CreateDecisionInput::export_all_to(dir).context("export CreateDecisionInput")?;
+    CreateGotchaInput::export_all_to(dir).context("export CreateGotchaInput")?;
+    CreateMemoryInput::export_all_to(dir).context("export CreateMemoryInput")?;
+    CaptureInput::export_all_to(dir).context("export CaptureInput")?;
+    MemoryListInput::export_all_to(dir).context("export memory ListInput")?;
+    MemoryListOutput::export_all_to(dir).context("export memory ListOutput")?;
+    MemoryRowOut::export_all_to(dir).context("export MemoryRowOut")?;
+    StaleInput::export_all_to(dir).context("export StaleInput")?;
+    MemoryShowInput::export_all_to(dir).context("export memory ShowInput")?;
+    SearchMode::export_all_to(dir).context("export SearchMode")?;
+    SearchInput::export_all_to(dir).context("export SearchInput")?;
+    SimilarInput::export_all_to(dir).context("export SimilarInput")?;
+    SearchHitOut::export_all_to(dir).context("export SearchHitOut")?;
+    SearchOutput::export_all_to(dir).context("export SearchOutput")?;
+    SalvageEntryAction::export_all_to(dir).context("export SalvageEntryAction")?;
+    SalvageEntry::export_all_to(dir).context("export SalvageEntry")?;
+    SalvageInput::export_all_to(dir).context("export SalvageInput")?;
+    SalvageOutput::export_all_to(dir).context("export SalvageOutput")?;
     Ok(())
 }
 

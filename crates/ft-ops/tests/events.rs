@@ -1,5 +1,6 @@
 //! Event-bus coverage for `ft_ops::tickets`.
 
+use ft_ops::memory::{self, CreateMemoryInput};
 use ft_ops::tickets::{
     self, ClaimInput, CloseInput, CreateTaskInput, LinkInput, TicketRelationKind, UnclaimInput,
     UpdateInput,
@@ -121,6 +122,8 @@ async fn full_ticket_lifecycle_emits_expected_events() {
             Event::TicketClosed { .. } => "closed",
             Event::TicketLinked { .. } => "linked",
             Event::MemoryWritten { .. } => "memory",
+            Event::MemoryCreated { .. } => "memory_created",
+            Event::MemorySalvaged { .. } => "memory_salvaged",
             _ => "other",
         })
         .collect();
@@ -218,4 +221,39 @@ async fn link_emits_ticket_linked_event() {
         }
     }
     assert!(found, "expected a TicketLinked event in the stream");
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn create_memory_emits_memory_created_with_request_id() {
+    let (_tr, ws) = fixture();
+    let id = alice();
+    let bus = EventBus::new(16);
+    let mut rx = bus.subscribe();
+
+    memory::create_memory(
+        &ws,
+        &id,
+        CreateMemoryInput {
+            title: "ev test".into(),
+            body: "body".into(),
+            tags: vec![],
+            risk_class: None,
+            scope: None,
+            request_id: Some("req-abc".into()),
+        },
+        &bus,
+    )
+    .unwrap();
+
+    let mut got = None;
+    while let Ok(env) = rx.try_recv() {
+        if let Event::MemoryCreated { id: mid, record_kind } = env.event {
+            got = Some((mid, record_kind, env.request_id));
+            break;
+        }
+    }
+    let (mid, record_kind, req) = got.expect("expected MemoryCreated");
+    assert!(mid.starts_with("MEM-"));
+    assert_eq!(record_kind, "mem");
+    assert_eq!(req.as_deref(), Some("req-abc"));
 }

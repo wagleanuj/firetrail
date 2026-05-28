@@ -68,10 +68,45 @@ pub enum Event {
         relation: String,
     },
     /// A memory record was written.
+    ///
+    /// Emitted on **every** memory write (create or update). Kept distinct
+    /// from [`Event::MemoryCreated`] so transports that only care about new
+    /// records can subscribe narrowly while audit/telemetry consumers can
+    /// listen for any change. Wave 2-A only emits [`Event::MemoryCreated`];
+    /// `MemoryWritten` is reserved for memory-update ops landing under a
+    /// later wave (trust transitions, redact, etc.).
     MemoryWritten {
         /// Memory id.
         id: String,
     },
+    /// A new memory record was created (Wave 2-A).
+    MemoryCreated {
+        /// Memory id.
+        id: String,
+        /// Record kind (lowercase, e.g. `"incident"`, `"finding"`, …). Named
+        /// `record_kind` rather than `kind` because the parent enum uses
+        /// `kind` as its serde discriminator.
+        record_kind: String,
+    },
+    /// A memory record was processed by the salvage workflow (Wave 2-A).
+    MemorySalvaged {
+        /// Memory id.
+        id: String,
+        /// Operator decision for this record.
+        decision: SalvageDecision,
+    },
+}
+
+/// Per-record outcome of the salvage workflow.
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts-rs", ts(export))]
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SalvageDecision {
+    /// Record was copied onto the salvage branch.
+    Accepted,
+    /// Record was deliberately skipped.
+    Rejected,
 }
 
 /// Envelope wrapping every event with a correlation id.

@@ -116,6 +116,33 @@ export function recordDescription(record: RecordWire): string {
   return ''
 }
 
+/**
+ * Pull the trust + risk-class fields out of a memory body. ft-core stores
+ * these inside each memory-kind variant (`incident`, `finding`, …) — the
+ * outer envelope does not expose them. Ticket bodies don't carry trust,
+ * so we return nulls.
+ */
+export function recordTrust(record: RecordWire): {
+  trust: string | null
+  riskClass: string | null
+} {
+  const body = record.body as Record<string, { trust?: string; risk_class?: string | null } | undefined>
+  for (const key of [
+    'incident',
+    'finding',
+    'runbook',
+    'decision',
+    'gotcha',
+    'memory',
+  ] as const) {
+    const inner = body[key]
+    if (inner) {
+      return { trust: inner.trust ?? null, riskClass: inner.risk_class ?? null }
+    }
+  }
+  return { trust: null, riskClass: null }
+}
+
 /** Active claim, if the body carries one. */
 export function recordClaim(record: RecordWire): ClaimWire | null {
   const body = record.body as Record<string, { claim?: ClaimWire | null } | undefined>

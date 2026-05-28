@@ -48,6 +48,20 @@ export default defineConfig({
             return 'tiptap-vendor'
           }
           if (id.includes('@dnd-kit')) return 'dnd-vendor'
+          if (
+            id.includes('react-force-graph') ||
+            id.includes('d3-force') ||
+            id.includes('force-graph') ||
+            id.includes('d3-quadtree') ||
+            id.includes('d3-binarytree') ||
+            id.includes('d3-zoom') ||
+            id.includes('d3-drag') ||
+            id.includes('d3-selection') ||
+            id.includes('d3-octree') ||
+            id.includes('three')
+          ) {
+            return 'graph-vendor'
+          }
           if (id.includes('@radix-ui')) return 'radix-vendor'
           if (
             id.includes('react-dom') ||

@@ -2,21 +2,26 @@ import { Link, Outlet } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
 import { useTicketEvents } from '@/features/tickets/use-ticket-events'
 import { useMemoryEvents } from '@/features/memory/use-memory-events'
+import { useScopeEvents } from '@/features/scope/use-scope-events'
+import { useIdentityEvents } from '@/features/identity/use-identity-events'
+import { useAuditEvents } from '@/features/audit/use-audit-events'
 
 const NAV = [
   { to: '/', label: 'Board' },
   { to: '/memory', label: 'Memory' },
-  { to: '/memory/search', label: 'Search' },
-  { to: '/memory/salvage', label: 'Salvage' },
+  { to: '/scope', label: 'Scope' },
+  { to: '/identity', label: 'Identity' },
+  { to: '/audit', label: 'Audit' },
 ] as const
 
 export function AppShell() {
   // Subscribe once at the shell level so the SSE connection survives
-  // navigation between routes. Both subscribers share the same /api/events
-  // connection (EventSource is multi-listener-friendly), and each filters
-  // events by `kind` prefix in its consumer.
+  // navigation between routes. Each consumer filters by event-kind prefix.
   useTicketEvents()
   useMemoryEvents()
+  useScopeEvents()
+  useIdentityEvents()
+  useAuditEvents()
   return (
     <div className="flex h-full flex-col">
       <header className="border-b border-border/60 bg-card/40 backdrop-blur">
@@ -30,7 +35,7 @@ export function AppShell() {
               <Link
                 key={item.to}
                 to={item.to}
-                activeProps={{ className: 'text-foreground' }}
+                activeProps={{ className: 'text-primary bg-primary/10' }}
                 activeOptions={{ exact: item.to === '/' }}
                 className={cn(
                   'rounded-md px-3 py-1.5 transition-colors hover:text-foreground',

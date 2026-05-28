@@ -30,9 +30,11 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
+import { Link } from '@tanstack/react-router'
 import { recordDescription, recordClaim, type RecordWire } from '@/api/wire/record'
 import type { TicketRelationKind } from '@/api/types/TicketRelationKind'
 import type { Relation } from '@/api/wire/relation'
+import { CriteriaEditor } from '@/features/audit/criteria-editor'
 import { useTicketQuery } from './use-ticket-query'
 import {
   useClaimTicket,
@@ -149,6 +151,19 @@ function DetailBody({ record, relations }: { record: RecordWire; relations: Rela
 
       {/* Description */}
       <DescriptionPanel id={env.id} initial={recordDescription(record)} />
+
+      {/* Acceptance criteria */}
+      <CriteriaEditor recordId={env.id} />
+
+      <div>
+        <Link
+          to="/audit/review/$recordId"
+          params={{ recordId: env.id }}
+          className="text-xs text-primary hover:underline"
+        >
+          View full audit review →
+        </Link>
+      </div>
 
       {/* Relations */}
       <RelationsPanel id={env.id} relations={relations} />

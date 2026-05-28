@@ -19,9 +19,11 @@ import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import { MarkdownEditor } from '@/components/markdown-editor'
-import { recordDescription, type RecordWire } from '@/api/wire/record'
+import { recordDescription, recordTrust, type RecordWire } from '@/api/wire/record'
 import { useMemoryQuery } from './use-memory-query'
 import { KindBadge } from './memory-list'
+import { TrustActions } from '@/features/trust/trust-actions'
+import { CriteriaEditor } from '@/features/audit/criteria-editor'
 
 interface MemoryDetailProps {
   id: string
@@ -44,6 +46,7 @@ export function MemoryDetail({ id }: MemoryDetailProps) {
   const { record } = data
   const env = record.envelope
   const body = readMemoryBody(record)
+  const { trust, riskClass } = recordTrust(record)
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-6">
@@ -110,6 +113,24 @@ export function MemoryDetail({ id }: MemoryDetailProps) {
             No body text.
           </p>
         )}
+      </div>
+
+      <Separator />
+
+      <TrustActions recordId={env.id} trustState={trust} riskClass={riskClass} />
+
+      <Separator />
+
+      <CriteriaEditor recordId={env.id} />
+
+      <div className="pt-2">
+        <Link
+          to="/audit/review/$recordId"
+          params={{ recordId: env.id }}
+          className="text-xs text-primary hover:underline"
+        >
+          View full audit review →
+        </Link>
       </div>
     </div>
   )

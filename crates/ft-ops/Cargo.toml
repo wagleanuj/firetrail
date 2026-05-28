@@ -1,0 +1,28 @@
+[package]
+name = "ft-ops"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Transport-agnostic firetrail command bodies. Shared by ft-cli and ft-ui."
+
+[lints]
+workspace = true
+
+[dependencies]
+ft-core = { path = "../ft-core", version = "0.1.0" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true, features = ["sync", "rt"] }
+ts-rs = { version = "9", optional = true }
+
+[features]
+default = []
+ts-rs = ["dep:ts-rs"]
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "sync"] }

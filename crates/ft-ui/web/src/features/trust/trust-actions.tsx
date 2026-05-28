@@ -59,7 +59,7 @@ import {
   validOps,
   type TrustOp,
 } from './state-machine'
-import { memoryShowKey } from '@/features/memory/use-memory-query'
+import { memoryShowKey, useMemoryQuery } from '@/features/memory/use-memory-query'
 
 const ICON: Record<TrustOp, React.ComponentType<{ className?: string }>> = {
   review: ShieldCheck,
@@ -427,6 +427,7 @@ function MergeDialog({ recordId, onClose }: { recordId: string; onClose: () => v
   const qc = useQueryClient()
   const [raw, setRaw] = useState('')
   const [reason, setReason] = useState('')
+  const [step, setStep] = useState<'inputs' | 'preview'>('inputs')
   const sources = raw
     .split(/[\s,]+/)
     .map((s) => s.trim())
@@ -444,34 +445,130 @@ function MergeDialog({ recordId, onClose }: { recordId: string; onClose: () => v
     <Dialog open onOpenChange={(v) => !v && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle className="font-mono">Merge into {recordId.slice(0, 14)}</DialogTitle>
+          <DialogTitle className="font-mono">
+            {step === 'inputs'
+              ? `Merge into ${recordId.slice(0, 14)}`
+              : 'Confirm merge'}
+          </DialogTitle>
         </DialogHeader>
-        <p className="text-xs text-muted-foreground">
-          Source ids are merged into this record. Sources are marked superseded.
-        </p>
-        <div className="space-y-1.5">
-          <Label>Source ids *</Label>
-          <Textarea
-            value={raw}
-            onChange={(e) => setRaw(e.target.value)}
-            rows={3}
-            placeholder="memory:… (comma or whitespace separated)"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label>Reason</Label>
-          <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} />
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button onClick={() => mut.mutate()} disabled={sources.length === 0 || mut.isPending}>
-            {mut.isPending && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
-            Merge
-          </Button>
-        </DialogFooter>
+        {step === 'inputs' ? (
+          <>
+            <p className="text-xs text-muted-foreground">
+              Source ids are merged into this record. Sources are marked superseded.
+            </p>
+            <div className="space-y-1.5">
+              <Label>Source ids *</Label>
+              <Textarea
+                value={raw}
+                onChange={(e) => setRaw(e.target.value)}
+                rows={3}
+                placeholder="memory:… (comma or whitespace separated)"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Reason</Label>
+              <Textarea
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                rows={2}
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => setStep('preview')}
+                disabled={sources.length === 0}
+                data-testid="merge-preview"
+              >
+                Preview merge
+              </Button>
+            </DialogFooter>
+          </>
+        ) : (
+          <>
+            <MergePreview canonicalId={recordId} sourceIds={sources} />
+            {reason && (
+              <p className="rounded-md border border-border/60 bg-background/60 px-3 py-2 text-xs">
+                <span className="font-mono uppercase tracking-wider text-muted-foreground">
+                  Reason:
+                </span>{' '}
+                {reason}
+              </p>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setStep('inputs')}>
+                Back
+              </Button>
+              <Button
+                onClick={() => mut.mutate()}
+                disabled={mut.isPending}
+                data-testid="merge-confirm"
+              >
+                {mut.isPending && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+                Confirm merge
+              </Button>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
+  )
+}
+
+function MergePreview({
+  canonicalId,
+  sourceIds,
+}: {
+  canonicalId: string
+  sourceIds: string[]
+}) {
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-muted-foreground">
+        Review what will happen before applying. The merge is irreversible
+        once submitted.
+      </p>
+      <div className="space-y-1">
+        <div className="font-mono text-[0.625rem] uppercase tracking-wider text-muted-foreground">
+          Canonical (kept)
+        </div>
+        <MergeRow id={canonicalId} highlight />
+      </div>
+      <div className="space-y-1">
+        <div className="font-mono text-[0.625rem] uppercase tracking-wider text-muted-foreground">
+          Superseded ({sourceIds.length}) — applied in order
+        </div>
+        <ul data-testid="merge-superseded" className="space-y-1">
+          {sourceIds.map((sid, idx) => (
+            <li key={sid} className="flex items-center gap-2">
+              <span className="w-5 text-right font-mono text-[0.625rem] text-muted-foreground">
+                {idx + 1}.
+              </span>
+              <MergeRow id={sid} />
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  )
+}
+
+function MergeRow({ id, highlight = false }: { id: string; highlight?: boolean }) {
+  const q = useMemoryQuery(id)
+  const title = q.data?.record?.envelope?.title ?? '…'
+  return (
+    <div
+      className={
+        'flex items-center gap-2 rounded-md border px-3 py-1.5 ' +
+        (highlight ? 'border-primary/40 bg-primary/5' : 'border-border/70 bg-background/60')
+      }
+    >
+      <span className="truncate text-sm">{title}</span>
+      <span className="ml-auto truncate font-mono text-[0.625rem] text-muted-foreground">
+        {id}
+      </span>
+    </div>
   )
 }

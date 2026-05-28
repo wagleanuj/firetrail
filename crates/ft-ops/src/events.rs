@@ -95,6 +95,42 @@ pub enum Event {
         /// Operator decision for this record.
         decision: SalvageDecision,
     },
+    /// A scope-registry entry changed (Wave 3-A; reserved — scope ops in
+    /// W3-A are read-only, but the variant is here so transports can plan).
+    ScopeUpdated {
+        /// Canonical scope id.
+        scope: String,
+    },
+    /// An identity-registry entry was written or mutated (Wave 3-A).
+    IdentityUpdated {
+        /// Canonical identity id.
+        identity: String,
+        /// Field tags that changed (e.g. `["create"]`, `["status"]`).
+        fields: Vec<String>,
+    },
+    /// A memory record's trust state transitioned (Wave 3-A).
+    TrustTransitioned {
+        /// Memory id.
+        id: String,
+        /// Previous trust state (lowercase, e.g. `"draft"`).
+        from: String,
+        /// New trust state.
+        to: String,
+    },
+    /// An item in the review queue was approved (Wave 3-A; reserved — review
+    /// currently is a read-only view, but the variant is here so the UI can
+    /// wire up an approval workflow without bumping the enum later).
+    ReviewApproved {
+        /// Record id.
+        id: String,
+    },
+    /// An item in the review queue was rejected (Wave 3-A; reserved).
+    ReviewRejected {
+        /// Record id.
+        id: String,
+        /// Reason text.
+        reason: String,
+    },
 }
 
 /// Per-record outcome of the salvage workflow.

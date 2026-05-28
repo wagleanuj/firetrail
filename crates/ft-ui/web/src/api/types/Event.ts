@@ -77,4 +77,40 @@ id: string,
 /**
  * Operator decision for this record.
  */
-decision: SalvageDecision, };
+decision: SalvageDecision, } | { "kind": "scope_updated", 
+/**
+ * Canonical scope id.
+ */
+scope: string, } | { "kind": "identity_updated", 
+/**
+ * Canonical identity id.
+ */
+identity: string, 
+/**
+ * Field tags that changed (e.g. `["create"]`, `["status"]`).
+ */
+fields: Array<string>, } | { "kind": "trust_transitioned", 
+/**
+ * Memory id.
+ */
+id: string, 
+/**
+ * Previous trust state (lowercase, e.g. `"draft"`).
+ */
+from: string, 
+/**
+ * New trust state.
+ */
+to: string, } | { "kind": "review_approved", 
+/**
+ * Record id.
+ */
+id: string, } | { "kind": "review_rejected", 
+/**
+ * Record id.
+ */
+id: string, 
+/**
+ * Reason text.
+ */
+reason: string, };

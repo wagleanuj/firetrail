@@ -144,6 +144,39 @@ impl<'a> MemoryCtx<'a> {
         Ok(self.search.as_ref().expect("just set"))
     }
 
+    /// Persist `record` after appending the caller-supplied `draft` history
+    /// entry. Used by trust transitions where the caller must pick the
+    /// `HistoryEntryKind::TrustTransition` kind explicitly.
+    pub fn save_record_with_history(
+        &mut self,
+        record: &mut Record,
+        draft: HistoryDraft,
+    ) -> Result<PathBuf, OpsError> {
+        append_history(record, draft)
+            .map_err(|e| OpsError::Internal(anyhow::anyhow!("history append: {e}")))?;
+        self.persist_record(record)
+    }
+
+    fn persist_record(&mut self, record: &mut Record) -> Result<PathBuf, OpsError> {
+        record.envelope.state_hash = String::new();
+        let new_hash =
+            state_hash(record).map_err(|e| OpsError::Internal(anyhow::anyhow!("hash: {e}")))?;
+        record.envelope.state_hash = new_hash;
+
+        let path = self
+            .storage
+            .write(record)
+            .map_err(|e| OpsError::Internal(anyhow::anyhow!("write: {e}")))?;
+
+        self.index
+            .refresh(&self.storage, std::slice::from_ref(&path), &[])
+            .map_err(|e| OpsError::Internal(anyhow::anyhow!("refresh: {e}")))?;
+
+        self.upsert_search_lexical(record);
+        self.try_dispatch_index_record(record);
+        Ok(path)
+    }
+
     /// Persist `record` after auto-appending a history entry (Create on
     /// genesis, Update otherwise) and refreshing index + search.
     pub fn save_record(&mut self, record: &mut Record) -> Result<PathBuf, OpsError> {
@@ -169,25 +202,7 @@ impl<'a> MemoryCtx<'a> {
         };
         append_history(record, draft)
             .map_err(|e| OpsError::Internal(anyhow::anyhow!("history append: {e}")))?;
-
-        record.envelope.state_hash = String::new();
-        let new_hash =
-            state_hash(record).map_err(|e| OpsError::Internal(anyhow::anyhow!("hash: {e}")))?;
-        record.envelope.state_hash = new_hash;
-
-        let path = self
-            .storage
-            .write(record)
-            .map_err(|e| OpsError::Internal(anyhow::anyhow!("write: {e}")))?;
-
-        self.index
-            .refresh(&self.storage, std::slice::from_ref(&path), &[])
-            .map_err(|e| OpsError::Internal(anyhow::anyhow!("refresh: {e}")))?;
-
-        self.upsert_search_lexical(record);
-        self.try_dispatch_index_record(record);
-
-        Ok(path)
+        self.persist_record(record)
     }
 
     fn upsert_search_lexical(&mut self, record: &Record) {

@@ -24,6 +24,7 @@ pub mod identity_ops;
 pub mod memory;
 pub mod scope;
 pub mod tickets;
+pub mod trust;
 pub mod workspace;
 
 pub use error::OpsError;

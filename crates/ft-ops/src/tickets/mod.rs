@@ -23,11 +23,22 @@ mod board;
 mod claim;
 mod close;
 mod create;
-mod ctx;
+pub(crate) mod ctx;
 mod link;
 mod list;
 mod show;
 mod update;
+
+/// Internal helper for the identity-offboard sweep: open the same
+/// `TicketCtx` ticket ops use, so claim-release writes share the history /
+/// search / embed-on-write pipeline. Not part of the public surface.
+pub(crate) fn ctx_for_offboard<'a>(
+    ws: &'a crate::workspace::Workspace,
+    identity: &crate::identity::Identity,
+) -> Result<ctx::TicketCtx<'a>, crate::error::OpsError> {
+    ctx::TicketCtx::open(ws, identity, "identity offboard")
+}
+
 
 pub use board::{BoardCard, BoardInput, BoardOutput, board};
 pub use claim::{

@@ -26,8 +26,19 @@
 //! ft-cli's existing `memory_*` / `search` / `salvage` commands are NOT
 //! rewired in this commit; that is tracked under firetrail-xy6.
 
-mod ctx;
+pub(crate) mod ctx;
 mod daemon;
+
+/// Internal helper for trust-state ops (Wave 3-A): open the same `MemoryCtx`
+/// memory-create ops use, so trust transitions share the history / search /
+/// embed-on-write pipeline. Not part of the public surface.
+pub(crate) fn ctx_for_trust<'a>(
+    ws: &'a crate::workspace::Workspace,
+    identity: &crate::identity::Identity,
+    op: &'static str,
+) -> Result<ctx::MemoryCtx<'a>, crate::error::OpsError> {
+    ctx::MemoryCtx::open(ws, identity, op)
+}
 
 pub mod create;
 pub mod salvage;

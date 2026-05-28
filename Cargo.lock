@@ -1121,6 +1121,7 @@ dependencies = [
  "ft-identity",
  "ft-import",
  "ft-index",
+ "ft-scope",
  "ft-search",
  "ft-storage",
  "ft-testkit",

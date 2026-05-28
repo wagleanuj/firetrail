@@ -31,6 +31,21 @@ use ft_ops::tickets::{
     UpdateInput,
 };
 use ft_ops::events::SalvageDecision;
+use ft_ops::identity_ops::{
+    CapabilitiesInput, CapabilitiesOutput, CapabilityRow, IdentityKindInput, IdentityListOutput,
+    IdentityRegisterOutput, IdentityShowOutput, IdentityStatusFilter, IdentityView,
+    ListInput as IdentityListInput, OffboardInput, RegisterInput,
+    ShowInput as IdentityShowInput,
+};
+use ft_ops::scope::{
+    AliasEntry, AliasesInput, AliasesOutput, CodeOwnersRow, ListInput as ScopeListInput,
+    ListOutput as ScopeListOutput, OwnersInput, OwnersOutput, ScopeDetail, ScopeSummary,
+    ShowInput as ScopeShowInput, ShowOutput as ScopeShowOutput,
+};
+use ft_ops::trust::{
+    EvidenceKindInput, MergeInput, PromoteInput, ReasonInput,
+    ReviewInput as TrustReviewInput, SupersedeInput,
+};
 use ft_ops::{EmittedEvent, Event};
 use ts_rs::TS;
 
@@ -157,6 +172,40 @@ fn export_into(dir: &Path) -> Result<()> {
     SalvageEntry::export_all_to(dir).context("export SalvageEntry")?;
     SalvageInput::export_all_to(dir).context("export SalvageInput")?;
     SalvageOutput::export_all_to(dir).context("export SalvageOutput")?;
+    // Scope ops (W3-A).
+    ScopeListInput::export_all_to(dir).context("export scope ListInput")?;
+    ScopeListOutput::export_all_to(dir).context("export scope ListOutput")?;
+    ScopeShowInput::export_all_to(dir).context("export scope ShowInput")?;
+    ScopeShowOutput::export_all_to(dir).context("export scope ShowOutput")?;
+    ScopeSummary::export_all_to(dir).context("export ScopeSummary")?;
+    ScopeDetail::export_all_to(dir).context("export ScopeDetail")?;
+    CodeOwnersRow::export_all_to(dir).context("export CodeOwnersRow")?;
+    AliasesInput::export_all_to(dir).context("export AliasesInput")?;
+    AliasesOutput::export_all_to(dir).context("export AliasesOutput")?;
+    AliasEntry::export_all_to(dir).context("export AliasEntry")?;
+    OwnersInput::export_all_to(dir).context("export OwnersInput")?;
+    OwnersOutput::export_all_to(dir).context("export OwnersOutput")?;
+    // Identity ops (W3-A).
+    IdentityListInput::export_all_to(dir).context("export identity ListInput")?;
+    IdentityListOutput::export_all_to(dir).context("export identity ListOutput")?;
+    IdentityShowInput::export_all_to(dir).context("export identity ShowInput")?;
+    IdentityShowOutput::export_all_to(dir).context("export identity ShowOutput")?;
+    IdentityView::export_all_to(dir).context("export IdentityView")?;
+    IdentityStatusFilter::export_all_to(dir).context("export IdentityStatusFilter")?;
+    IdentityKindInput::export_all_to(dir).context("export IdentityKindInput")?;
+    RegisterInput::export_all_to(dir).context("export RegisterInput")?;
+    IdentityRegisterOutput::export_all_to(dir).context("export IdentityRegisterOutput")?;
+    OffboardInput::export_all_to(dir).context("export OffboardInput")?;
+    CapabilitiesInput::export_all_to(dir).context("export CapabilitiesInput")?;
+    CapabilitiesOutput::export_all_to(dir).context("export CapabilitiesOutput")?;
+    CapabilityRow::export_all_to(dir).context("export CapabilityRow")?;
+    // Trust ops (W3-A).
+    EvidenceKindInput::export_all_to(dir).context("export EvidenceKindInput")?;
+    TrustReviewInput::export_all_to(dir).context("export trust ReviewInput")?;
+    PromoteInput::export_all_to(dir).context("export PromoteInput")?;
+    ReasonInput::export_all_to(dir).context("export ReasonInput")?;
+    SupersedeInput::export_all_to(dir).context("export SupersedeInput")?;
+    MergeInput::export_all_to(dir).context("export MergeInput")?;
     Ok(())
 }
 

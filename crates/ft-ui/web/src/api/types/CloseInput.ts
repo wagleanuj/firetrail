@@ -16,4 +16,9 @@ force: boolean,
  * Reason for forcing the close. Required when `force` is `true`; recorded
  * as a `force_close_reason` label on the envelope.
  */
-reason: string | null, };
+reason: string | null, 
+/**
+ * Optional client-supplied correlation id; propagated onto every
+ * emitted [`crate::Event`] envelope.
+ */
+request_id: string | null, };

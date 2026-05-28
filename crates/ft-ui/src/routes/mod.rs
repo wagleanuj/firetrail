@@ -2,6 +2,8 @@
 //!
 //! The router is built in two halves: a public half (`GET /`, `GET /assets/*`)
 //! and an authenticated half (`/api/*`) guarded by [`crate::auth::session_middleware`].
+//!
+//! The `/api/tickets/*` surface lives in [`tickets`].
 
 use std::sync::Arc;
 
@@ -15,12 +17,15 @@ use crate::auth::{bootstrap_handler, heartbeat_handler, session_middleware, work
 use crate::server::AppState;
 use crate::sse::events_handler;
 
+pub mod tickets;
+
 /// Build the top-level axum [`Router`] for ft-ui.
 pub fn build(state: Arc<AppState>) -> Router {
     let api = Router::new()
         .route("/workspace", get(workspace_handler))
         .route("/heartbeat", post(heartbeat_handler))
         .route("/events", get(events_handler))
+        .nest("/tickets", tickets::router())
         .route_layer(from_fn_with_state(state.clone(), session_middleware))
         .with_state(state.clone());
 

@@ -24,4 +24,11 @@ scope: string | null,
 /**
  * `key=value` labels. Each entry must contain exactly one `=`.
  */
-labels: Array<string>, };
+labels: Array<string>, 
+/**
+ * Optional client-supplied correlation id; propagated onto every
+ * emitted [`crate::Event`] envelope so transports (the GUI in
+ * particular) can coalesce optimistic updates with the server-sent
+ * echo. CLI callers leave this `None`.
+ */
+request_id: string | null, };

@@ -43,6 +43,7 @@ async fn full_ticket_lifecycle_emits_expected_events() {
             owner: None,
             scope: None,
             labels: vec![],
+            request_id: None,
         },
         &bus,
     )
@@ -69,6 +70,7 @@ async fn full_ticket_lifecycle_emits_expected_events() {
         ClaimInput {
             id: task_id.clone(),
             expires: None,
+            request_id: None,
         },
         &bus,
     )
@@ -82,6 +84,7 @@ async fn full_ticket_lifecycle_emits_expected_events() {
             id: task_id.clone(),
             takeover: false,
             reason: None,
+            request_id: None,
         },
         &bus,
     )
@@ -95,6 +98,7 @@ async fn full_ticket_lifecycle_emits_expected_events() {
             id: task_id.clone(),
             force: false,
             reason: None,
+            request_id: None,
         },
         &bus,
     )
@@ -171,6 +175,7 @@ async fn link_emits_ticket_linked_event() {
             owner: None,
             scope: None,
             labels: vec![],
+            request_id: None,
         },
         &bus,
     )
@@ -186,6 +191,7 @@ async fn link_emits_ticket_linked_event() {
             owner: None,
             scope: None,
             labels: vec![],
+            request_id: None,
         },
         &bus,
     )
@@ -198,6 +204,7 @@ async fn link_emits_ticket_linked_event() {
             from: a.record.envelope.id.as_str().to_string(),
             to: b.record.envelope.id.as_str().to_string(),
             kind: TicketRelationKind::Blocks,
+            request_id: None,
         },
         &bus,
     )

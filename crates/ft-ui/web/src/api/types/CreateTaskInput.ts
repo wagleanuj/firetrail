@@ -33,4 +33,8 @@ scope: string | null,
 /**
  * `key=value` labels.
  */
-labels: Array<string>, };
+labels: Array<string>, 
+/**
+ * Optional client-supplied correlation id (see [`CreateEpicInput::request_id`]).
+ */
+request_id: string | null, };

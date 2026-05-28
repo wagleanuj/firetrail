@@ -73,6 +73,12 @@ pub struct CreateEpicInput {
     /// `key=value` labels. Each entry must contain exactly one `=`.
     #[serde(default)]
     pub labels: Vec<String>,
+    /// Optional client-supplied correlation id; propagated onto every
+    /// emitted [`crate::Event`] envelope so transports (the GUI in
+    /// particular) can coalesce optimistic updates with the server-sent
+    /// echo. CLI callers leave this `None`.
+    #[serde(default)]
+    pub request_id: Option<String>,
 }
 
 /// `create epic` op.
@@ -99,9 +105,13 @@ pub fn create_epic(
     .epic(body);
     let mut record = build_with_labels(builder, &input.labels)?;
     ctx.save_record(&mut record)?;
-    events.emit(Event::TicketCreated {
-        id: record.envelope.id.as_str().to_string(),
-    });
+    emit_with_request(
+        events,
+        input.request_id.as_deref(),
+        Event::TicketCreated {
+            id: record.envelope.id.as_str().to_string(),
+        },
+    );
     Ok(CreatedTicket { record })
 }
 
@@ -131,6 +141,9 @@ pub struct CreateTaskInput {
     /// `key=value` labels.
     #[serde(default)]
     pub labels: Vec<String>,
+    /// Optional client-supplied correlation id (see [`CreateEpicInput::request_id`]).
+    #[serde(default)]
+    pub request_id: Option<String>,
 }
 
 /// `create task` op.
@@ -178,9 +191,13 @@ pub fn create_task(
     }
     let mut record = build_with_labels(builder, &input.labels)?;
     ctx.save_record(&mut record)?;
-    events.emit(Event::TicketCreated {
-        id: record.envelope.id.as_str().to_string(),
-    });
+    emit_with_request(
+        events,
+        input.request_id.as_deref(),
+        Event::TicketCreated {
+            id: record.envelope.id.as_str().to_string(),
+        },
+    );
     Ok(CreatedTicket { record })
 }
 
@@ -208,6 +225,9 @@ pub struct CreateSubtaskInput {
     /// `key=value` labels.
     #[serde(default)]
     pub labels: Vec<String>,
+    /// Optional client-supplied correlation id (see [`CreateEpicInput::request_id`]).
+    #[serde(default)]
+    pub request_id: Option<String>,
 }
 
 /// `create subtask` op.
@@ -250,9 +270,13 @@ pub fn create_subtask(
     }
     let mut record = build_with_labels(builder, &input.labels)?;
     ctx.save_record(&mut record)?;
-    events.emit(Event::TicketCreated {
-        id: record.envelope.id.as_str().to_string(),
-    });
+    emit_with_request(
+        events,
+        input.request_id.as_deref(),
+        Event::TicketCreated {
+            id: record.envelope.id.as_str().to_string(),
+        },
+    );
     Ok(CreatedTicket { record })
 }
 
@@ -281,6 +305,9 @@ pub struct CreateBugInput {
     /// `key=value` labels.
     #[serde(default)]
     pub labels: Vec<String>,
+    /// Optional client-supplied correlation id (see [`CreateEpicInput::request_id`]).
+    #[serde(default)]
+    pub request_id: Option<String>,
 }
 
 /// `create bug` op.
@@ -311,10 +338,23 @@ pub fn create_bug(
     .bug(body);
     let mut record = build_with_labels(builder, &input.labels)?;
     ctx.save_record(&mut record)?;
-    events.emit(Event::TicketCreated {
-        id: record.envelope.id.as_str().to_string(),
-    });
+    emit_with_request(
+        events,
+        input.request_id.as_deref(),
+        Event::TicketCreated {
+            id: record.envelope.id.as_str().to_string(),
+        },
+    );
     Ok(CreatedTicket { record })
+}
+
+/// Emit `event` on `bus`, threading `request_id` when present.
+fn emit_with_request(bus: &EventBus, request_id: Option<&str>, event: Event) {
+    if let Some(rid) = request_id {
+        bus.emit_with_request(rid.to_string(), event);
+    } else {
+        bus.emit(event);
+    }
 }
 
 fn builder_with_common(

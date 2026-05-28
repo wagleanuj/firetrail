@@ -34,6 +34,10 @@ pub struct ClaimInput {
     /// 7 days when omitted.
     #[serde(default)]
     pub expires: Option<String>,
+    /// Optional client-supplied correlation id; propagated onto the
+    /// emitted [`crate::Event::TicketClaimed`] envelope.
+    #[serde(default)]
+    pub request_id: Option<String>,
 }
 
 /// Output of [`claim`].
@@ -94,10 +98,14 @@ pub fn claim(
     record.envelope.updated_at = now;
     ctx.save_record(&mut record)?;
 
-    events.emit(Event::TicketClaimed {
-        id: record.envelope.id.as_str().to_string(),
-        actor: actor.as_str().to_string(),
-    });
+    emit(
+        events,
+        input.request_id.as_deref(),
+        Event::TicketClaimed {
+            id: record.envelope.id.as_str().to_string(),
+            actor: actor.as_str().to_string(),
+        },
+    );
 
     Ok(ClaimOutput { record })
 }
@@ -117,6 +125,10 @@ pub struct UnclaimInput {
     /// Required when `takeover` is `true`.
     #[serde(default)]
     pub reason: Option<String>,
+    /// Optional client-supplied correlation id; propagated onto the
+    /// emitted [`crate::Event::TicketUnclaimed`] envelope.
+    #[serde(default)]
+    pub request_id: Option<String>,
 }
 
 /// Output of [`unclaim`].
@@ -192,11 +204,24 @@ pub fn unclaim(
             .join(format!("{lower}.claim")),
     );
 
-    events.emit(Event::TicketUnclaimed {
-        id: record.envelope.id.as_str().to_string(),
-    });
+    emit(
+        events,
+        input.request_id.as_deref(),
+        Event::TicketUnclaimed {
+            id: record.envelope.id.as_str().to_string(),
+        },
+    );
 
     Ok(UnclaimOutput { record })
+}
+
+/// Emit `event` on `bus`, threading `request_id` when present.
+fn emit(bus: &EventBus, request_id: Option<&str>, event: Event) {
+    if let Some(rid) = request_id {
+        bus.emit_with_request(rid.to_string(), event);
+    } else {
+        bus.emit(event);
+    }
 }
 
 fn claim_supported(kind: RecordKind) -> bool {

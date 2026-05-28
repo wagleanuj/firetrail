@@ -53,6 +53,7 @@ fn create_task_round_trip_with_show() {
             owner: None,
             scope: None,
             labels: vec!["area=tickets".into()],
+            request_id: None,
         },
         &bus,
     )
@@ -90,6 +91,7 @@ fn create_epic_then_task_with_epic_parent() {
             priority: None,
             scope: None,
             labels: vec![],
+            request_id: None,
         },
         &bus,
     )
@@ -107,6 +109,7 @@ fn create_epic_then_task_with_epic_parent() {
             owner: None,
             scope: None,
             labels: vec![],
+            request_id: None,
         },
         &bus,
     )
@@ -135,6 +138,7 @@ fn subtask_requires_existing_task_parent() {
             owner: None,
             scope: None,
             labels: vec![],
+            request_id: None,
         },
         &bus,
     )
@@ -159,6 +163,7 @@ fn create_bug_carries_service_and_severity() {
             priority: None,
             scope: None,
             labels: vec![],
+            request_id: None,
         },
         &bus,
     )
@@ -188,6 +193,7 @@ fn update_changes_title_and_priority() {
             owner: None,
             scope: None,
             labels: vec![],
+            request_id: None,
         },
         &bus,
     )
@@ -226,6 +232,7 @@ fn update_with_no_fields_is_rejected() {
             owner: None,
             scope: None,
             labels: vec![],
+            request_id: None,
         },
         &bus,
     )
@@ -260,6 +267,7 @@ fn close_blocks_when_ac_incomplete_and_force_requires_reason() {
             owner: None,
             scope: None,
             labels: vec![],
+            request_id: None,
         },
         &bus,
     )
@@ -274,6 +282,7 @@ fn close_blocks_when_ac_incomplete_and_force_requires_reason() {
             id: task_id.clone(),
             force: false,
             reason: None,
+            request_id: None,
         },
         &bus,
     )
@@ -288,6 +297,7 @@ fn close_blocks_when_ac_incomplete_and_force_requires_reason() {
             id: task_id.clone(),
             force: false,
             reason: None,
+            request_id: None,
         },
         &bus,
     )
@@ -302,6 +312,7 @@ fn close_blocks_when_ac_incomplete_and_force_requires_reason() {
             id: task_id,
             force: true,
             reason: None,
+            request_id: None,
         },
         &bus,
     )
@@ -327,6 +338,7 @@ fn claim_and_takeover_semantics() {
             owner: None,
             scope: None,
             labels: vec![],
+            request_id: None,
         },
         &bus,
     )
@@ -340,6 +352,7 @@ fn claim_and_takeover_semantics() {
         ClaimInput {
             id: task_id.clone(),
             expires: Some("12h".into()),
+            request_id: None,
         },
         &bus,
     )
@@ -352,6 +365,7 @@ fn claim_and_takeover_semantics() {
         ClaimInput {
             id: task_id.clone(),
             expires: None,
+            request_id: None,
         },
         &bus,
     )
@@ -366,6 +380,7 @@ fn claim_and_takeover_semantics() {
             id: task_id.clone(),
             takeover: false,
             reason: None,
+            request_id: None,
         },
         &bus,
     )
@@ -380,6 +395,7 @@ fn claim_and_takeover_semantics() {
             id: task_id.clone(),
             takeover: true,
             reason: None,
+            request_id: None,
         },
         &bus,
     )
@@ -394,6 +410,7 @@ fn claim_and_takeover_semantics() {
             id: task_id.clone(),
             takeover: true,
             reason: Some("alice is on vacation".into()),
+            request_id: None,
         },
         &bus,
     )
@@ -408,6 +425,7 @@ fn claim_and_takeover_semantics() {
             id: task_id,
             takeover: false,
             reason: None,
+            request_id: None,
         },
         &bus,
     )
@@ -436,6 +454,7 @@ fn link_persists_and_show_surfaces_relations() {
             owner: None,
             scope: None,
             labels: vec![],
+            request_id: None,
         },
         &bus,
     )
@@ -451,6 +470,7 @@ fn link_persists_and_show_surfaces_relations() {
             owner: None,
             scope: None,
             labels: vec![],
+            request_id: None,
         },
         &bus,
     )
@@ -465,6 +485,7 @@ fn link_persists_and_show_surfaces_relations() {
             from: a_id.clone(),
             to: b_id.clone(),
             kind: TicketRelationKind::RelatedTo,
+            request_id: None,
         },
         &bus,
     )
@@ -489,6 +510,7 @@ fn link_persists_and_show_surfaces_relations() {
             from: a_id.clone(),
             to: a_id,
             kind: TicketRelationKind::RelatedTo,
+            request_id: None,
         },
         &bus,
     )
@@ -514,6 +536,7 @@ fn list_and_board_reflect_created_tickets() {
                 owner: None,
                 scope: None,
                 labels: vec![],
+                request_id: None,
             },
             &bus,
         )
@@ -578,6 +601,7 @@ fn strict_identity_blocks_unregistered_actor() {
             owner: None,
             scope: None,
             labels: vec![],
+            request_id: None,
         },
         &bus,
     )

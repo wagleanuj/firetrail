@@ -12,4 +12,9 @@ id: string,
  * Human-readable duration override (e.g. `"7d"`, `"12h"`). Defaults to
  * 7 days when omitted.
  */
-expires: string | null, };
+expires: string | null, 
+/**
+ * Optional client-supplied correlation id; propagated onto the
+ * emitted [`crate::Event::TicketClaimed`] envelope.
+ */
+request_id: string | null, };

@@ -32,4 +32,10 @@ owner: string | null,
 /**
  * New description. Only valid on epic / task / subtask / bug.
  */
-description: string | null, };
+description: string | null, 
+/**
+ * Optional client-supplied correlation id; propagated onto every
+ * emitted [`crate::Event`] envelope so transports can coalesce
+ * optimistic updates. CLI callers leave this `None`.
+ */
+request_id: string | null, };

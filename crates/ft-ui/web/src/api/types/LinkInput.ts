@@ -16,4 +16,9 @@ to: string,
 /**
  * Relation kind.
  */
-kind: TicketRelationKind, };
+kind: TicketRelationKind, 
+/**
+ * Optional client-supplied correlation id; propagated onto the
+ * emitted [`crate::Event::TicketLinked`] envelope.
+ */
+request_id: string | null, };

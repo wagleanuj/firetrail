@@ -38,6 +38,11 @@ pub struct UpdateInput {
     /// New description. Only valid on epic / task / subtask / bug.
     #[serde(default)]
     pub description: Option<String>,
+    /// Optional client-supplied correlation id; propagated onto every
+    /// emitted [`crate::Event`] envelope so transports can coalesce
+    /// optimistic updates. CLI callers leave this `None`.
+    #[serde(default)]
+    pub request_id: Option<String>,
 }
 
 /// Output of [`update`].
@@ -136,21 +141,35 @@ pub fn update(
     ctx.save_record(&mut record)?;
 
     let id_str = record.envelope.id.as_str().to_string();
+    let rid = input.request_id.as_deref();
     if let (Some(from), Some(to)) = (prev_status, new_status) {
         if from != to {
-            events.emit(Event::TicketTransitioned {
-                id: id_str.clone(),
-                from: status_str(from),
-                to: status_str(to),
-            });
+            emit(
+                events,
+                rid,
+                Event::TicketTransitioned {
+                    id: id_str.clone(),
+                    from: status_str(from),
+                    to: status_str(to),
+                },
+            );
         }
     }
-    events.emit(Event::TicketUpdated { id: id_str });
+    emit(events, rid, Event::TicketUpdated { id: id_str });
 
     Ok(UpdateOutput {
         record,
         previous_status: prev_status.map(status_str),
     })
+}
+
+/// Emit `event` on `bus`, threading `request_id` when present.
+fn emit(bus: &EventBus, request_id: Option<&str>, event: Event) {
+    if let Some(rid) = request_id {
+        bus.emit_with_request(rid.to_string(), event);
+    } else {
+        bus.emit(event);
+    }
 }
 
 fn ticket_status_to_core(s: TicketStatusFilter) -> Status {

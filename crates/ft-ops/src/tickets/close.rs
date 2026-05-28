@@ -25,6 +25,10 @@ pub struct CloseInput {
     /// as a `force_close_reason` label on the envelope.
     #[serde(default)]
     pub reason: Option<String>,
+    /// Optional client-supplied correlation id; propagated onto every
+    /// emitted [`crate::Event`] envelope.
+    #[serde(default)]
+    pub request_id: Option<String>,
 }
 
 /// Output of [`close`].
@@ -91,14 +95,28 @@ pub fn close(
     ctx.save_record(&mut record)?;
 
     let id_str = record.envelope.id.as_str().to_string();
-    events.emit(Event::TicketTransitioned {
-        id: id_str.clone(),
-        from: status_str(from),
-        to: status_str(Status::Closed),
-    });
-    events.emit(Event::TicketClosed { id: id_str });
+    let rid = input.request_id.as_deref();
+    emit(
+        events,
+        rid,
+        Event::TicketTransitioned {
+            id: id_str.clone(),
+            from: status_str(from),
+            to: status_str(Status::Closed),
+        },
+    );
+    emit(events, rid, Event::TicketClosed { id: id_str });
 
     Ok(CloseOutput { record })
+}
+
+/// Emit `event` on `bus`, threading `request_id` when present.
+fn emit(bus: &EventBus, request_id: Option<&str>, event: Event) {
+    if let Some(rid) = request_id {
+        bus.emit_with_request(rid.to_string(), event);
+    } else {
+        bus.emit(event);
+    }
 }
 
 fn unchecked_criteria(body: &RecordBody) -> Vec<&AcceptanceCriterion> {

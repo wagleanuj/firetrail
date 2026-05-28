@@ -70,6 +70,10 @@ pub struct LinkInput {
     pub to: String,
     /// Relation kind.
     pub kind: TicketRelationKind,
+    /// Optional client-supplied correlation id; propagated onto the
+    /// emitted [`crate::Event::TicketLinked`] envelope.
+    #[serde(default)]
+    pub request_id: Option<String>,
 }
 
 /// Output of [`link`].
@@ -115,11 +119,16 @@ pub fn link(
         .refresh(&ctx.storage, &[], &[])
         .map_err(|e| OpsError::Internal(anyhow::anyhow!("index refresh: {e}")))?;
 
-    events.emit(Event::TicketLinked {
+    let event = Event::TicketLinked {
         from: from.as_str().to_string(),
         to: to.as_str().to_string(),
         relation: relation_kind_str(core_kind),
-    });
+    };
+    if let Some(rid) = input.request_id.as_deref() {
+        events.emit_with_request(rid.to_string(), event);
+    } else {
+        events.emit(event);
+    }
 
     Ok(LinkOutput {
         from,

@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 ft-ops = { path = "../ft-ops", features = ["ts-rs"] }
+ft-identity = { path = "../ft-identity", version = "0.1.0" }
 
 tokio = { workspace = true, features = ["full"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
@@ -51,3 +52,5 @@ tempfile = { workspace = true }
 reqwest = { version = "0.12", default-features = false, features = ["json", "cookies", "stream", "rustls-tls"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 futures-util = "0.3"
+ft-testkit = { path = "../ft-testkit", version = "0.1.0" }
+serde_json = { workspace = true }

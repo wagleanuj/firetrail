@@ -17,4 +17,9 @@ takeover: boolean,
 /**
  * Required when `takeover` is `true`.
  */
-reason: string | null, };
+reason: string | null, 
+/**
+ * Optional client-supplied correlation id; propagated onto the
+ * emitted [`crate::Event::TicketUnclaimed`] envelope.
+ */
+request_id: string | null, };

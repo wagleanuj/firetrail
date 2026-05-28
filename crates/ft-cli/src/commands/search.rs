@@ -58,15 +58,13 @@ pub fn search(args: &SearchArgs, global: &GlobalOpts) -> Result<CommandOutcome, 
         None
     };
 
-    // ADR-0007 lexical fallback: if the caller asked for Vector or Hybrid
-    // but we could not obtain an embedding (mock failed, daemon down), the
-    // actual ranking degrades to lexical-only. Reflect that in both the
-    // engine query and the outcome `mode` field so callers see what really
-    // happened (firetrail-urq).
-    let resolved_mode = match (mode, embedding.is_some()) {
-        (SearchMode::Vector | SearchMode::Hybrid, false) => SearchMode::Lexical,
-        (m, _) => m,
-    };
+    // ADR-0007 lexical fallback (firetrail-urq, firetrail-3sw): when the
+    // requested mode requires a signal we cannot provide, the actual
+    // ranking degrades to lexical and the outcome reports the degraded
+    // mode plus an explanatory warning.
+    let vector_enabled = ctx.search_engine()?.vector_enabled();
+    let resolved_mode =
+        resolve_search_mode(mode, embedding.is_some(), vector_enabled, &mut warnings);
 
     let mut query = SearchQuery {
         text: args.query.clone(),
@@ -140,6 +138,39 @@ pub fn similar(args: &SimilarArgs, global: &GlobalOpts) -> Result<CommandOutcome
         hits: hits.into_iter().map(SearchHitView::from).collect(),
         warnings,
     }))
+}
+
+/// Pick the actual search mode given what we can supply at run time.
+///
+/// - `Vector` degrades to `Lexical` when sqlite-vec is off OR no embedding
+///   is available, pushing a warning so callers see the degradation
+///   (firetrail-3sw).
+/// - `Hybrid` degrades silently to `Lexical` when no embedding is available
+///   (the daemon path already pushed its own warning, firetrail-urq).
+fn resolve_search_mode(
+    requested: SearchMode,
+    has_embedding: bool,
+    vector_enabled: bool,
+    warnings: &mut Vec<String>,
+) -> SearchMode {
+    match (requested, has_embedding, vector_enabled) {
+        (SearchMode::Vector, _, false) => {
+            warnings.push(
+                "vector search unavailable (sqlite-vec disabled); falling back to lexical"
+                    .to_string(),
+            );
+            SearchMode::Lexical
+        }
+        (SearchMode::Vector, false, _) => {
+            warnings.push(
+                "vector search unavailable (no query embedding); falling back to lexical"
+                    .to_string(),
+            );
+            SearchMode::Lexical
+        }
+        (SearchMode::Hybrid, false, _) => SearchMode::Lexical,
+        (m, _, _) => m,
+    }
 }
 
 fn mode_label(mode: SearchMode) -> String {

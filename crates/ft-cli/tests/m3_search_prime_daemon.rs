@@ -414,6 +414,52 @@ fn search_hybrid_with_dead_daemon_reports_lexical_mode() {
 }
 
 #[test]
+fn search_vector_mode_degrades_to_lexical_when_vec_disabled() {
+    // firetrail-3sw: --mode=vector MUST degrade to lexical with a warning
+    // instead of erroring out when the vector signal is unavailable (either
+    // sqlite-vec is disabled at build time, or no embedding can be obtained).
+    // Mirrors the hybrid contract from firetrail-urq.
+    //
+    // Setup mirrors the dead-daemon test: provider: lexical so the daemon
+    // refuses to start and no embedding reaches the engine.
+    let tr = fresh_repo();
+    let cfg_path = tr.root().join(".firetrail").join("config.yml");
+    let cfg = std::fs::read_to_string(&cfg_path).expect("read config.yml");
+    std::fs::write(&cfg_path, cfg.replace("provider: mock", "provider: lexical"))
+        .expect("rewrite provider to lexical");
+    let _ = create_two_records(tr.root());
+
+    let out = run_firetrail(
+        tr.root(),
+        &[
+            "search",
+            "payment",
+            "--mode",
+            "vector",
+            "--embedder",
+            "daemon",
+            "--json",
+        ],
+    );
+    assert!(out.success(), "search failed: {}", out.stderr);
+    let v = parse_json(&out);
+    assert_eq!(
+        v["data"]["mode"].as_str().unwrap(),
+        "lexical",
+        "expected mode to degrade to lexical for vector mode without an embedding, got {}",
+        v["data"]["mode"]
+    );
+    let warnings = v["data"]["warnings"].as_array().expect("warnings array");
+    assert!(
+        warnings
+            .iter()
+            .filter_map(|w| w.as_str())
+            .any(|w| w.contains("vector search unavailable")),
+        "expected a vector-unavailable warning, got {warnings:?}"
+    );
+}
+
+#[test]
 fn doctor_includes_m3_checks() {
     let tr = fresh_repo();
     let out = run_firetrail(tr.root(), &["doctor", "--json"]);

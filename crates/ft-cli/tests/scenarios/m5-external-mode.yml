@@ -48,8 +48,10 @@ steps:
     # therefore requires the remote to have at least one commit on main.
     # We create that commit by cloning the bare repo into a throwaway
     # working tree and pushing back an empty root commit.
+    # Pass user.name/user.email via `-c` so the test does not depend on a
+    # globally configured git identity (CI Linux runners often have none).
     run: >-
-      sh -c 'git clone -q file://$(pwd)/data-repo.git seed && cd seed && git checkout -q -b main && git commit --allow-empty -q -m "seed" && git push -q origin main'
+      sh -c 'git clone -q file://$(pwd)/data-repo.git seed && cd seed && git checkout -q -b main && git -c user.email=ci@firetrail.test -c user.name="firetrail ci" commit --allow-empty -q -m "seed" && git push -q origin main'
     expect:
       exit: 0
 

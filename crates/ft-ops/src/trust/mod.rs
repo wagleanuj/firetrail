@@ -16,6 +16,7 @@
 mod ops;
 
 pub use ops::{
-    EvidenceKindInput, MergeInput, MergeOutput, PromoteInput, ReasonInput, ReviewInput,
-    SupersedeInput, TrustOutput, archive, deprecate, merge, promote, redact, review, supersede,
+    ArchiveInput, EvidenceKindInput, MergeInput, MergeOutput, PromoteInput, ReasonInput,
+    ReviewInput, SupersedeInput, TrustOutput, archive, deprecate, merge, promote, redact, review,
+    supersede,
 };

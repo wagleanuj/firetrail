@@ -22,8 +22,8 @@ mod views;
 
 pub use offboard::{IdentityOffboardOutput, OffboardInput, offboard};
 pub use register::{
-    CapabilitiesOutput, CapabilityRow, IdentityKindInput, IdentityRegisterOutput,
-    RegisterInput, capabilities, register, CapabilitiesInput,
+    CapabilitiesInput, CapabilitiesOutput, CapabilityOverrideInput, CapabilityRow,
+    IdentityKindInput, IdentityRegisterOutput, RegisterInput, capabilities, register,
 };
 pub use views::{
     IdentityListOutput, IdentityShowOutput, IdentityStatusFilter, IdentityView, ListInput,

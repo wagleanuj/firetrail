@@ -83,3 +83,7 @@ ui-gen-ts:
 # Fail if committed TS bindings drift from ft-ops's source of truth.
 ui-check-ts:
     cargo xtask check-ts
+
+# Run the Playwright happy-path against the bundled-ui binary.
+ui-test-e2e:
+    cd crates/ft-ui/web && pnpm test:e2e

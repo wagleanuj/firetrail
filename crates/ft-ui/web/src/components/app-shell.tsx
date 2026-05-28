@@ -1,11 +1,15 @@
 import { Link, Outlet } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
+import { useTicketEvents } from '@/features/tickets/use-ticket-events'
 
 const NAV = [
-  { to: '/', label: 'Home' },
+  { to: '/', label: 'Board' },
 ] as const
 
 export function AppShell() {
+  // Subscribe once at the shell level so the SSE connection survives navigation
+  // between `/` and `/tickets/:id`.
+  useTicketEvents()
   return (
     <div className="flex h-full flex-col">
       <header className="border-b border-border/60 bg-card/40 backdrop-blur">

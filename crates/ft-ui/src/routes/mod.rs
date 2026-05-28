@@ -17,6 +17,7 @@ use crate::auth::{bootstrap_handler, heartbeat_handler, session_middleware, work
 use crate::server::AppState;
 use crate::sse::events_handler;
 
+pub mod memory;
 pub mod tickets;
 
 /// Build the top-level axum [`Router`] for ft-ui.
@@ -26,6 +27,7 @@ pub fn build(state: Arc<AppState>) -> Router {
         .route("/heartbeat", post(heartbeat_handler))
         .route("/events", get(events_handler))
         .nest("/tickets", tickets::router())
+        .nest("/memory", memory::router())
         .route_layer(from_fn_with_state(state.clone(), session_middleware))
         .with_state(state.clone());
 

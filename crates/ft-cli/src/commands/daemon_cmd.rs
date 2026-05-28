@@ -1,35 +1,41 @@
 //! `firetrail daemon {start,stop,status}` — embedding daemon control.
 //!
-//! M3 scope and limitations:
+//! Behaviour (post-firetrail-e7z):
 //!
-//! - `daemon start --foreground` runs the daemon in this process. Tests use
-//!   this surface (with a unique socket path) so they can deterministically
-//!   stand a daemon up.
+//! - `daemon start --foreground` runs the daemon in this process and holds
+//!   an exclusive per-workspace lock so a second daemon for the same repo
+//!   fails fast with a clear message.
 //! - `daemon start` (no `--foreground`) spawns the current binary with
-//!   `--foreground` as a detached child via the standard library. This is
-//!   intentionally minimal — full lifecycle / supervision is ADR-0007 work.
-//!   Unix-only at M3; on non-Unix the call returns a user error suggesting
-//!   `--foreground`.
-//! - `daemon stop` deletes the socket file. The serving loop sees the next
-//!   `accept()` fail and exits. A richer shutdown frame is filed as a
-//!   follow-up.
-//! - `daemon status` is a thin wrapper around `ft_embed::daemon::status`.
+//!   `--foreground` as a detached child. Unix-only; non-Unix returns a user
+//!   error suggesting `--foreground`.
+//! - `daemon stop` opens the socket, sends a [`ft_embed::EmbedRequest::Shutdown`]
+//!   frame, then polls until the socket disappears. Falls back to deleting
+//!   the socket file if the daemon never acks.
+//! - `daemon status` is a thin wrapper around [`ft_embed::daemon::status`].
+//! - [`ensure_running`] is used by `search`/`similar` to auto-spawn a
+//!   detached daemon when none is listening.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::{Duration, Instant};
 
-use ft_embed::daemon::{self, DaemonStatus};
+use ft_embed::daemon::{self, DaemonStatus, ServeOptions};
 use ft_embed::{Embedder, EmbedService, EmbeddingCache, EmbeddingsConfig, build_embedder};
 use serde::Serialize;
 
 use crate::cli::{DaemonStartArgs, GlobalOpts};
 use crate::commands::CommandOutcome;
 use crate::error::CliError;
-use crate::workspace;
+use crate::workspace::{self, Workspace};
 
 const CMD_START: &str = "daemon start";
 const CMD_STOP: &str = "daemon stop";
 const CMD_STATUS: &str = "daemon status";
+
+/// How long `daemon stop` waits for a graceful exit before falling back.
+const STOP_WAIT: Duration = Duration::from_secs(3);
+/// How long `ensure_running` waits for a freshly spawned daemon to come up.
+const SPAWN_WAIT: Duration = Duration::from_secs(5);
 
 /// `firetrail daemon start`
 pub fn start(args: &DaemonStartArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
@@ -43,62 +49,68 @@ pub fn start(args: &DaemonStartArgs, global: &GlobalOpts) -> Result<CommandOutco
     }
 
     if args.foreground {
-        return run_foreground(&ws.root, &socket);
+        return run_foreground(&ws, &socket, args.idle_timeout_secs);
     }
 
-    // Background mode: spawn the current binary with --foreground. Unix only.
-    #[cfg(unix)]
-    {
-        let exe = std::env::current_exe()
-            .map_err(|e| CliError::internal(CMD_START, format!("current_exe: {e}")))?;
-        let workspace_arg = ws.root.display().to_string();
-        let socket_arg = socket.display().to_string();
-        let mut cmd = Command::new(exe);
-        cmd.arg("--workspace")
-            .arg(&workspace_arg)
-            .arg("daemon")
-            .arg("start")
-            .arg("--foreground")
-            .arg("--socket")
-            .arg(&socket_arg);
-        // Detach: redirect std streams to /dev/null.
-        cmd.stdin(std::process::Stdio::null());
-        cmd.stdout(std::process::Stdio::null());
-        cmd.stderr(std::process::Stdio::null());
-        let child = cmd
-            .spawn()
-            .map_err(|e| CliError::internal(CMD_START, format!("spawn daemon: {e}")))?;
-        let pid = child.id();
-        // Intentionally drop the Child without waiting — the OS reaps it when
-        // the parent dies. A richer supervisor is a follow-up.
-        std::mem::forget(child);
-        Ok(CommandOutcome::Daemon(DaemonOutcome {
-            command: CMD_START,
-            socket: socket.display().to_string(),
-            status: "spawned".to_string(),
-            pid: Some(pid),
-            warnings: vec![
-                "background spawn is best-effort at M3; check `firetrail daemon status` shortly"
-                    .to_string(),
-            ],
-        }))
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = socket;
-        Err(CliError::user(
-            CMD_START,
-            "background daemon spawn is Unix-only at M3; run with --foreground instead",
-        ))
-    }
+    spawn_background(&ws, &socket, args.idle_timeout_secs)
 }
 
-fn run_foreground(ws_root: &Path, socket: &Path) -> Result<CommandOutcome, CliError> {
-    // Resolve the configured embedder (firetrail-6n4): `embeddings:` in
-    // `.firetrail/config.yml` selects `local` (ONNX), `mock`, or `lexical`.
-    // `lexical` means there is nothing to serve — fail loudly so operators
-    // notice rather than running a no-op daemon.
-    let cfg = EmbeddingsConfig::from_workspace(ws_root)
+#[cfg(unix)]
+fn spawn_background(
+    ws: &Workspace,
+    socket: &Path,
+    idle_timeout_secs: u64,
+) -> Result<CommandOutcome, CliError> {
+    let exe = std::env::current_exe()
+        .map_err(|e| CliError::internal(CMD_START, format!("current_exe: {e}")))?;
+    let workspace_arg = ws.root.display().to_string();
+    let socket_arg = socket.display().to_string();
+    let idle = idle_timeout_secs.to_string();
+    let mut cmd = Command::new(exe);
+    cmd.arg("--workspace")
+        .arg(&workspace_arg)
+        .arg("daemon")
+        .arg("start")
+        .arg("--foreground")
+        .arg("--socket")
+        .arg(&socket_arg)
+        .arg("--idle-timeout-secs")
+        .arg(&idle);
+    cmd.stdin(std::process::Stdio::null());
+    cmd.stdout(std::process::Stdio::null());
+    cmd.stderr(std::process::Stdio::null());
+    let child = cmd
+        .spawn()
+        .map_err(|e| CliError::internal(CMD_START, format!("spawn daemon: {e}")))?;
+    let pid = child.id();
+    std::mem::forget(child);
+    Ok(CommandOutcome::Daemon(DaemonOutcome {
+        command: CMD_START,
+        socket: socket.display().to_string(),
+        status: "spawned".to_string(),
+        pid: Some(pid),
+        warnings: Vec::new(),
+    }))
+}
+
+#[cfg(not(unix))]
+fn spawn_background(
+    _ws: &Workspace,
+    _socket: &Path,
+    _idle_timeout_secs: u64,
+) -> Result<CommandOutcome, CliError> {
+    Err(CliError::user(
+        CMD_START,
+        "background daemon spawn is Unix-only at M3; run with --foreground instead",
+    ))
+}
+
+fn run_foreground(
+    ws: &Workspace,
+    socket: &Path,
+    idle_timeout_secs: u64,
+) -> Result<CommandOutcome, CliError> {
+    let cfg = EmbeddingsConfig::from_workspace(&ws.root)
         .map_err(|e| CliError::internal(CMD_START, format!("load embeddings config: {e}")))?;
     let built = build_embedder(&cfg)
         .map_err(|e| CliError::internal(CMD_START, format!("build embedder: {e}")))?;
@@ -110,12 +122,16 @@ fn run_foreground(ws_root: &Path, socket: &Path) -> Result<CommandOutcome, CliEr
         )
     })?;
 
-    let cache = EmbeddingCache::open_under(ws_root)
+    let cache = EmbeddingCache::open_under(&ws.root)
         .map_err(|e| CliError::internal(CMD_START, format!("open cache: {e}")))?;
     let service = EmbedService::new(embedder, cache);
-    daemon::serve(socket, &service)
+
+    let opts = ServeOptions {
+        idle_timeout: (idle_timeout_secs > 0).then(|| Duration::from_secs(idle_timeout_secs)),
+        lock_path: Some(daemon_lock_path(ws)),
+    };
+    daemon::serve_with(socket, &service, &opts)
         .map_err(|e| CliError::internal(CMD_START, format!("daemon serve: {e}")))?;
-    // `serve` only returns when the listener exits.
     Ok(CommandOutcome::Daemon(DaemonOutcome {
         command: CMD_START,
         socket: socket.display().to_string(),
@@ -129,25 +145,48 @@ fn run_foreground(ws_root: &Path, socket: &Path) -> Result<CommandOutcome, CliEr
 pub fn stop(global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
     let ws = workspace::require_initialised(CMD_STOP, global.workspace.as_deref())?;
     let socket = ws.daemon_socket_path();
-    let existed = socket.exists();
-    if existed {
-        // Removing the socket file makes the next `accept()` fail with EBADF
-        // (or ENOENT depending on the platform); the serve loop logs and
-        // continues but new connections error out. A future shutdown frame
-        // is filed as a follow-up.
-        std::fs::remove_file(&socket)
-            .map_err(|e| CliError::internal(CMD_STOP, format!("remove socket: {e}")))?;
+
+    if !socket.exists() {
+        return Ok(CommandOutcome::Daemon(DaemonOutcome {
+            command: CMD_STOP,
+            socket: socket.display().to_string(),
+            status: "absent".to_string(),
+            pid: None,
+            warnings: vec!["no socket file present; daemon may already be stopped".to_string()],
+        }));
     }
+
+    let mut warnings = Vec::new();
+    let mut status_label = "stopped";
+    match daemon::send_shutdown(&socket) {
+        Ok(()) => {
+            if !wait_for(|| !socket.exists(), STOP_WAIT) {
+                warnings.push(
+                    "daemon acked shutdown but socket file is still present; removing".to_string(),
+                );
+                let _ = std::fs::remove_file(&socket);
+            }
+        }
+        Err(e) => {
+            warnings.push(format!(
+                "graceful shutdown failed ({e}); removing socket file as fallback"
+            ));
+            if let Err(rm) = std::fs::remove_file(&socket) {
+                return Err(CliError::internal(
+                    CMD_STOP,
+                    format!("remove socket: {rm}"),
+                ));
+            }
+            status_label = "force-stopped";
+        }
+    }
+
     Ok(CommandOutcome::Daemon(DaemonOutcome {
         command: CMD_STOP,
         socket: socket.display().to_string(),
-        status: if existed { "stopped" } else { "absent" }.to_string(),
+        status: status_label.to_string(),
         pid: None,
-        warnings: if existed {
-            Vec::new()
-        } else {
-            vec!["no socket file present; daemon may already be stopped".to_string()]
-        },
+        warnings,
     }))
 }
 
@@ -163,6 +202,45 @@ pub fn status(global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
         pid: None,
         warnings: Vec::new(),
     }))
+}
+
+/// If the daemon for `ws` is not running, spawn a detached one and wait for
+/// it to start listening. Returns the current [`DaemonStatus`].
+///
+/// Caller is responsible for handling `Unreachable` (typically: report a
+/// warning and fall back to lexical search).
+pub fn ensure_running(_command: &'static str, ws: &Workspace) -> Result<DaemonStatus, CliError> {
+    let socket = ws.daemon_socket_path();
+    match daemon::status(&socket) {
+        DaemonStatus::Running => return Ok(DaemonStatus::Running),
+        DaemonStatus::Unreachable => return Ok(DaemonStatus::Unreachable),
+        DaemonStatus::Stopped => {}
+    }
+
+    spawn_background(ws, &socket, 300)?;
+    if wait_for(
+        || daemon::status(&socket) == DaemonStatus::Running,
+        SPAWN_WAIT,
+    ) {
+        Ok(DaemonStatus::Running)
+    } else {
+        Ok(daemon::status(&socket))
+    }
+}
+
+fn daemon_lock_path(ws: &Workspace) -> PathBuf {
+    ws.sockets_dir().join("embedd.lock")
+}
+
+fn wait_for(predicate: impl Fn() -> bool, timeout: Duration) -> bool {
+    let start = Instant::now();
+    while start.elapsed() < timeout {
+        if predicate() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    predicate()
 }
 
 fn status_label(s: DaemonStatus) -> &'static str {
@@ -181,8 +259,7 @@ pub struct DaemonOutcome {
     pub command: &'static str,
     /// Socket path the daemon binds to.
     pub socket: String,
-    /// One-word status label (`running`, `stopped`, `unreachable`,
-    /// `spawned`, `absent`, `exited`).
+    /// One-word status label.
     pub status: String,
     /// Child PID for `start`'s background spawn (Unix only).
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -39,6 +39,10 @@ pub fn search(args: &SearchArgs, global: &GlobalOpts) -> Result<CommandOutcome, 
             }
             EmbedderArg::Daemon => {
                 let socket = ctx.ws.daemon_socket_path();
+                // Auto-spawn a detached daemon if none is listening (firetrail-e7z).
+                if let Err(e) = crate::commands::daemon_cmd::ensure_running(CMD_SEARCH, &ctx.ws) {
+                    warnings.push(format!("could not auto-spawn daemon: {e}"));
+                }
                 match daemon::send_embed(&socket, &args.query) {
                     Ok(v) => Some(v),
                     Err(e) => {

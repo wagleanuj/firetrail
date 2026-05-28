@@ -48,7 +48,7 @@ pub use cache::{
 pub use config::{
     BuiltEmbedder, EmbeddingsConfig, Fallback, Provider, build_embedder,
 };
-pub use daemon::{DaemonStatus, EmbedRequest, EmbedResponse};
+pub use daemon::{DaemonLock, DaemonStatus, EmbedRequest, EmbedResponse, ServeOptions};
 pub use download::{
     Artifact, ArtifactOutcome, BGE_SMALL_EN_V15_ARTIFACTS, DownloadReport, default_model_dir,
     download_artifacts, download_bge_small,

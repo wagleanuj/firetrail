@@ -639,6 +639,11 @@ pub struct DaemonStartArgs {
     /// (`.firetrail/sockets/embedd.sock`). Useful for tests.
     #[arg(long)]
     pub socket: Option<PathBuf>,
+
+    /// Idle timeout in seconds. The daemon exits after this much inactivity.
+    /// `0` disables the idle exit.
+    #[arg(long = "idle-timeout-secs", default_value_t = 300)]
+    pub idle_timeout_secs: u64,
 }
 
 /// Internal `_hook …` dispatcher.

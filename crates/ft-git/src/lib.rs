@@ -1112,10 +1112,10 @@ fn walk_tree(
                 let sub_tree = r.find_object(oid).map_err(g)?.into_tree();
                 walk_tree(r, &sub_tree, &path, matcher, out)?;
             }
-            gix::object::tree::EntryKind::Blob | gix::object::tree::EntryKind::BlobExecutable => {
-                if matcher.is_match(&path) {
-                    out.push(path);
-                }
+            gix::object::tree::EntryKind::Blob | gix::object::tree::EntryKind::BlobExecutable
+                if matcher.is_match(&path) =>
+            {
+                out.push(path);
             }
             _ => {
                 // Symlinks, commits (submodules): out of scope.

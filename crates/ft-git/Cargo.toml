@@ -17,7 +17,7 @@ gix = { workspace = true, features = ["revision", "blob-diff", "max-performance-
 globset = { workspace = true }
 
 [dev-dependencies]
-ft-testkit = { path = "../ft-testkit", version = "0.0.0" }
+ft-testkit = { path = "../ft-testkit", version = "0.1.0" }
 tempfile = { workspace = true }
 proptest = { workspace = true }
 globset = { workspace = true }

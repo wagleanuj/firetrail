@@ -11,8 +11,8 @@ description = "Shared test fixtures, factories, and the scenario runner."
 workspace = true
 
 [dependencies]
-ft-core = { path = "../ft-core", version = "0.0.0" }
-ft-storage = { path = "../ft-storage", version = "0.0.0" }
+ft-core = { path = "../ft-core", version = "0.1.0" }
+ft-storage = { path = "../ft-storage", version = "0.1.0" }
 tempfile = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

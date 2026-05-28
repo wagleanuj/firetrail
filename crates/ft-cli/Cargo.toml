@@ -29,19 +29,19 @@ chrono = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 is-terminal = { workspace = true }
-ft-core = { path = "../ft-core", version = "0.0.0" }
-ft-storage = { path = "../ft-storage", version = "0.0.0" }
-ft-index = { path = "../ft-index", version = "0.0.0" }
-ft-identity = { path = "../ft-identity", version = "0.0.0" }
-ft-scope = { path = "../ft-scope", version = "0.0.0" }
-ft-git = { path = "../ft-git", version = "0.0.0" }
-ft-trust = { path = "../ft-trust", version = "0.0.0" }
-ft-history = { path = "../ft-history", version = "0.0.0" }
-ft-search = { path = "../ft-search", version = "0.0.0" }
-ft-prime = { path = "../ft-prime", version = "0.0.0" }
-ft-pr = { path = "../ft-pr", version = "0.0.0" }
-ft-import = { path = "../ft-import", version = "0.0.0" }
-ft-embed = { path = "../ft-embed", version = "0.0.0" }
+ft-core = { path = "../ft-core", version = "0.1.0" }
+ft-storage = { path = "../ft-storage", version = "0.1.0" }
+ft-index = { path = "../ft-index", version = "0.1.0" }
+ft-identity = { path = "../ft-identity", version = "0.1.0" }
+ft-scope = { path = "../ft-scope", version = "0.1.0" }
+ft-git = { path = "../ft-git", version = "0.1.0" }
+ft-trust = { path = "../ft-trust", version = "0.1.0" }
+ft-history = { path = "../ft-history", version = "0.1.0" }
+ft-search = { path = "../ft-search", version = "0.1.0" }
+ft-prime = { path = "../ft-prime", version = "0.1.0" }
+ft-pr = { path = "../ft-pr", version = "0.1.0" }
+ft-import = { path = "../ft-import", version = "0.1.0" }
+ft-embed = { path = "../ft-embed", version = "0.1.0" }
 humantime = { workspace = true }
 fs2 = { workspace = true }
 regex = { workspace = true }
@@ -49,10 +49,10 @@ sha2 = { workspace = true }
 hex = { workspace = true }
 
 [dev-dependencies]
-ft-testkit = { path = "../ft-testkit", version = "0.0.0" }
-ft-embed = { path = "../ft-embed", version = "0.0.0" }
-ft-core = { path = "../ft-core", version = "0.0.0" }
-ft-storage = { path = "../ft-storage", version = "0.0.0" }
+ft-testkit = { path = "../ft-testkit", version = "0.1.0" }
+ft-embed = { path = "../ft-embed", version = "0.1.0" }
+ft-core = { path = "../ft-core", version = "0.1.0" }
+ft-storage = { path = "../ft-storage", version = "0.1.0" }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
 insta = { workspace = true, features = ["filters"] }

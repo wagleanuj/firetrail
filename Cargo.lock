@@ -738,7 +738,7 @@ dependencies = [
 
 [[package]]
 name = "ft-cli"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -775,7 +775,7 @@ dependencies = [
 
 [[package]]
 name = "ft-core"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "ft-testkit",
@@ -792,7 +792,7 @@ dependencies = [
 
 [[package]]
 name = "ft-embed"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "blake3",
  "chrono",
@@ -813,7 +813,7 @@ dependencies = [
 
 [[package]]
 name = "ft-git"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "ft-testkit",
@@ -826,7 +826,7 @@ dependencies = [
 
 [[package]]
 name = "ft-history"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "ft-core",
@@ -844,7 +844,7 @@ dependencies = [
 
 [[package]]
 name = "ft-identity"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "ft-core",
@@ -859,7 +859,7 @@ dependencies = [
 
 [[package]]
 name = "ft-import"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "ft-core",
@@ -874,7 +874,7 @@ dependencies = [
 
 [[package]]
 name = "ft-index"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "ft-core",
@@ -890,7 +890,7 @@ dependencies = [
 
 [[package]]
 name = "ft-pr"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "ft-core",
@@ -908,7 +908,7 @@ dependencies = [
 
 [[package]]
 name = "ft-prime"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "ft-core",
@@ -922,7 +922,7 @@ dependencies = [
 
 [[package]]
 name = "ft-scope"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "ft-core",
@@ -935,7 +935,7 @@ dependencies = [
 
 [[package]]
 name = "ft-search"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "ft-core",
@@ -952,7 +952,7 @@ dependencies = [
 
 [[package]]
 name = "ft-storage"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "ft-core",
@@ -971,7 +971,7 @@ dependencies = [
 
 [[package]]
 name = "ft-testkit"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "ft-core",
@@ -986,7 +986,7 @@ dependencies = [
 
 [[package]]
 name = "ft-trust"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "ft-core",

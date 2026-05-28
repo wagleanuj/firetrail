@@ -19,11 +19,11 @@ members = [
 ]
 
 [workspace.package]
-version = "0.0.0"
+version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/firetrail/firetrail"
+repository = "https://github.com/wagleanuj/firetrail"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -113,3 +113,8 @@ debug = 1
 lto = "thin"
 codegen-units = 1
 strip = "symbols"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

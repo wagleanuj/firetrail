@@ -11,9 +11,9 @@ description = "JSON-in-Git read/write storage, embedded and external modes."
 workspace = true
 
 [dependencies]
-ft-core = { path = "../ft-core", version = "0.0.0" }
-ft-git = { path = "../ft-git", version = "0.0.0" }
-ft-history = { path = "../ft-history", version = "0.0.0" }
+ft-core = { path = "../ft-core", version = "0.1.0" }
+ft-git = { path = "../ft-git", version = "0.1.0" }
+ft-history = { path = "../ft-history", version = "0.1.0" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
@@ -23,6 +23,6 @@ walkdir = { workspace = true }
 regex = { workspace = true }
 
 [dev-dependencies]
-ft-testkit = { path = "../ft-testkit", version = "0.0.0" }
+ft-testkit = { path = "../ft-testkit", version = "0.1.0" }
 tempfile = { workspace = true }
 proptest = { workspace = true }

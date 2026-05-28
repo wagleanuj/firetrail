@@ -13,3 +13,6 @@ Cargo.lock.bak
 .DS_Store
 .vscode/
 .idea/
+
+# Git worktrees
+.worktrees/

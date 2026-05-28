@@ -17,6 +17,11 @@ Cargo.lock.bak
 # Git worktrees
 .worktrees/
 
+# ts-rs default bindings output (we use cargo xtask gen-ts which writes
+# into crates/ft-ui/web/src/api/types/ instead; this is a leftover from
+# `cargo test -p ft-ops` runs that exercise TS::export_all_to)
+crates/ft-ops/bindings/
+
 # UI build artefacts (generated TS bindings under web/src/api/types/ are committed)
 crates/ft-ui/web/node_modules/
 crates/ft-ui/web/dist/

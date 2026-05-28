@@ -40,17 +40,21 @@ pub struct LintFinding {
     pub record_id: String,
     /// Human-readable message.
     pub message: String,
+    /// Suggested remediation. Populated when `--fix` is passed.
+    /// No auto-fix is applied automatically — every current lint rule either
+    /// touches integrity-critical fields (`state_hash`, trust transitions) or
+    /// requires human judgment.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub suggested_fix: Option<String>,
 }
 
-/// `firetrail lint memory`
+/// `firetrail lint memory` — workspace-state lint without a base/head diff.
 #[allow(clippy::too_many_lines)]
 pub fn memory(args: &LintMemoryArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
     let ctx = WorkCtx::open(COMMAND, global.workspace.as_deref())?;
-    let mut warnings = ctx.warnings.clone();
+    let warnings = ctx.warnings.clone();
 
-    if args.fix {
-        warnings.push("--fix is a no-op at M4; no auto-fixes available".to_string());
-    }
+    let emit_fix_hints = args.fix;
 
     let opts = PrValidatorOptions::default();
     let patterns = if opts.enable_secret_scan {
@@ -86,6 +90,9 @@ pub fn memory(args: &LintMemoryArgs, global: &GlobalOpts) -> Result<CommandOutco
                     rule: "chain_broken",
                     record_id: id,
                     message: format!("chain integrity failure: {reason}"),
+                    suggested_fix: emit_fix_hints.then(|| {
+                        "tamper detected — restore record from git history or rebuild via `firetrail index rebuild`".to_string()
+                    }),
                 });
             }
         }
@@ -105,6 +112,11 @@ pub fn memory(args: &LintMemoryArgs, global: &GlobalOpts) -> Result<CommandOutco
                     "record has {} acceptance criteria (cap: {})",
                     acs, opts.max_ac_per_record
                 ),
+                suggested_fix: emit_fix_hints.then(|| {
+                    format!(
+                        "split into subtasks via `firetrail subtask create --parent {record_id}` or remove low-value criteria"
+                    )
+                }),
             });
         }
 
@@ -121,6 +133,11 @@ pub fn memory(args: &LintMemoryArgs, global: &GlobalOpts) -> Result<CommandOutco
                         "draft record is {} days old (expiry: {} days)",
                         days, opts.draft_max_age_days
                     ),
+                    suggested_fix: emit_fix_hints.then(|| {
+                        format!(
+                            "promote via `firetrail memory review {record_id}` or archive via `firetrail memory archive {record_id}`"
+                        )
+                    }),
                 });
             }
         }
@@ -129,15 +146,19 @@ pub fn memory(args: &LintMemoryArgs, global: &GlobalOpts) -> Result<CommandOutco
         for r in collect_references(record) {
             if let Some(target) = by_id.get(&r) {
                 if let Some(state) = deprecated_state(target) {
+                    let target_id = target.envelope.id.as_str().to_string();
                     findings.push(LintFinding {
                         severity: "warning",
                         rule: "deprecated_reference",
                         record_id: record_id.clone(),
                         message: format!(
-                            "references {} which is in state `{}`",
-                            target.envelope.id.as_str(),
-                            state
+                            "references {target_id} which is in state `{state}`"
                         ),
+                        suggested_fix: emit_fix_hints.then(|| {
+                            format!(
+                                "update {record_id} to point at the successor of {target_id}, or remove the reference"
+                            )
+                        }),
                     });
                 }
             }
@@ -156,6 +177,11 @@ pub fn memory(args: &LintMemoryArgs, global: &GlobalOpts) -> Result<CommandOutco
                         pat.as_str(),
                         redact(&matched)
                     ),
+                    suggested_fix: emit_fix_hints.then(|| {
+                        format!(
+                            "redact via `firetrail memory redact {record_id} --reason \"contained secret\"` and rotate the credential"
+                        )
+                    }),
                 });
             }
         }
@@ -211,6 +237,16 @@ impl LintMemoryOutcome {
                     "| {} | `{}` | `{}` | {} |",
                     f.severity, f.rule, f.record_id, f.message
                 );
+            }
+            let with_hints: Vec<&LintFinding> =
+                self.findings.iter().filter(|f| f.suggested_fix.is_some()).collect();
+            if !with_hints.is_empty() {
+                s.push_str("\n## Suggested fixes\n\n");
+                for f in with_hints {
+                    if let Some(hint) = &f.suggested_fix {
+                        let _ = writeln!(s, "- `{}` ({}): {}", f.record_id, f.rule, hint);
+                    }
+                }
             }
         }
         s

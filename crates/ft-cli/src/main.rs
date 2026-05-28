@@ -22,6 +22,7 @@ mod commands;
 mod context;
 mod error;
 mod output;
+mod prompt;
 mod workspace;
 
 use crate::cli::{Cli, Command};

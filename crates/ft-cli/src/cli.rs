@@ -335,8 +335,8 @@ pub struct PromoteImportArgs {
     /// Optional id of the quarantined record to promote. When omitted, lists
     /// candidates.
     pub id: Option<String>,
-    /// Interactive prompt (M6: behaves like a non-interactive prompt that
-    /// rejects ambiguity; full TTY interactivity is a follow-up).
+    /// Prompt per candidate (y/N/q). Falls back to a non-mutating list when
+    /// stdin is not a TTY.
     #[arg(long)]
     pub interactive: bool,
     /// Promote every candidate that meets the threshold non-interactively.
@@ -1355,7 +1355,10 @@ pub enum LintCmd {
 /// `firetrail lint memory` arguments.
 #[derive(Debug, Args)]
 pub struct LintMemoryArgs {
-    /// Apply auto-fixes where possible (M4: no-op; placeholder for follow-up).
+    /// Emit a remediation hint (`suggested_fix`) for each finding. No record
+    /// contents are modified — every current lint rule either touches
+    /// integrity-critical fields (`state_hash`, trust transitions) or needs
+    /// human judgment.
     #[arg(long)]
     pub fix: bool,
 }

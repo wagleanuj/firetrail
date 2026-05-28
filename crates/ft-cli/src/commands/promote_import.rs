@@ -18,6 +18,7 @@ use crate::error::CliError;
 const COMMAND: &str = "promote-import";
 
 /// `firetrail promote-import [id]`
+#[allow(clippy::too_many_lines)]
 pub fn run(args: &PromoteImportArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
     let mut ctx = WorkCtx::open(COMMAND, global.workspace.as_deref())?;
     let warnings = ctx.warnings.clone();
@@ -98,21 +99,70 @@ pub fn run(args: &PromoteImportArgs, global: &GlobalOpts) -> Result<CommandOutco
         }));
     }
 
-    // `--interactive` without a TTY hook is intentionally a list at M6;
-    // wiring a real prompt is filed as a follow-up.
-    let mut out_warnings = warnings;
     if args.interactive {
-        out_warnings.push(
-            "interactive promotion is not yet wired (follow-up); behaving as a list".to_string(),
-        );
+        use crate::prompt::{PromptChoice, ask, is_interactive};
+
+        let mut out_warnings = warnings;
+        if !is_interactive() {
+            out_warnings.push(
+                "stdin is not a TTY; --interactive falls back to a non-mutating list".to_string(),
+            );
+            return Ok(CommandOutcome::PromoteImport(PromoteImportOutcome {
+                command: COMMAND,
+                action: "list",
+                promoted_ids: Vec::new(),
+                candidates: candidates.iter().map(CandidateView::from).collect(),
+                min_inbound_refs: opts.min_inbound_refs,
+                warnings: out_warnings,
+            }));
+        }
+
+        let mut promoted = Vec::with_capacity(candidates.len());
+        let mut aborted = false;
+        for cand in &candidates {
+            let q = format!(
+                "promote `{}` ({} inbound refs)? [y/N/q]",
+                cand.id.as_str(),
+                cand.inbound_refs
+            );
+            let choice = ask(&q, PromptChoice::No)
+                .map_err(|e| CliError::internal(COMMAND, format!("prompt: {e}")))?;
+            match choice {
+                PromptChoice::Yes => {
+                    promote_record(&ctx.storage, &cand.id)
+                        .map_err(|e| CliError::internal(COMMAND, format!("promote: {e}")))?;
+                    promoted.push(cand.id.as_str().to_string());
+                }
+                PromptChoice::No => {}
+                PromptChoice::Quit => {
+                    aborted = true;
+                    break;
+                }
+            }
+        }
+        if !promoted.is_empty() {
+            refresh_after_promote(&mut ctx)?;
+        }
+        if aborted {
+            out_warnings.push("interactive session aborted by user".to_string());
+        }
+        return Ok(CommandOutcome::PromoteImport(PromoteImportOutcome {
+            command: COMMAND,
+            action: "interactive",
+            promoted_ids: promoted,
+            candidates: candidates.iter().map(CandidateView::from).collect(),
+            min_inbound_refs: opts.min_inbound_refs,
+            warnings: out_warnings,
+        }));
     }
+
     Ok(CommandOutcome::PromoteImport(PromoteImportOutcome {
         command: COMMAND,
         action: "list",
         promoted_ids: Vec::new(),
         candidates: candidates.iter().map(CandidateView::from).collect(),
         min_inbound_refs: opts.min_inbound_refs,
-        warnings: out_warnings,
+        warnings,
     }))
 }
 

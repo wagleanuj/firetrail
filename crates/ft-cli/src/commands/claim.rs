@@ -94,13 +94,14 @@ pub fn claim(args: &ClaimArgs, global: &GlobalOpts) -> Result<CommandOutcome, Cl
 
 /// `firetrail unclaim`
 pub fn unclaim(args: &UnclaimArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
-    if args.takeover {
+    use ft_identity::{ClaimInfo, can_take_over, is_claim_expired, load_registry};
+
+    if args.takeover && args.reason.is_none() {
         return Err(CliError::user(
             COMMAND_UNCLAIM,
-            "--takeover is not yet supported (M5)",
+            "--takeover requires --reason",
         ));
     }
-    let _ = &args.reason; // reserved for M5 takeover support
 
     let mut ctx = WorkCtx::open(COMMAND_UNCLAIM, global.workspace.as_deref())?;
     let id = ctx.resolve_id(&args.id)?;
@@ -115,13 +116,34 @@ pub fn unclaim(args: &UnclaimArgs, global: &GlobalOpts) -> Result<CommandOutcome
         ));
     };
     if c.claimed_by != actor {
-        return Err(CliError::Conflict {
-            command: COMMAND_UNCLAIM.into(),
-            message: format!(
-                "claim is held by `{}`; use --takeover --reason to release another actor's claim",
-                c.claimed_by
-            ),
-        });
+        if !args.takeover {
+            return Err(CliError::Conflict {
+                command: COMMAND_UNCLAIM.into(),
+                message: format!(
+                    "claim is held by `{}`; use --takeover --reason to release another actor's claim",
+                    c.claimed_by
+                ),
+            });
+        }
+        let info = ClaimInfo {
+            actor: c.claimed_by.clone(),
+            claim_expires_at: c.claim_expires_at,
+            on_behalf_of: None,
+        };
+        let now = Utc::now();
+        if !is_claim_expired(&info, now) {
+            let registry = load_registry(&ctx.ws.root)
+                .map_err(|e| CliError::internal(COMMAND_UNCLAIM, format!("load registry: {e}")))?;
+            if !can_take_over(&info, &actor, &registry, now) {
+                return Err(CliError::Conflict {
+                    command: COMMAND_UNCLAIM.into(),
+                    message: format!(
+                        "claim on {id} is live (held by `{}`); --takeover requires the admin capability when the claim has not expired",
+                        c.claimed_by
+                    ),
+                });
+            }
+        }
     }
     set_claim(&mut record.body, None);
     record.envelope.updated_at = Utc::now();

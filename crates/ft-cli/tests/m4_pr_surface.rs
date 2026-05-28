@@ -271,6 +271,44 @@ fn lint_memory_detects_tampered_chain() {
     );
 }
 
+#[test]
+fn lint_memory_fix_emits_remediation_hints() {
+    let tr = fresh_repo();
+
+    let create = run_firetrail(
+        tr.root(),
+        &[
+            "--json", "memory", "create", "tamper-target", "--body", "clean body",
+        ],
+    );
+    assert!(create.success(), "memory create: {}", create.stderr);
+    let id = parse_json(&create)["data"]["record"]["envelope"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let storage = EmbeddedStorage::open(tr.root()).unwrap();
+    let path = storage.path_for(&ft_core::RecordId::from_string(id).unwrap());
+    let bytes = std::fs::read(&path).unwrap();
+    let mut v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    v["envelope"]["title"] = serde_json::json!("tampered");
+    std::fs::write(&path, serde_json::to_vec_pretty(&v).unwrap()).unwrap();
+
+    let out = run_firetrail(tr.root(), &["--json", "lint", "memory", "--fix"]);
+    assert!(!out.success(), "tampered lint must still fail");
+    let v: serde_json::Value = serde_json::from_str(out.stderr.trim()).unwrap();
+    let hints: Vec<&serde_json::Value> = v["error"]["details"]["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|f| !f["suggested_fix"].is_null())
+        .collect();
+    assert!(
+        !hints.is_empty(),
+        "--fix must emit at least one suggested_fix: {v}"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // review
 // ---------------------------------------------------------------------------

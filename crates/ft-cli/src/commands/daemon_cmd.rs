@@ -64,6 +64,21 @@ fn spawn_background(
     socket: &Path,
     idle_timeout_secs: u64,
 ) -> Result<CommandOutcome, CliError> {
+    // Probe the embedder config in the parent so any fallback warnings
+    // (most commonly "local embedder unavailable, falling back to mock"
+    // when the build lacks the `onnx` feature or the model isn't on disk)
+    // reach the operator instead of being swallowed by the detached child's
+    // null stderr. We discard the embedder itself; the child will rebuild.
+    let warnings = match EmbeddingsConfig::from_workspace(&ws.root) {
+        Ok(cfg) => match build_embedder(&cfg) {
+            Ok(b) => b.warnings,
+            Err(e) => vec![format!(
+                "could not preflight embedder ({e}); spawning anyway"
+            )],
+        },
+        Err(e) => vec![format!("could not load embeddings config ({e})")],
+    };
+
     let exe = std::env::current_exe()
         .map_err(|e| CliError::internal(CMD_START, format!("current_exe: {e}")))?;
     let workspace_arg = ws.root.display().to_string();
@@ -92,7 +107,7 @@ fn spawn_background(
         socket: socket.display().to_string(),
         status: "spawned".to_string(),
         pid: Some(pid),
-        warnings: Vec::new(),
+        warnings,
     }))
 }
 

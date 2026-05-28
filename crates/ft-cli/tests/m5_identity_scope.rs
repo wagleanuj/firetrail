@@ -159,6 +159,75 @@ fn claim_takeover_on_live_without_force_fails() {
     assert_eq!(out.status.code(), Some(3));
 }
 
+#[test]
+fn unclaim_takeover_on_expired_releases_claim() {
+    let tr = fresh_repo();
+    let id = id_from_create(&run_firetrail(
+        tr.root(),
+        &["--json", "task", "create", "demo"],
+    ));
+    let claim = run_firetrail(tr.root(), &["claim", &id, "--expires", "1s"]);
+    assert!(claim.success(), "initial claim failed: {}", claim.stderr);
+    std::thread::sleep(std::time::Duration::from_secs(2));
+
+    let bin = env!("CARGO_BIN_EXE_firetrail");
+    let out = Command::new(bin)
+        .args([
+            "--json", "unclaim", &id, "--takeover", "--reason", "expired",
+        ])
+        .current_dir(tr.root())
+        .env("FIRETRAIL_AUTHOR", "other@firetrail.test")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "unclaim --takeover should succeed on expired claim, stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
+fn unclaim_takeover_requires_reason() {
+    let tr = fresh_repo();
+    let id = id_from_create(&run_firetrail(
+        tr.root(),
+        &["--json", "task", "create", "demo"],
+    ));
+    run_firetrail(tr.root(), &["claim", &id]);
+    let bin = env!("CARGO_BIN_EXE_firetrail");
+    let out = Command::new(bin)
+        .args(["--json", "unclaim", &id, "--takeover"])
+        .current_dir(tr.root())
+        .env("FIRETRAIL_AUTHOR", "other@firetrail.test")
+        .output()
+        .unwrap();
+    assert!(!out.status.success(), "expected user error");
+}
+
+#[test]
+fn unclaim_takeover_on_live_without_admin_fails() {
+    let tr = fresh_repo();
+    let id = id_from_create(&run_firetrail(
+        tr.root(),
+        &["--json", "task", "create", "demo"],
+    ));
+    run_firetrail(tr.root(), &["claim", &id]);
+    let bin = env!("CARGO_BIN_EXE_firetrail");
+    let out = Command::new(bin)
+        .args([
+            "--json", "unclaim", &id, "--takeover", "--reason", "stale",
+        ])
+        .current_dir(tr.root())
+        .env("FIRETRAIL_AUTHOR", "other@firetrail.test")
+        .output()
+        .unwrap();
+    assert!(
+        !out.status.success(),
+        "unclaim --takeover on live claim without admin should fail"
+    );
+    assert_eq!(out.status.code(), Some(3));
+}
+
 // ── scope ────────────────────────────────────────────────────────────────
 
 fn write_scopes_yaml(tr: &TestRepo) {

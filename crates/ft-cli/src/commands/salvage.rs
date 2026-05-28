@@ -239,7 +239,7 @@ pub fn run(args: &MemorySalvageArgs, global: &GlobalOpts) -> Result<CommandOutco
             ChangeClass::Config | ChangeClass::Other => continue,
         };
         let id = id_from_path(&path).unwrap_or_else(|| path.display().to_string());
-        let (action, reason) = decide(kind, interactive);
+        let (action, reason) = decide(kind, &id, interactive);
         candidates.push(SalvageEntry {
             id,
             kind: kind_label(kind).to_string(),
@@ -278,21 +278,19 @@ pub fn run(args: &MemorySalvageArgs, global: &GlobalOpts) -> Result<CommandOutco
     }))
 }
 
-/// Resolve whether the operator is in interactive mode. At M2, prompts are
-/// not implemented — interactive mode falls back to the defaults but is
-/// surfaced as a warning. The `--auto` / `--non-interactive` / `--dry-run`
-/// flags and a non-TTY stdin all force non-interactive.
+/// Resolve whether the operator is in interactive mode. `--auto` /
+/// `--non-interactive` / `--dry-run` and a non-TTY stdin all force
+/// non-interactive (in which case [`decide`] uses kind-based defaults).
 fn is_interactive(args: &MemorySalvageArgs) -> bool {
     if args.auto || args.non_interactive || args.dry_run {
         return false;
     }
-    std::io::stdin().is_terminal()
+    std::io::stdin().is_terminal() && std::io::stdout().is_terminal()
 }
 
-/// Default action for `kind`, given interactivity. At M2 the interactive
-/// branch still uses defaults — interactive prompting is filed as a
-/// follow-up. Memory kinds salvage; structural kinds skip.
-fn decide(kind: RecordKind, _interactive: bool) -> (&'static str, String) {
+/// Default action for `kind`. Memory kinds salvage by default; structural
+/// kinds skip by default (ADR-0018).
+fn default_action(kind: RecordKind) -> (&'static str, String) {
     if ft_storage::is_memory_kind(kind) {
         (
             "salvaged",
@@ -306,6 +304,35 @@ fn decide(kind: RecordKind, _interactive: bool) -> (&'static str, String) {
                 kind_label(kind)
             ),
         )
+    }
+}
+
+/// Decide per record: kind-based defaults when non-interactive; prompt the
+/// operator when interactive. Returns `(action, reason)`.
+fn decide(kind: RecordKind, id: &str, interactive: bool) -> (&'static str, String) {
+    use crate::prompt::{PromptChoice, ask};
+
+    let (default_action_str, default_reason) = default_action(kind);
+    if !interactive {
+        return (default_action_str, default_reason);
+    }
+    let default_choice = if default_action_str == "salvaged" {
+        PromptChoice::Yes
+    } else {
+        PromptChoice::No
+    };
+    let default_label = if default_choice == PromptChoice::Yes {
+        "Y/n"
+    } else {
+        "y/N"
+    };
+    let q = format!("salvage `{id}` ({})? [{default_label}]", kind_label(kind));
+    let choice = ask(&q, default_choice).unwrap_or(default_choice);
+    match choice {
+        PromptChoice::Yes => ("salvaged", format!("operator selected salvage for `{id}`")),
+        PromptChoice::No | PromptChoice::Quit => {
+            ("skipped", format!("operator selected skip for `{id}`"))
+        }
     }
 }
 

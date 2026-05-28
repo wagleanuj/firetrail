@@ -1113,12 +1113,23 @@ name = "ft-ops"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "ft-core",
+ "ft-embed",
+ "ft-history",
+ "ft-identity",
+ "ft-index",
+ "ft-search",
+ "ft-storage",
+ "ft-testkit",
+ "humantime",
  "serde",
  "serde_json",
+ "serde_yaml",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "tracing",
  "ts-rs",
 ]
 

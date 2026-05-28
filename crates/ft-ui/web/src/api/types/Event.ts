@@ -10,6 +10,10 @@ export type Event = { "kind": "ticket_created",
 /**
  * Ticket id.
  */
+id: string, } | { "kind": "ticket_updated", 
+/**
+ * Ticket id.
+ */
 id: string, } | { "kind": "ticket_transitioned", 
 /**
  * Ticket id.
@@ -22,7 +26,35 @@ from: string,
 /**
  * New state.
  */
-to: string, } | { "kind": "memory_written", 
+to: string, } | { "kind": "ticket_claimed", 
+/**
+ * Ticket id.
+ */
+id: string, 
+/**
+ * Identity that holds the claim.
+ */
+actor: string, } | { "kind": "ticket_unclaimed", 
+/**
+ * Ticket id.
+ */
+id: string, } | { "kind": "ticket_closed", 
+/**
+ * Ticket id.
+ */
+id: string, } | { "kind": "ticket_linked", 
+/**
+ * Source ticket id.
+ */
+from: string, 
+/**
+ * Target ticket id.
+ */
+to: string, 
+/**
+ * Relation kind (serialized form, e.g. `"blocked-by"`).
+ */
+relation: string, } | { "kind": "memory_written", 
 /**
  * Memory id.
  */

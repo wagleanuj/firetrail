@@ -20,9 +20,15 @@ use tokio::sync::broadcast::{self, Receiver, Sender};
 #[cfg_attr(feature = "ts-rs", ts(export))]
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum Event {
     /// A ticket was created.
     TicketCreated {
+        /// Ticket id.
+        id: String,
+    },
+    /// A ticket envelope (title / priority / owner / description) was updated.
+    TicketUpdated {
         /// Ticket id.
         id: String,
     },
@@ -34,6 +40,32 @@ pub enum Event {
         from: String,
         /// New state.
         to: String,
+    },
+    /// A ticket was claimed.
+    TicketClaimed {
+        /// Ticket id.
+        id: String,
+        /// Identity that holds the claim.
+        actor: String,
+    },
+    /// A claim on a ticket was released.
+    TicketUnclaimed {
+        /// Ticket id.
+        id: String,
+    },
+    /// A ticket was closed.
+    TicketClosed {
+        /// Ticket id.
+        id: String,
+    },
+    /// A relation was added between two tickets.
+    TicketLinked {
+        /// Source ticket id.
+        from: String,
+        /// Target ticket id.
+        to: String,
+        /// Relation kind (serialized form, e.g. `"blocked-by"`).
+        relation: String,
     },
     /// A memory record was written.
     MemoryWritten {

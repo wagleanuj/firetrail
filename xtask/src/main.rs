@@ -16,6 +16,12 @@ use std::process::ExitCode;
 
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
+use ft_ops::tickets::{
+    BoardCard, BoardInput, BoardOutput, ClaimInput, CloseInput, CreateBugInput, CreateEpicInput,
+    CreateSubtaskInput, CreateTaskInput, LinkInput, ListInput, ListedTicket, ShowInput,
+    TicketKindFilter, TicketPriority, TicketRelationKind, TicketStatusFilter, UnclaimInput,
+    UpdateInput,
+};
 use ft_ops::{EmittedEvent, Event};
 use ts_rs::TS;
 
@@ -95,6 +101,26 @@ fn run_check_ts() -> Result<()> {
 fn export_into(dir: &Path) -> Result<()> {
     Event::export_all_to(dir).context("export Event")?;
     EmittedEvent::export_all_to(dir).context("export EmittedEvent")?;
+    // Ticket ops Inputs/Outputs (W1-A).
+    BoardInput::export_all_to(dir).context("export BoardInput")?;
+    BoardOutput::export_all_to(dir).context("export BoardOutput")?;
+    BoardCard::export_all_to(dir).context("export BoardCard")?;
+    ClaimInput::export_all_to(dir).context("export ClaimInput")?;
+    UnclaimInput::export_all_to(dir).context("export UnclaimInput")?;
+    CloseInput::export_all_to(dir).context("export CloseInput")?;
+    CreateEpicInput::export_all_to(dir).context("export CreateEpicInput")?;
+    CreateTaskInput::export_all_to(dir).context("export CreateTaskInput")?;
+    CreateSubtaskInput::export_all_to(dir).context("export CreateSubtaskInput")?;
+    CreateBugInput::export_all_to(dir).context("export CreateBugInput")?;
+    TicketPriority::export_all_to(dir).context("export TicketPriority")?;
+    LinkInput::export_all_to(dir).context("export LinkInput")?;
+    TicketRelationKind::export_all_to(dir).context("export TicketRelationKind")?;
+    ListInput::export_all_to(dir).context("export ListInput")?;
+    ListedTicket::export_all_to(dir).context("export ListedTicket")?;
+    TicketKindFilter::export_all_to(dir).context("export TicketKindFilter")?;
+    TicketStatusFilter::export_all_to(dir).context("export TicketStatusFilter")?;
+    ShowInput::export_all_to(dir).context("export ShowInput")?;
+    UpdateInput::export_all_to(dir).context("export UpdateInput")?;
     Ok(())
 }
 

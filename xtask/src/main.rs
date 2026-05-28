@@ -129,6 +129,7 @@ fn run_check_ts() -> Result<()> {
 /// derive(ts_rs::TS))]`. ts-rs 9 writes each top-level type to its own file
 /// when called via [`TS::export_all_to`], which also pulls in transitive
 /// dependencies (e.g. `Event` is exported when `EmittedEvent` is).
+#[allow(clippy::too_many_lines)]
 fn export_into(dir: &Path) -> Result<()> {
     Event::export_all_to(dir).context("export Event")?;
     EmittedEvent::export_all_to(dir).context("export EmittedEvent")?;
@@ -245,7 +246,7 @@ fn export_into(dir: &Path) -> Result<()> {
 }
 
 fn diff_dirs(committed: &Path, generated: &Path) -> Result<()> {
-    use std::collections::BTreeMap;
+    use std::collections::BTreeSet;
 
     let committed_files = read_ts_files(committed)?;
     let generated_files = read_ts_files(generated)?;
@@ -254,13 +255,12 @@ fn diff_dirs(committed: &Path, generated: &Path) -> Result<()> {
     let mut extra: Vec<String> = Vec::new();
     let mut changed: Vec<String> = Vec::new();
 
-    let all_names: BTreeMap<&String, ()> = committed_files
+    let all_names: BTreeSet<&String> = committed_files
         .keys()
         .chain(generated_files.keys())
-        .map(|k| (k, ()))
         .collect();
 
-    for name in all_names.keys() {
+    for name in &all_names {
         match (committed_files.get(*name), generated_files.get(*name)) {
             (Some(_), None) => extra.push((*name).clone()),
             (None, Some(_)) => missing.push((*name).clone()),
@@ -285,7 +285,7 @@ fn diff_dirs(committed: &Path, generated: &Path) -> Result<()> {
         );
     }
     if !changed.is_empty() {
-        eprintln!("content drift: {:?}", changed);
+        eprintln!("content drift: {changed:?}");
     }
     bail!("run `cargo xtask gen-ts` and commit the result")
 }
@@ -306,7 +306,10 @@ fn read_ts_files(dir: &Path) -> Result<std::collections::BTreeMap<String, String
         if name.starts_with('.') {
             continue;
         }
-        if !name.ends_with(".ts") {
+        if !std::path::Path::new(&name)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("ts"))
+        {
             // Keep the .gitkeep / READMEs ignored.
             continue;
         }

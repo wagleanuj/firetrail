@@ -26,6 +26,7 @@ fn alice() -> Identity {
 }
 
 #[tokio::test(flavor = "current_thread")]
+#[allow(clippy::too_many_lines)]
 async fn full_ticket_lifecycle_emits_expected_events() {
     let (_tr, ws) = fixture();
     let id = alice();

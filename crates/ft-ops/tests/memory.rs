@@ -2,7 +2,7 @@
 //!
 //! Mirrors `tests/tickets.rs`: a `TestRepo`, a minimal `.firetrail/config.yml`,
 //! and direct calls into the ops surface. The embedding daemon is NOT spawned
-//! in tests — semantic search degrades to the in-process MockEmbedder, which
+//! in tests — semantic search degrades to the in-process `MockEmbedder`, which
 //! is enough to exercise the code path without a model on disk.
 
 use ft_ops::memory::{
@@ -63,6 +63,7 @@ fn create_memory_round_trip_with_show() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn create_each_kind_lists_back() {
     let (_tr, ws) = fixture();
     let id = alice();

@@ -111,7 +111,7 @@ fn create_epic_then_task_with_epic_parent() {
     .expect("create_task");
     if let ft_core::RecordBody::Task(t) = &task.record.body {
         assert_eq!(
-            t.parent_epic.as_ref().map(|p| p.as_str()),
+            t.parent_epic.as_ref().map(ft_core::RecordId::as_str),
             Some(epic_id.as_str())
         );
     } else {

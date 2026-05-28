@@ -68,7 +68,8 @@ fn dispatch(cli: &Cli) -> Result<commands::CommandOutcome, CliError> {
     use crate::cli::{
         BugCmd, CheckCmd, CriteriaCmd, DaemonCmd, DecisionCmd, DepCmd, EpicCmd, FindingCmd,
         GotchaCmd, HookCmd, IdentityCmd, ImportCmd, IncidentCmd, IndexCmd, JiraCmd, LintCmd,
-        MemoryCmd, RunbookCmd, RunbookStepCmd, ScopeCmd, ServerHooksCmd, SubtaskCmd, TaskCmd,
+        MemoryCmd, MigrateCmd, RunbookCmd, RunbookStepCmd, ScopeCmd, ServerHooksCmd, SubtaskCmd,
+        TaskCmd,
     };
     match &cli.command {
         Command::Init(args) => commands::init::run(args, &cli.global),
@@ -198,5 +199,8 @@ fn dispatch(cli: &Cli) -> Result<commands::CommandOutcome, CliError> {
             commands::import_cmd::jira_import(args, &cli.global)
         }
         Command::PromoteImport(args) => commands::promote_import::run(args, &cli.global),
+        Command::Migrate(MigrateCmd::Embeddings(args)) => {
+            commands::migrate::embeddings(args, &cli.global)
+        }
     }
 }

@@ -45,6 +45,8 @@ ft-embed = { path = "../ft-embed", version = "0.0.0" }
 humantime = { workspace = true }
 fs2 = { workspace = true }
 regex = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
 
 [dev-dependencies]
 ft-testkit = { path = "../ft-testkit", version = "0.0.0" }

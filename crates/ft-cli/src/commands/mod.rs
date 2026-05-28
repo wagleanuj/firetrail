@@ -27,6 +27,7 @@ pub mod list;
 pub mod memory_create;
 pub mod memory_views;
 pub mod merge_driver;
+pub mod migrate;
 pub mod prime;
 pub mod promote_import;
 pub mod review;
@@ -185,6 +186,8 @@ pub enum CommandOutcome {
     Import(import_cmd::ImportOutcome),
     /// `firetrail promote-import` (M6).
     PromoteImport(promote_import::PromoteImportOutcome),
+    /// `firetrail migrate embeddings` (firetrail-vpn).
+    Migrate(migrate::MigrateEmbeddingsOutcome),
 }
 
 impl CommandOutcome {
@@ -228,6 +231,7 @@ impl CommandOutcome {
             Self::Sync(r) => r.command,
             Self::Import(r) => r.command,
             Self::PromoteImport(r) => r.command,
+            Self::Migrate(r) => r.command,
         }
     }
 
@@ -273,6 +277,7 @@ impl CommandOutcome {
             Self::Sync(r) => r.markdown(),
             Self::Import(r) => r.markdown(),
             Self::PromoteImport(r) => r.markdown(),
+            Self::Migrate(r) => r.markdown(),
         }
     }
 
@@ -318,6 +323,7 @@ impl CommandOutcome {
             Self::Sync(r) => r.quiet_line(),
             Self::Import(r) => r.quiet_line(),
             Self::PromoteImport(r) => r.quiet_line(),
+            Self::Migrate(r) => r.quiet_line(),
         }
     }
 
@@ -365,6 +371,7 @@ impl CommandOutcome {
             Self::Sync(r) => serde_json::to_value(r).unwrap_or(Value::Null),
             Self::Import(r) => serde_json::to_value(r).unwrap_or(Value::Null),
             Self::PromoteImport(r) => serde_json::to_value(r).unwrap_or(Value::Null),
+            Self::Migrate(r) => serde_json::to_value(r).unwrap_or(Value::Null),
         }
     }
 
@@ -410,6 +417,7 @@ impl CommandOutcome {
             Self::Sync(r) => r.warnings.clone(),
             Self::Import(r) => r.warnings.clone(),
             Self::PromoteImport(r) => r.warnings.clone(),
+            Self::Migrate(r) => r.warnings.clone(),
         }
     }
 }

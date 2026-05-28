@@ -232,6 +232,38 @@ pub enum Command {
     /// Promote quarantined imported records into the canonical corpus (M6).
     #[command(name = "promote-import")]
     PromoteImport(PromoteImportArgs),
+
+    /// Long-running migrations (re-embed, re-index, etc.).
+    #[command(subcommand)]
+    Migrate(MigrateCmd),
+}
+
+/// `firetrail migrate …` — long-running migrations.
+#[derive(Debug, Subcommand)]
+pub enum MigrateCmd {
+    /// Re-embed the corpus under a new model and write a portable artifact.
+    Embeddings(MigrateEmbeddingsArgs),
+}
+
+/// `firetrail migrate embeddings` arguments (firetrail-vpn).
+#[derive(Debug, Args)]
+pub struct MigrateEmbeddingsArgs {
+    /// Target embedding model id (e.g. `bge-small-en-v1.5`).
+    #[arg(long)]
+    pub to: String,
+    /// Dimensionality of the target model.
+    #[arg(long, default_value_t = 384)]
+    pub dim: usize,
+    /// Output artifact path (JSONL).
+    #[arg(long)]
+    pub output: PathBuf,
+    /// Optional model version label.
+    #[arg(long)]
+    pub version: Option<String>,
+    /// Re-embed records that already have an entry in the partial output.
+    /// Off by default — interrupted runs resume by skipping done ids.
+    #[arg(long)]
+    pub force: bool,
 }
 
 /// `firetrail import …` — M6 import surface (ADR-0014).

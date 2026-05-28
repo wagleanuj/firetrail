@@ -43,10 +43,10 @@ const SPAWN_WAIT: Duration = Duration::from_secs(5);
 /// `firetrail daemon start`
 pub fn start(args: &DaemonStartArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
     let ws = workspace::require_initialised(CMD_START, global.workspace.as_deref())?;
-    let socket = args
-        .socket
-        .clone()
-        .unwrap_or_else(|| ws.daemon_socket_path());
+    let socket = match args.socket.clone() {
+        Some(p) => p,
+        None => ws.daemon_socket_path()?,
+    };
     if let Some(parent) = socket.parent() {
         std::fs::create_dir_all(parent).map_err(|e| CliError::internal(CMD_START, e))?;
     }
@@ -133,7 +133,7 @@ fn run_foreground(
         .map_err(|e| CliError::internal(CMD_START, format!("open search index: {e}")))?);
     let opts = ServeOptions {
         idle_timeout: (idle_timeout_secs > 0).then(|| Duration::from_secs(idle_timeout_secs)),
-        lock_path: Some(daemon_lock_path(ws)),
+        lock_path: Some(daemon_lock_path(ws)?),
         indexer: Some(indexer),
     };
     daemon::serve_with(socket, &service, &opts)
@@ -150,7 +150,7 @@ fn run_foreground(
 /// `firetrail daemon stop`
 pub fn stop(global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
     let ws = workspace::require_initialised(CMD_STOP, global.workspace.as_deref())?;
-    let socket = ws.daemon_socket_path();
+    let socket = ws.daemon_socket_path()?;
 
     if !socket.exists() {
         return Ok(CommandOutcome::Daemon(DaemonOutcome {
@@ -199,7 +199,7 @@ pub fn stop(global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
 /// `firetrail daemon status`
 pub fn status(global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
     let ws = workspace::require_initialised(CMD_STATUS, global.workspace.as_deref())?;
-    let socket = ws.daemon_socket_path();
+    let socket = ws.daemon_socket_path()?;
     let status = daemon::status(&socket);
     Ok(CommandOutcome::Daemon(DaemonOutcome {
         command: CMD_STATUS,
@@ -216,11 +216,19 @@ pub fn status(global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
 /// Caller is responsible for handling `Unreachable` (typically: report a
 /// warning and fall back to lexical search).
 pub fn ensure_running(_command: &'static str, ws: &Workspace) -> Result<DaemonStatus, CliError> {
-    let socket = ws.daemon_socket_path();
+    let socket = ws.daemon_socket_path()?;
     match daemon::status(&socket) {
         DaemonStatus::Running => return Ok(DaemonStatus::Running),
         DaemonStatus::Unreachable => return Ok(DaemonStatus::Unreachable),
         DaemonStatus::Stopped => {}
+    }
+
+    // The runtime dir may not exist on first invocation (it is no longer
+    // created by `firetrail init` — it lives outside the workspace under
+    // `~/.cache/firetrail/<repo-hash>/`).
+    if let Some(parent) = socket.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| CliError::internal("daemon ensure_running", e))?;
     }
 
     spawn_background(ws, &socket, 300)?;
@@ -260,8 +268,8 @@ impl RecordIndexer for SearchEngineIndexer {
     }
 }
 
-fn daemon_lock_path(ws: &Workspace) -> PathBuf {
-    ws.sockets_dir().join("embedd.lock")
+fn daemon_lock_path(ws: &Workspace) -> Result<PathBuf, CliError> {
+    Ok(ws.runtime_dir()?.join("embedd.lock"))
 }
 
 fn wait_for(predicate: impl Fn() -> bool, timeout: Duration) -> bool {

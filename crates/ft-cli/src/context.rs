@@ -312,7 +312,15 @@ impl WorkCtx {
 
     /// Best-effort embed-on-write hand-off (firetrail-0nu).
     fn try_dispatch_index_record(&mut self, record: &Record) {
-        let socket = self.ws.daemon_socket_path();
+        let socket = match self.ws.daemon_socket_path() {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(error = %e, command = %self.command, "resolve daemon socket path");
+                self.warnings
+                    .push(format!("embed-on-write skipped: {e}"));
+                return;
+            }
+        };
         if ft_embed::daemon::status(&socket) != ft_embed::DaemonStatus::Running {
             return;
         }

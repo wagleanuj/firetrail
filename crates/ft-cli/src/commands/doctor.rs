@@ -516,7 +516,18 @@ fn check_cache_integrity(ws: &workspace::Workspace, checks: &mut Vec<CheckResult
 }
 
 fn check_daemon_liveness(ws: &workspace::Workspace, checks: &mut Vec<CheckResult>) {
-    let socket = ws.daemon_socket_path();
+    let socket = match ws.daemon_socket_path() {
+        Ok(p) => p,
+        Err(e) => {
+            checks.push(CheckResult::warn(
+                "embed.daemon",
+                "Embedding daemon",
+                format!("could not resolve socket path: {e}"),
+                "set $FIRETRAIL_CACHE_HOME or ensure $HOME is set",
+            ));
+            return;
+        }
+    };
     let status = ft_embed::daemon::status(&socket);
     match status {
         ft_embed::DaemonStatus::Running => checks.push(CheckResult::ok(

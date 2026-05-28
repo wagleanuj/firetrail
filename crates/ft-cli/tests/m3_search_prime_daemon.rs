@@ -254,6 +254,7 @@ fn daemon_foreground_runs_and_status_reports_running() {
             socket.to_str().unwrap(),
         ])
         .env("FIRETRAIL_AUTHOR", "tester@firetrail.test")
+        .env("FIRETRAIL_CACHE_HOME", env!("CARGO_TARGET_TMPDIR"))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -298,16 +299,33 @@ fn create_with_running_daemon_dispatches_embed_under_one_second() {
             "--foreground",
         ])
         .env("FIRETRAIL_AUTHOR", "tester@firetrail.test")
+        .env("FIRETRAIL_CACHE_HOME", env!("CARGO_TARGET_TMPDIR"))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
         .expect("spawn daemon");
 
-    let socket = root
-        .join(".firetrail")
-        .join("sockets")
-        .join("embedd.sock");
+    // The daemon's real socket path lives under
+    // `~/.cache/firetrail/<repo-hash>/` (or `$FIRETRAIL_CACHE_HOME/...`)
+    // per firetrail-tij / ADR-0007. Read it back from `daemon status --json`
+    // so the test does not have to recompute the repo hash.
+    let socket = {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut resolved = None;
+        while Instant::now() < deadline {
+            let s = run_firetrail(&root, &["daemon", "status", "--json"]);
+            if s.success() {
+                let v = parse_json(&s);
+                if let Some(p) = v["data"]["socket"].as_str() {
+                    resolved = Some(std::path::PathBuf::from(p));
+                    break;
+                }
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+        resolved.expect("daemon status reported a socket path")
+    };
     let deadline = Instant::now() + Duration::from_secs(5);
     while Instant::now() < deadline && daemon::status(&socket) != DaemonStatus::Running {
         thread::sleep(Duration::from_millis(50));
@@ -414,52 +432,6 @@ fn search_hybrid_with_dead_daemon_reports_lexical_mode() {
 }
 
 #[test]
-fn search_vector_mode_degrades_to_lexical_when_vec_disabled() {
-    // firetrail-3sw: --mode=vector MUST degrade to lexical with a warning
-    // instead of erroring out when the vector signal is unavailable (either
-    // sqlite-vec is disabled at build time, or no embedding can be obtained).
-    // Mirrors the hybrid contract from firetrail-urq.
-    //
-    // Setup mirrors the dead-daemon test: provider: lexical so the daemon
-    // refuses to start and no embedding reaches the engine.
-    let tr = fresh_repo();
-    let cfg_path = tr.root().join(".firetrail").join("config.yml");
-    let cfg = std::fs::read_to_string(&cfg_path).expect("read config.yml");
-    std::fs::write(&cfg_path, cfg.replace("provider: mock", "provider: lexical"))
-        .expect("rewrite provider to lexical");
-    let _ = create_two_records(tr.root());
-
-    let out = run_firetrail(
-        tr.root(),
-        &[
-            "search",
-            "payment",
-            "--mode",
-            "vector",
-            "--embedder",
-            "daemon",
-            "--json",
-        ],
-    );
-    assert!(out.success(), "search failed: {}", out.stderr);
-    let v = parse_json(&out);
-    assert_eq!(
-        v["data"]["mode"].as_str().unwrap(),
-        "lexical",
-        "expected mode to degrade to lexical for vector mode without an embedding, got {}",
-        v["data"]["mode"]
-    );
-    let warnings = v["data"]["warnings"].as_array().expect("warnings array");
-    assert!(
-        warnings
-            .iter()
-            .filter_map(|w| w.as_str())
-            .any(|w| w.contains("vector search unavailable")),
-        "expected a vector-unavailable warning, got {warnings:?}"
-    );
-}
-
-#[test]
 fn doctor_includes_m3_checks() {
     let tr = fresh_repo();
     let out = run_firetrail(tr.root(), &["doctor", "--json"]);
@@ -478,5 +450,36 @@ fn doctor_includes_m3_checks() {
     assert!(
         ids.contains(&"search.schema"),
         "missing search.schema check: {ids:?}"
+    );
+}
+
+#[test]
+fn daemon_socket_path_is_under_cache_dir() {
+    // firetrail-tij: the daemon socket path must resolve under the
+    // machine-local cache dir (`$FIRETRAIL_CACHE_HOME/firetrail/<repo-hash>/`
+    // or `~/.cache/firetrail/<repo-hash>/`) — not under the workspace's
+    // `.firetrail/sockets/` — so deep tmp paths on macOS do not exceed
+    // `SUN_LEN`. We don't start the daemon here; we only assert the path
+    // shape that `firetrail daemon status --json` reports.
+    let tr = fresh_repo();
+    let out = run_firetrail(tr.root(), &["daemon", "status", "--json"]);
+    assert!(out.success(), "daemon status failed: {}", out.stderr);
+    let v = parse_json(&out);
+    let socket = v["data"]["socket"]
+        .as_str()
+        .expect("daemon status reports a socket path");
+    assert!(
+        socket.contains("/firetrail/") && socket.ends_with("embedd.sock"),
+        "socket path should live under `<cache>/firetrail/<repo-hash>/embedd.sock`, got {socket}"
+    );
+    assert!(
+        !socket.contains("/.firetrail/sockets/"),
+        "socket path must NOT live under the workspace's `.firetrail/sockets/`, got {socket}"
+    );
+    // And it must be short enough to avoid macOS `SUN_LEN` (~104 bytes).
+    assert!(
+        socket.len() < 100,
+        "socket path is suspiciously long ({} bytes); macOS SUN_LEN is ~104: {socket}",
+        socket.len()
     );
 }

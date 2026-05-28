@@ -180,10 +180,11 @@ pub fn run(args: &InitArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliEr
         fresh,
     );
 
-    // 4b. Sockets / cache dirs (M3): ensure they exist so the daemon can bind
-    // immediately and the embedding cache has a parent on first use.
-    std::fs::create_dir_all(ws.sockets_dir()).map_err(|e| CliError::internal(COMMAND, e))?;
-    track(&mut report, &ws.sockets_dir(), ".firetrail/sockets/", fresh);
+    // 4b. Workspace-local cache dir (M3): ensure it exists for callers that
+    // still write under `.firetrail/cache/`. The daemon socket + lock no
+    // longer live under `.firetrail/sockets/` — they moved to the
+    // machine-local runtime dir under `~/.cache/firetrail/<repo-hash>/`
+    // (firetrail-tij / ADR-0007) and are created on demand by `daemon start`.
     std::fs::create_dir_all(ws.cache_dir()).map_err(|e| CliError::internal(COMMAND, e))?;
     track(&mut report, &ws.cache_dir(), ".firetrail/cache/", fresh);
 

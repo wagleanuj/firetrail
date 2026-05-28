@@ -15,6 +15,14 @@ pub fn run_firetrail(root: &Path, args: &[&str]) -> CmdOutput {
     if std::env::var("FIRETRAIL_AUTHOR").is_err() {
         cmd.env("FIRETRAIL_AUTHOR", "tester@firetrail.test");
     }
+    // ADR-0007 / firetrail-tij: the daemon socket + embedding cache live
+    // under `$FIRETRAIL_CACHE_HOME/firetrail/<repo-hash>/`. Pin it under
+    // cargo's per-test-binary tmpdir so tests stay hermetic and so the
+    // path stays short enough for macOS `SUN_LEN` (the canonicalized
+    // `/private/var/folders/...` tempdir alone is already > 80 chars).
+    if std::env::var("FIRETRAIL_CACHE_HOME").is_err() {
+        cmd.env("FIRETRAIL_CACHE_HOME", env!("CARGO_TARGET_TMPDIR"));
+    }
     let output = cmd.output().expect("spawn firetrail");
     CmdOutput {
         stdout: String::from_utf8_lossy(&output.stdout).into_owned(),

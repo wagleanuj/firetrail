@@ -40,16 +40,27 @@ impl Workspace {
         self.firetrail_dir().join("index.db")
     }
 
-    /// Absolute path to `.firetrail/sockets/`.
-    #[must_use]
-    pub fn sockets_dir(&self) -> PathBuf {
-        self.firetrail_dir().join("sockets")
+    /// Machine-local runtime directory for this repo (ADR-0007). Lives under
+    /// `$FIRETRAIL_CACHE_HOME/firetrail/<repo-hash>/` or
+    /// `~/.cache/firetrail/<repo-hash>/`, shared with the embedding cache.
+    ///
+    /// This is **not** workspace-local: it sidesteps the macOS `SUN_LEN`
+    /// limit (~104 chars) that long temp paths under
+    /// `/private/var/folders/...` would otherwise blow past when binding the
+    /// Unix domain socket (firetrail-tij).
+    pub fn runtime_dir(&self) -> Result<PathBuf, CliError> {
+        ft_embed::repo_cache_dir(&self.root).map_err(|e| {
+            CliError::internal(
+                "workspace",
+                format!("resolve machine-local runtime dir: {e}"),
+            )
+        })
     }
 
-    /// Default embedding daemon socket path.
-    #[must_use]
-    pub fn daemon_socket_path(&self) -> PathBuf {
-        self.sockets_dir().join("embedd.sock")
+    /// Default embedding daemon socket path. Lives under
+    /// [`Self::runtime_dir`] to keep the path short on macOS.
+    pub fn daemon_socket_path(&self) -> Result<PathBuf, CliError> {
+        Ok(self.runtime_dir()?.join("embedd.sock"))
     }
 
     /// Absolute path to `.firetrail/cache/`.

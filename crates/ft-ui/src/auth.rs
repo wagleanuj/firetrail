@@ -207,14 +207,24 @@ pub async fn heartbeat_handler(State(state): State<Arc<AppState>>) -> StatusCode
 }
 
 /// Stub `/api/workspace` handler. Returns minimal workspace info for Wave 0.
+///
+/// `identity` is resolved via [`ft_identity::DefaultResolver`] — the same
+/// chain ft-cli uses (`FIRETRAIL_AUTHOR` env → workspace identity config →
+/// git config `user.email`). Returning `None` here implies *no* identity is
+/// resolvable, not "we did not look".
 #[tracing::instrument(skip_all)]
 pub async fn workspace_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    use ft_identity::{DefaultResolver, IdentityResolver};
+    let identity = DefaultResolver::new(&state.workspace.root, false)
+        .resolve()
+        .ok()
+        .map(|core| core.as_str().to_string());
     let info = serde_json::json!({
         "name": state.workspace.root.file_name()
             .and_then(|s| s.to_str())
             .unwrap_or(""),
         "root": state.workspace.root,
-        "identity": std::env::var("FIRETRAIL_IDENTITY").ok(),
+        "identity": identity,
     });
     Json(info)
 }

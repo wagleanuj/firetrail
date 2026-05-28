@@ -45,7 +45,7 @@ pub async fn serve(Path(path): Path<String>) -> Response {
             let mime = mime_from_path(&lookup);
             return ([(header::CONTENT_TYPE, mime)], file.data.into_owned()).into_response();
         }
-        return not_bundled_response(&lookup);
+        not_bundled_response(&lookup)
     }
     #[cfg(not(feature = "bundled-ui"))]
     {
@@ -67,14 +67,13 @@ fn mime_from_path(path: &str) -> &'static str {
         "html" => "text/html; charset=utf-8",
         "js" | "mjs" => "application/javascript; charset=utf-8",
         "css" => "text/css; charset=utf-8",
-        "json" => "application/json",
+        "json" | "map" => "application/json",
         "svg" => "image/svg+xml",
         "png" => "image/png",
         "jpg" | "jpeg" => "image/jpeg",
         "webp" => "image/webp",
         "woff" => "font/woff",
         "woff2" => "font/woff2",
-        "map" => "application/json",
         _ => "application/octet-stream",
     }
 }

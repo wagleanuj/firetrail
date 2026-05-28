@@ -195,7 +195,10 @@ fn merge_into(dst: &mut HistoryEntry, src: HistoryEntry) {
 
 /// Walk the (now-shortened) history and rewrite `from_hash` / `to_hash` so
 /// the chain reads end-to-end again. The body of each entry is preserved.
-fn relink_chain(record: &mut Record) -> Result<(), ft_core::CoreError> {
+///
+/// Public so the JSON merge driver can re-stitch the chain after a
+/// three-way union of `history[]` entries.
+pub fn relink_chain(record: &mut Record) -> Result<(), ft_core::CoreError> {
     if record.envelope.history.is_empty() {
         // Hash the body, leave prev as-is (None).
         let h = ft_core::state_hash(record)?;

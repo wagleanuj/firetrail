@@ -33,7 +33,7 @@ mod kind;
 mod verify;
 
 pub use append::{HistoryDraft, append_history};
-pub use compact::{CompactPolicy, CompactReport, CompactedKind, compact_history};
+pub use compact::{CompactPolicy, CompactReport, CompactedKind, compact_history, relink_chain};
 pub use error::{HistoryError, VerifyError};
 pub use kind::HistoryEntryKind;
 pub use verify::verify_chain;

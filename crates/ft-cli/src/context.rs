@@ -30,8 +30,8 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
 use ft_core::{Identity, Record, RecordId, Relation, ResolveError, resolve_prefix, state_hash};
-use ft_history::{HistoryDraft, append_history};
-use ft_identity::{DefaultResolver, IdentityResolver};
+use ft_history::{HistoryDraft, HistoryEntryKind, append_history};
+use ft_identity::{DefaultResolver, IdentityResolver, load_registry};
 use ft_index::Index;
 use ft_search::SearchEngine;
 use ft_storage::{EmbeddedStorage, ExternalStorage, Storage as _, StorageFilter, StorageMode};
@@ -160,6 +160,12 @@ impl WorkCtx {
     }
 
     /// Resolve and cache the identity of the actor.
+    ///
+    /// When the workspace's `config.yml` has `identity.strict: true`, the
+    /// resolved actor must match an entry in `.firetrail/identities.yaml`
+    /// (by canonical id or any registered email alias). An unregistered
+    /// actor is rejected with a [`CliError::UserError`] so unauthorised
+    /// writes never reach storage (firetrail-8ql).
     pub fn actor(&mut self) -> Result<Identity, CliError> {
         if let Some(id) = &self.actor {
             return Ok(id.clone());
@@ -170,6 +176,20 @@ impl WorkCtx {
             message: format!("identity unresolvable: {e}"),
             details: serde_json::json!({ "hint": "set FIRETRAIL_AUTHOR or `git config user.email`" }),
         })?;
+        if strict_identity_enabled(&self.ws.root) {
+            let registry = load_registry(&self.ws.root).map_err(|e| {
+                CliError::internal(&self.command, format!("load identity registry: {e}"))
+            })?;
+            if registry.resolve_canonical(id.as_str()).is_none() {
+                return Err(CliError::user(
+                    &self.command,
+                    format!(
+                        "identity `{}` is not registered; run `firetrail identity register` or set identity.strict: false in .firetrail/config.yml",
+                        id.as_str()
+                    ),
+                ));
+            }
+        }
         self.actor = Some(id.clone());
         Ok(id)
     }
@@ -191,16 +211,65 @@ impl WorkCtx {
         record: &mut Record,
         draft: HistoryDraft,
     ) -> Result<PathBuf, CliError> {
+        // Enforce strict-identity even for explicit-kind writes (firetrail-8ql).
+        let _ = self.actor()?;
         append_history(record, draft)
             .map_err(|e| CliError::internal(&self.command, format!("history append: {e}")))?;
-        // `append_history` has already rebuilt state_hash; clear+recompute in
-        // save_record is idempotent, so this round-trips cleanly.
-        self.save_record(record)
+        // `append_history` has already rebuilt state_hash and the chain; skip
+        // the auto-append path in `save_record` so we don't double-stamp.
+        self.persist_record(record)
     }
 
-    /// Persist `record`, recomputing its `state_hash` first, and refresh the
-    /// index so the change is queryable immediately.
+    /// Persist `record`, appending an `Update` (or genesis `Create`) history
+    /// entry, recomputing its `state_hash`, and refreshing the index so the
+    /// change is queryable immediately.
+    ///
+    /// Every write goes through this choke point so the per-record history
+    /// chain (and `prev_state_hash`) is populated for create / update / claim
+    /// / close / criteria / link / dep paths (firetrail-65q). Callers that
+    /// need an explicit history kind / summary use
+    /// [`Self::save_record_with_history`] instead.
     pub fn save_record(&mut self, record: &mut Record) -> Result<PathBuf, CliError> {
+        // Ensure strict-identity is enforced on every write, even when the
+        // command did not explicitly resolve an actor (firetrail-8ql).
+        let actor = self.actor()?;
+
+        // Auto-append a history entry so the chain is always populated.
+        // Genesis writes (no prior history, no prev pointer) get a `Create`
+        // entry; subsequent writes get an `Update` entry. Callers that need
+        // a specific kind (TrustTransition, Close, Reopen, …) route through
+        // [`Self::save_record_with_history`].
+        let kind = if record.envelope.history.is_empty()
+            && record.envelope.prev_state_hash.is_none()
+        {
+            HistoryEntryKind::Create
+        } else {
+            HistoryEntryKind::Update
+        };
+        let kind_tag = record.envelope.kind.prefix().to_ascii_lowercase();
+        let summary = match kind {
+            HistoryEntryKind::Create => format!("{kind_tag} created via `{}`", self.command),
+            _ => format!("{kind_tag} updated via `{}`", self.command),
+        };
+        let draft = HistoryDraft {
+            merged_via_pr: None,
+            timestamp: record.envelope.updated_at,
+            primary_actor: actor,
+            contributors: Vec::new(),
+            ops_summary: vec![summary],
+            ops_count: 1,
+            kind,
+        };
+        append_history(record, draft)
+            .map_err(|e| CliError::internal(&self.command, format!("history append: {e}")))?;
+
+        self.persist_record(record)
+    }
+
+    /// Write `record` to storage (and external storage when configured) and
+    /// refresh the index / search engines. Does NOT touch `history[]` or
+    /// `prev_state_hash` — callers must have already populated those.
+    fn persist_record(&mut self, record: &mut Record) -> Result<PathBuf, CliError> {
         record.envelope.state_hash = String::new();
         let new_hash = state_hash(record)
             .map_err(|e| CliError::internal(&self.command, format!("hash: {e}")))?;
@@ -425,6 +494,32 @@ pub fn rewrite_relations(ws: &Workspace, relations: &[Relation]) -> Result<(), C
     std::fs::write(&path, s)
         .map_err(|e| CliError::internal("dep", format!("rewrite relations log: {e}")))?;
     Ok(())
+}
+
+/// Whether `.firetrail/config.yml` opts the workspace into strict identity
+/// enforcement (firetrail-8ql). A missing file or missing key both mean
+/// "lenient" — preserves the M1 resolver behaviour for unregistered repos.
+fn strict_identity_enabled(root: &Path) -> bool {
+    #[derive(serde::Deserialize)]
+    struct StrictFlag {
+        strict: Option<bool>,
+    }
+    #[derive(serde::Deserialize)]
+    struct ConfigShell {
+        identity: Option<StrictFlag>,
+    }
+    let path = root.join(".firetrail").join("config.yml");
+    let Ok(s) = std::fs::read_to_string(&path) else {
+        return false;
+    };
+    let parsed: ConfigShell = match serde_yaml::from_str(&s) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+    parsed
+        .identity
+        .and_then(|i| i.strict)
+        .unwrap_or(false)
 }
 
 /// Parse a `key=value` label argument; returns the (key, value) pair or a user

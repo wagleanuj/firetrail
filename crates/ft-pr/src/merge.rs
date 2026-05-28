@@ -177,9 +177,18 @@ pub fn merge_records(
         &mut merged.body,
     );
 
-    // Recompute state_hash so the merged record is self-consistent.
-    merged.envelope.state_hash = String::new();
-    merged.envelope.state_hash = state_hash(&merged)?;
+    // Re-stitch the history chain: the union+sort can place entries from
+    // both branches at sibling positions whose `from_hash` references the
+    // pre-divergence tail rather than the merged predecessor. Re-link so
+    // `verify_chain` reads end-to-end. Sets `state_hash` /
+    // `prev_state_hash` as a side effect.
+    if merged.envelope.history.is_empty() {
+        // Recompute state_hash so the merged record is self-consistent.
+        merged.envelope.state_hash = String::new();
+        merged.envelope.state_hash = state_hash(&merged)?;
+    } else {
+        ft_history::relink_chain(&mut merged)?;
+    }
 
     Ok(MergeResult { merged, conflicts })
 }

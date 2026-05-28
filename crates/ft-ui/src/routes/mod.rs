@@ -1,0 +1,32 @@
+//! Axum router construction.
+//!
+//! The router is built in two halves: a public half (`GET /`, `GET /assets/*`)
+//! and an authenticated half (`/api/*`) guarded by [`crate::auth::session_middleware`].
+
+use std::sync::Arc;
+
+use axum::{
+    Router,
+    middleware::from_fn_with_state,
+    routing::{get, post},
+};
+
+use crate::auth::{bootstrap_handler, heartbeat_handler, session_middleware, workspace_handler};
+use crate::server::AppState;
+use crate::sse::events_handler;
+
+/// Build the top-level axum [`Router`] for ft-ui.
+pub fn build(state: Arc<AppState>) -> Router {
+    let api = Router::new()
+        .route("/workspace", get(workspace_handler))
+        .route("/heartbeat", post(heartbeat_handler))
+        .route("/events", get(events_handler))
+        .route_layer(from_fn_with_state(state.clone(), session_middleware))
+        .with_state(state.clone());
+
+    Router::new()
+        .route("/", get(bootstrap_handler))
+        .route("/assets/*path", get(crate::assets::serve))
+        .nest("/api", api)
+        .with_state(state)
+}

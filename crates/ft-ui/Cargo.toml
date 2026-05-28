@@ -1,0 +1,53 @@
+[package]
+name = "ft-ui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Local HTTP/JSON server + embedded SPA for firetrail. Adapter over ft-ops."
+
+[lints]
+workspace = true
+
+[dependencies]
+ft-ops = { path = "../ft-ops", features = ["ts-rs"] }
+
+tokio = { workspace = true, features = ["full"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+futures-util = "0.3"
+async-stream = "0.3"
+axum = { workspace = true }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+cookie = { version = "0.18", features = ["signed", "secure"] }
+rand = { workspace = true }
+base64 = "0.22"
+
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+clap = { workspace = true }
+
+# Optional: only used when the `bundled-ui` feature is enabled.
+rust-embed = { version = "8", features = ["compression"], optional = true }
+
+# TODO(firetrail-5dy): build.rs that bakes web/dist when bundled-ui — owned by
+# the web-scaffold subagent that creates crates/ft-ui/web/.
+
+[features]
+default = []
+bundled-ui = ["dep:rust-embed"]
+
+[dev-dependencies]
+tempfile = { workspace = true }
+reqwest = { version = "0.12", default-features = false, features = ["json", "cookies", "stream", "rustls-tls"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+futures-util = "0.3"

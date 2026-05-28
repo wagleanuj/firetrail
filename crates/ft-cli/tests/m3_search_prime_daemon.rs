@@ -278,6 +278,85 @@ fn daemon_foreground_runs_and_status_reports_running() {
 }
 
 #[test]
+fn create_with_running_daemon_dispatches_embed_under_one_second() {
+    // firetrail-0nu: while the embedding daemon is running, a fresh record
+    // create must hand off an IndexRecord request and the whole round-trip
+    // (storage write + lexical upsert + embed dispatch + ack) must finish
+    // within the M3 1-second budget.
+    let tr = fresh_repo();
+    let root = tr.root().to_path_buf();
+
+    // Spawn the daemon at the *default* socket path so save_record's
+    // best-effort dispatch finds it via ws.daemon_socket_path().
+    let bin = env!("CARGO_BIN_EXE_firetrail");
+    let mut child = Command::new(bin)
+        .args([
+            "--workspace",
+            root.to_str().unwrap(),
+            "daemon",
+            "start",
+            "--foreground",
+        ])
+        .env("FIRETRAIL_AUTHOR", "tester@firetrail.test")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn daemon");
+
+    let socket = root
+        .join(".firetrail")
+        .join("sockets")
+        .join("embedd.sock");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline && daemon::status(&socket) != DaemonStatus::Running {
+        thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(
+        daemon::status(&socket),
+        DaemonStatus::Running,
+        "daemon did not become Running in time"
+    );
+
+    let started = Instant::now();
+    let out = run_firetrail(
+        &root,
+        &[
+            "task",
+            "create",
+            "Embed me",
+            "--description",
+            "Round-trip check for firetrail-0nu",
+            "--json",
+        ],
+    );
+    let elapsed = started.elapsed();
+
+    let _ = child.kill();
+    let _ = child.wait();
+    let _ = std::fs::remove_file(&socket);
+
+    assert!(out.success(), "create failed: {}", out.stderr);
+    assert!(
+        elapsed < Duration::from_secs(1),
+        "create + embed dispatch exceeded 1s: {elapsed:?}"
+    );
+
+    let v = parse_json(&out);
+    let empty: Vec<serde_json::Value> = Vec::new();
+    let warnings = v["data"]["warnings"].as_array().unwrap_or(&empty);
+    let dispatch_failures: Vec<&str> = warnings
+        .iter()
+        .filter_map(|w| w.as_str())
+        .filter(|w| w.contains("embed-on-write skipped"))
+        .collect();
+    assert!(
+        dispatch_failures.is_empty(),
+        "embed-on-write dispatch should have succeeded; got warnings: {dispatch_failures:?}"
+    );
+}
+
+#[test]
 fn daemon_status_reports_stopped_when_no_socket() {
     let tr = fresh_repo();
     let out = run_firetrail(tr.root(), &["daemon", "status", "--json"]);

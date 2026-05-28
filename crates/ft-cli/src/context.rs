@@ -231,7 +231,30 @@ impl WorkCtx {
         // get a usable `firetrail search`.
         self.upsert_search_lexical(record);
 
+        // firetrail-0nu: embed-on-write hand-off. When the daemon is running
+        // we send a synchronous IndexRecord request so the embedding is
+        // available for vector search; this is best-effort — any failure
+        // (daemon down, embedder error) is logged as a warning and never
+        // blocks the write.
+        self.try_dispatch_index_record(record);
+
         Ok(path)
+    }
+
+    /// Best-effort embed-on-write hand-off (firetrail-0nu).
+    fn try_dispatch_index_record(&mut self, record: &Record) {
+        let socket = self.ws.daemon_socket_path();
+        if ft_embed::daemon::status(&socket) != ft_embed::DaemonStatus::Running {
+            return;
+        }
+        let text = ft_embed::record_text(record);
+        if let Err(e) =
+            ft_embed::daemon::send_index_record(&socket, record.envelope.id.as_str(), &text)
+        {
+            tracing::warn!(error = %e, command = %self.command, "embed-on-write dispatch failed");
+            self.warnings
+                .push(format!("embed-on-write skipped: {e}"));
+        }
     }
 
     /// Best-effort lexical upsert into the search index. Failures are

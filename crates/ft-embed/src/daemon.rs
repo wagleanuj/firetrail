@@ -32,6 +32,7 @@
 use std::io::{Read, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use fs2::FileExt;
@@ -75,6 +76,14 @@ pub enum EmbedRequest {
     },
     /// Advisory shutdown request — serve loop exits after replying.
     Shutdown,
+    /// Embed-on-write hand-off (firetrail-0nu): embed `text` and forward
+    /// the embedding to the configured [`RecordIndexer`].
+    IndexRecord {
+        /// Record id (stringified).
+        id: String,
+        /// Embedding source text (typically `record_text(record)`).
+        text: String,
+    },
 }
 
 /// One outbound response.
@@ -97,10 +106,21 @@ pub enum EmbedResponse {
     },
     /// Acknowledgement that a [`EmbedRequest::Shutdown`] was accepted.
     ShuttingDown,
+    /// Acknowledgement that a [`EmbedRequest::IndexRecord`] embedding has
+    /// been written through the configured indexer.
+    Indexed,
+}
+
+/// Hook used by the daemon to push a freshly computed embedding into the
+/// caller's search index. Implemented in `ft-cli` on top of `ft-search`.
+pub trait RecordIndexer: Send + Sync {
+    /// Upsert the vector for `record_id`. Errors are stringified for the
+    /// wire response.
+    fn upsert_vector(&self, record_id: &str, embedding: &[f32]) -> Result<(), String>;
 }
 
 /// Tunables for [`serve_with`]. Defaults match [`serve`].
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ServeOptions {
     /// Exit the serve loop after this much wall-clock idle time. `None`
     /// disables the idle exit.
@@ -108,6 +128,9 @@ pub struct ServeOptions {
     /// Path to the exclusive-per-repo lock file. If `None`, no lock is
     /// acquired (suitable for tests / one-shot scenarios).
     pub lock_path: Option<PathBuf>,
+    /// Sink for [`EmbedRequest::IndexRecord`] embeddings. When `None`, the
+    /// daemon answers `IndexRecord` with [`EmbedResponse::Err`].
+    pub indexer: Option<Arc<dyn RecordIndexer>>,
 }
 
 impl Default for ServeOptions {
@@ -115,6 +138,7 @@ impl Default for ServeOptions {
         Self {
             idle_timeout: Some(DEFAULT_IDLE_TIMEOUT),
             lock_path: None,
+            indexer: None,
         }
     }
 }
@@ -203,8 +227,28 @@ pub fn send_embed(socket_path: &Path, text: &str) -> Result<Vec<f32>, EmbedError
     match read_frame::<EmbedResponse>(&mut s)? {
         EmbedResponse::Ok { embedding, .. } => Ok(embedding),
         EmbedResponse::Err { message } => Err(EmbedError::Inference(message)),
-        EmbedResponse::Pong | EmbedResponse::ShuttingDown => Err(EmbedError::Protocol(
-            "expected Ok or Err, got control frame".to_string(),
+        EmbedResponse::Pong | EmbedResponse::ShuttingDown | EmbedResponse::Indexed => Err(
+            EmbedError::Protocol("expected Ok or Err, got control frame".to_string()),
+        ),
+    }
+}
+
+/// Ask the daemon to embed `text` and forward the embedding to its
+/// configured [`RecordIndexer`]. Returns once the daemon has acked.
+pub fn send_index_record(socket_path: &Path, id: &str, text: &str) -> Result<(), EmbedError> {
+    let mut s = UnixStream::connect(socket_path)?;
+    write_frame(
+        &mut s,
+        &EmbedRequest::IndexRecord {
+            id: id.to_string(),
+            text: text.to_string(),
+        },
+    )?;
+    match read_frame::<EmbedResponse>(&mut s)? {
+        EmbedResponse::Indexed => Ok(()),
+        EmbedResponse::Err { message } => Err(EmbedError::Inference(message)),
+        _ => Err(EmbedError::Protocol(
+            "expected Indexed ack".to_string(),
         )),
     }
 }
@@ -263,7 +307,7 @@ pub fn serve_with<E: Embedder>(
                 // Per-connection I/O is blocking — clear non-blocking flag
                 // we inherited from the listener.
                 let _ = stream.set_nonblocking(false);
-                match handle_connection(&mut stream, service) {
+                match handle_connection(&mut stream, service, opts.indexer.as_ref()) {
                     Ok(ConnectionOutcome::Continue) => {}
                     Ok(ConnectionOutcome::Shutdown) => {
                         tracing::info!("ft-embed daemon shutting down (client request)");
@@ -307,6 +351,7 @@ enum ConnectionOutcome {
 fn handle_connection<E: Embedder>(
     stream: &mut UnixStream,
     service: &EmbedService<E>,
+    indexer: Option<&Arc<dyn RecordIndexer>>,
 ) -> Result<ConnectionOutcome, EmbedError> {
     let req: EmbedRequest = read_frame(stream)?;
     let (resp, outcome) = match req {
@@ -319,6 +364,23 @@ fn handle_connection<E: Embedder>(
                 },
                 Err(e) => EmbedResponse::Err {
                     message: e.to_string(),
+                },
+            };
+            (resp, ConnectionOutcome::Continue)
+        }
+        EmbedRequest::IndexRecord { id, text } => {
+            let resp = match indexer {
+                None => EmbedResponse::Err {
+                    message: "daemon has no record indexer configured".to_string(),
+                },
+                Some(idx) => match service.embed_text(&text) {
+                    Err(e) => EmbedResponse::Err {
+                        message: e.to_string(),
+                    },
+                    Ok(embedding) => match idx.upsert_vector(&id, &embedding) {
+                        Ok(()) => EmbedResponse::Indexed,
+                        Err(msg) => EmbedResponse::Err { message: msg },
+                    },
                 },
             };
             (resp, ConnectionOutcome::Continue)
@@ -412,6 +474,7 @@ mod tests {
                 &ServeOptions {
                     idle_timeout: Some(Duration::from_secs(5)),
                     lock_path: None,
+                    indexer: None,
                 },
             )
             .unwrap();
@@ -442,6 +505,7 @@ mod tests {
                 &ServeOptions {
                     idle_timeout: Some(Duration::from_millis(150)),
                     lock_path: None,
+                    indexer: None,
                 },
             )
             .unwrap();
@@ -470,6 +534,7 @@ mod tests {
             &ServeOptions {
                 idle_timeout: Some(Duration::from_millis(50)),
                 lock_path: Some(lock.clone()),
+                indexer: None,
             },
         )
         .unwrap_err();
@@ -494,6 +559,7 @@ mod tests {
                 &ServeOptions {
                     idle_timeout: Some(Duration::from_secs(3)),
                     lock_path: Some(lock2),
+                    indexer: None,
                 },
             );
             flag2.store(true, Ordering::SeqCst);
@@ -502,6 +568,91 @@ mod tests {
         send_shutdown(&sock).unwrap();
         h.join().unwrap();
         assert!(stop_flag.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn index_record_runs_embed_and_calls_indexer() {
+        use std::sync::Mutex;
+
+        // Indexer that records every (id, dim) it sees.
+        struct CapturingIndexer(Mutex<Vec<(String, usize)>>);
+        impl RecordIndexer for CapturingIndexer {
+            fn upsert_vector(&self, id: &str, embedding: &[f32]) -> Result<(), String> {
+                self.0.lock().unwrap().push((id.to_string(), embedding.len()));
+                Ok(())
+            }
+        }
+
+        let dir = tempdir().unwrap();
+        let sock = dir.path().join("idx.sock");
+        let svc_dir = dir.path().to_path_buf();
+        let captured: Arc<CapturingIndexer> = Arc::new(CapturingIndexer(Mutex::new(Vec::new())));
+        let captured_for_opts: Arc<dyn RecordIndexer> = captured.clone();
+        let sock_for_server = sock.clone();
+
+        let server = thread::spawn(move || {
+            let svc = build_service(&svc_dir);
+            serve_with(
+                &sock_for_server,
+                &svc,
+                &ServeOptions {
+                    idle_timeout: Some(Duration::from_secs(3)),
+                    lock_path: None,
+                    indexer: Some(captured_for_opts),
+                },
+            )
+            .unwrap();
+        });
+
+        assert!(wait_for(|| status(&sock) == DaemonStatus::Running, Duration::from_secs(2)));
+
+        let started = Instant::now();
+        super::send_index_record(&sock, "task-001", "hello index").unwrap();
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed < Duration::from_secs(1),
+            "embed-on-write round-trip exceeded 1s budget: {elapsed:?}"
+        );
+
+        send_shutdown(&sock).unwrap();
+        server.join().unwrap();
+
+        let calls = captured.0.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0, "task-001");
+        assert_eq!(calls[0].1, 16, "mock embedder produces dim-16 in tests");
+    }
+
+    #[test]
+    fn index_record_without_indexer_returns_error() {
+        let dir = tempdir().unwrap();
+        let sock = dir.path().join("noidx.sock");
+        let svc_dir = dir.path().to_path_buf();
+        let sock_for_server = sock.clone();
+        let server = thread::spawn(move || {
+            let svc = build_service(&svc_dir);
+            serve_with(
+                &sock_for_server,
+                &svc,
+                &ServeOptions {
+                    idle_timeout: Some(Duration::from_secs(2)),
+                    lock_path: None,
+                    indexer: None,
+                },
+            )
+            .unwrap();
+        });
+
+        assert!(wait_for(|| status(&sock) == DaemonStatus::Running, Duration::from_secs(2)));
+
+        let err = super::send_index_record(&sock, "t-1", "x").unwrap_err();
+        match err {
+            EmbedError::Inference(msg) => assert!(msg.contains("no record indexer")),
+            other => panic!("unexpected error: {other:?}"),
+        }
+
+        send_shutdown(&sock).unwrap();
+        server.join().unwrap();
     }
 
     #[test]

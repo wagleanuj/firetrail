@@ -17,10 +17,13 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use ft_embed::daemon::{self, DaemonStatus, ServeOptions};
+use ft_core::RecordId;
+use ft_embed::daemon::{self, DaemonStatus, RecordIndexer, ServeOptions};
 use ft_embed::{Embedder, EmbedService, EmbeddingCache, EmbeddingsConfig, build_embedder};
+use ft_search::SearchEngine;
 use serde::Serialize;
 
 use crate::cli::{DaemonStartArgs, GlobalOpts};
@@ -126,9 +129,12 @@ fn run_foreground(
         .map_err(|e| CliError::internal(CMD_START, format!("open cache: {e}")))?;
     let service = EmbedService::new(embedder, cache);
 
+    let indexer: Arc<dyn RecordIndexer> = Arc::new(SearchEngineIndexer::open(&ws.index_db_path())
+        .map_err(|e| CliError::internal(CMD_START, format!("open search index: {e}")))?);
     let opts = ServeOptions {
         idle_timeout: (idle_timeout_secs > 0).then(|| Duration::from_secs(idle_timeout_secs)),
         lock_path: Some(daemon_lock_path(ws)),
+        indexer: Some(indexer),
     };
     daemon::serve_with(socket, &service, &opts)
         .map_err(|e| CliError::internal(CMD_START, format!("daemon serve: {e}")))?;
@@ -225,6 +231,32 @@ pub fn ensure_running(_command: &'static str, ws: &Workspace) -> Result<DaemonSt
         Ok(DaemonStatus::Running)
     } else {
         Ok(daemon::status(&socket))
+    }
+}
+
+/// [`RecordIndexer`] adapter that writes vectors into the workspace's
+/// `ft-search` engine (firetrail-0nu).
+pub struct SearchEngineIndexer {
+    engine: Mutex<SearchEngine>,
+}
+
+impl SearchEngineIndexer {
+    /// Open the search engine at `index_db_path`. Schema is ensured so the
+    /// `vec0` table exists before the first upsert.
+    pub fn open(index_db_path: &Path) -> Result<Self, ft_search::SearchError> {
+        let engine = SearchEngine::open(index_db_path)?;
+        engine.ensure_schema()?;
+        Ok(Self {
+            engine: Mutex::new(engine),
+        })
+    }
+}
+
+impl RecordIndexer for SearchEngineIndexer {
+    fn upsert_vector(&self, record_id: &str, embedding: &[f32]) -> Result<(), String> {
+        let id = RecordId::from_string(record_id).map_err(|e| e.to_string())?;
+        let guard = self.engine.lock().map_err(|e| e.to_string())?;
+        guard.upsert_vector(&id, embedding).map_err(|e| e.to_string())
     }
 }
 

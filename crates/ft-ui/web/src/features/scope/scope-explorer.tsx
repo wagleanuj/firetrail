@@ -11,7 +11,8 @@
  */
 import { useState, useMemo } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { Loader2, Search, FileCode2, Users, ChevronRight } from 'lucide-react'
+import { Loader2, Search, FileCode2, Users, ChevronRight, FolderTree } from 'lucide-react'
+import { EmptyState } from '@/components/ui/empty-state'
 import type { ScopeSummary } from '@/api/types/ScopeSummary'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -132,8 +133,16 @@ export function ScopeExplorer({ selectedId }: ScopeExplorerProps) {
                   </li>
                 ))}
                 {!list.isLoading && filtered.length === 0 && (
-                  <li className="rounded-md border border-dashed border-border/60 px-3 py-6 text-center text-sm text-muted-foreground">
-                    No scopes match.
+                  <li>
+                    <EmptyState
+                      icon={FolderTree}
+                      title={filter ? 'No scopes match' : 'No scopes configured'}
+                      description={
+                        filter
+                          ? 'Try a different filter or clear it to see every scope.'
+                          : 'Scopes are defined in .firetrail/scopes.yaml. Add one and reload.'
+                      }
+                    />
                   </li>
                 )}
               </ul>

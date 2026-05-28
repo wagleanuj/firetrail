@@ -7,7 +7,8 @@
  * `?limit=` and don't currently need virtualisation.
  */
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
-import { Plus, FileWarning } from 'lucide-react'
+import { Plus, FileWarning, Database, Filter } from 'lucide-react'
+import { EmptyState as SharedEmptyState } from '@/components/ui/empty-state'
 import type { MemoryKind } from '@/api/types/MemoryKind'
 import type { TrustStateInput } from '@/api/types/TrustStateInput'
 import type { MemoryRowOut } from '@/api/types/MemoryRowOut'
@@ -139,7 +140,35 @@ export function MemoryList({ onCreateClick }: MemoryListProps) {
             Failed to load memory: {(error as Error).message}
           </div>
         )}
-        {data && data.rows.length === 0 && <EmptyState onCreateClick={onCreateClick} />}
+        {data && data.rows.length === 0 && (
+          <div className="flex flex-1 items-center justify-center p-8">
+            {filtersActive(search) ? (
+              <SharedEmptyState
+                icon={Filter}
+                title="No records match these filters"
+                description="Clear the filter sidebar to broaden your view, or create a new memory record."
+                action={
+                  <Button onClick={onCreateClick} size="sm" className="gap-2">
+                    <Plus className="h-4 w-4" />
+                    Create memory
+                  </Button>
+                }
+              />
+            ) : (
+              <SharedEmptyState
+                icon={Database}
+                title="No memory yet"
+                description="Capture the first one — incidents, findings, runbooks, decisions, gotchas, or freeform notes all live here."
+                action={
+                  <Button onClick={onCreateClick} className="gap-2">
+                    <Plus className="h-4 w-4" />
+                    Create memory
+                  </Button>
+                }
+              />
+            )}
+          </div>
+        )}
         {data && data.rows.length > 0 && (
           <ul
             data-testid="memory-list"
@@ -212,20 +241,6 @@ function ListSkeleton() {
   )
 }
 
-function EmptyState({ onCreateClick }: { onCreateClick: () => void }) {
-  return (
-    <div className="flex flex-1 items-center justify-center p-8">
-      <div className="max-w-md rounded-xl border border-border/70 bg-card/50 p-8 text-center shadow-[0_0_0_1px_hsl(var(--border)/0.4)_inset]">
-        <h2 className="font-mono text-2xl font-semibold">No memory yet</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Click the button below to capture the first one. Incidents, findings,
-          runbooks, decisions, gotchas and freeform notes all live here.
-        </p>
-        <Button onClick={onCreateClick} className="mt-6 gap-2">
-          <Plus className="h-4 w-4 text-primary-foreground" />
-          Create memory
-        </Button>
-      </div>
-    </div>
-  )
+function filtersActive(s: MemorySearchParams): boolean {
+  return Boolean(s.kind || s.trust || s.stale)
 }

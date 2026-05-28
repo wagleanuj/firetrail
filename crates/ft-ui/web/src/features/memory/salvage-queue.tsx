@@ -14,6 +14,7 @@
  */
 import { useMemo, useState } from 'react'
 import { Loader2, ShieldCheck, RefreshCcw } from 'lucide-react'
+import { EmptyState } from '@/components/ui/empty-state'
 import type { SalvageEntry } from '@/api/types/SalvageEntry'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -138,10 +139,11 @@ export function SalvageQueue() {
       )}
 
       {isEmpty && (
-        <div className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-4 py-3 text-sm">
-          <ShieldCheck className="h-4 w-4 text-primary" />
-          No salvage candidates — your memory is up to date.
-        </div>
+        <EmptyState
+          icon={ShieldCheck}
+          title="Memory is up to date"
+          description="The salvage scan found no candidate records. Re-run after merging a branch to refresh."
+        />
       )}
 
       {entries.length > 0 && (

@@ -4,8 +4,9 @@
  * remember last-run summary while the user is on the page.
  */
 import { Link } from '@tanstack/react-router'
-import { ShieldAlert, ShieldCheck, GitCompare, Network } from 'lucide-react'
+import { ShieldAlert, ShieldCheck, GitCompare, Network, History } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { EmptyState } from '@/components/ui/empty-state'
 
 const TILES = [
   {
@@ -43,6 +44,16 @@ export function AuditDashboard() {
           Lint, verify, diff, and walk the relation graph.
         </p>
       </header>
+      <section className="space-y-2">
+        <h2 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+          Recent runs
+        </h2>
+        <EmptyState
+          icon={History}
+          title="No recent runs"
+          description="Lint, verify, and diff runs from this session will appear here once you launch one."
+        />
+      </section>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {TILES.map((tile) => {
           const Icon = tile.icon

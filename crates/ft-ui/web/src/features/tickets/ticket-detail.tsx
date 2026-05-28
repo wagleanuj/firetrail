@@ -10,7 +10,8 @@
  *   - relations list + add-link modal
  */
 import { useState } from 'react'
-import { Loader2, Pencil, Link2, Plus } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { Loader2, Pencil, Link2, Plus, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -20,6 +21,18 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { fetchCriteria } from '@/features/audit/api'
+import { RelativeTime } from '@/components/ui/relative-time'
 import {
   Select,
   SelectContent,
@@ -82,6 +95,7 @@ function DetailBody({ record, relations }: { record: RecordWire; relations: Rela
   const closeMut = useCloseTicket(env.id)
   const reopenMut = useReopenTicket(env.id)
   const isClosed = env.status === 'closed' || env.status === 'deferred'
+  const [forceClose, setForceClose] = useState(false)
 
   return (
     <div className="flex flex-col gap-6">
@@ -115,6 +129,17 @@ function DetailBody({ record, relations }: { record: RecordWire; relations: Rela
           <span className="text-xs text-muted-foreground">
             {env.owner ? `owner: ${env.owner.name}` : 'unowned'}
           </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          <RelativeTime value={env.created_at} prefix="created" />
+          <span>•</span>
+          <RelativeTime value={env.updated_at} prefix="updated" />
+          {env.closed_at && (
+            <>
+              <span>•</span>
+              <RelativeTime value={env.closed_at} prefix="closed" />
+            </>
+          )}
         </div>
       </div>
 
@@ -152,17 +177,41 @@ function DetailBody({ record, relations }: { record: RecordWire; relations: Rela
             Reopen
           </Button>
         ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => closeMut.mutate()}
-            disabled={closeMut.isPending}
-          >
-            {closeMut.isPending && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
-            Close
-          </Button>
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => closeMut.mutate()}
+              disabled={closeMut.isPending}
+            >
+              {closeMut.isPending && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+              Close
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setForceClose(true)}
+              disabled={closeMut.isPending}
+              title="Force close — skips criteria validation"
+            >
+              <AlertTriangle className="mr-1 h-3 w-3" />
+              Force close
+            </Button>
+          </>
         )}
       </div>
+      <ForceCloseDialog
+        recordId={env.id}
+        open={forceClose}
+        onOpenChange={setForceClose}
+        onConfirm={(reason) => {
+          closeMut.mutate(
+            { force: true, reason: reason || undefined },
+            { onSuccess: () => setForceClose(false) },
+          )
+        }}
+        isPending={closeMut.isPending}
+      />
 
       {/* Description */}
       <DescriptionPanel id={env.id} initial={recordDescription(record)} />
@@ -411,6 +460,92 @@ function AddLinkDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/**
+ * Force-close confirms the destructive close-skip-criteria operation. Surfaces
+ * the unchecked acceptance criteria so the user sees exactly what will be
+ * bypassed.
+ */
+function ForceCloseDialog({
+  recordId,
+  open,
+  onOpenChange,
+  onConfirm,
+  isPending,
+}: {
+  recordId: string
+  open: boolean
+  onOpenChange: (b: boolean) => void
+  onConfirm: (reason: string) => void
+  isPending: boolean
+}) {
+  const [reason, setReason] = useState('')
+  const criteria = useQuery({
+    queryKey: ['audit-criteria', recordId] as const,
+    queryFn: () => fetchCriteria(recordId),
+    enabled: open,
+  })
+  const unchecked = (criteria.data?.items ?? []).filter((it) => !it.checked)
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle className="font-mono">Force close ticket?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Force-close skips acceptance criteria validation. The ticket is closed
+            even if some criteria remain unchecked. Use only when blockers cannot
+            be satisfied (e.g. wont-fix, duplicate).
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        {unchecked.length > 0 && (
+          <div className="space-y-1 rounded-md border border-amber-400/40 bg-amber-400/5 p-3 text-xs">
+            <p className="font-mono uppercase tracking-wider text-amber-300">
+              {unchecked.length} unchecked criteri
+              {unchecked.length === 1 ? 'on' : 'a'}
+            </p>
+            <ul className="space-y-0.5 text-foreground/80">
+              {unchecked.slice(0, 8).map((it) => (
+                <li key={it.id} className="truncate">
+                  <code className="mr-1 font-mono text-[0.65rem] text-muted-foreground">
+                    {it.id}
+                  </code>
+                  {it.text}
+                </li>
+              ))}
+              {unchecked.length > 8 && (
+                <li className="text-muted-foreground">
+                  … and {unchecked.length - 8} more
+                </li>
+              )}
+            </ul>
+          </div>
+        )}
+        <div className="space-y-1.5">
+          <Label>Reason (optional)</Label>
+          <Input
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Short rationale…"
+          />
+        </div>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={() => onOpenChange(false)}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={isPending}
+            onClick={(e) => {
+              e.preventDefault()
+              onConfirm(reason)
+            }}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            {isPending && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+            Force close
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }
 

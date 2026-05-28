@@ -12,6 +12,8 @@
 import { useState, useMemo } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { Loader2, Search, FileCode2, Users, ChevronRight, FolderTree } from 'lucide-react'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { LIST_STAGGER, ROUTE_TRANSITION, reducedTransition } from '@/lib/motion'
 import { EmptyState } from '@/components/ui/empty-state'
 import type { ScopeSummary } from '@/api/types/ScopeSummary'
 import { Input } from '@/components/ui/input'
@@ -42,6 +44,8 @@ export function ScopeExplorer({ selectedId }: ScopeExplorerProps) {
   const navigate = useNavigate()
   const list = useScopeList()
   const [filter, setFilter] = useState('')
+  const reduced = useReducedMotion() ?? false
+  const transition = reducedTransition(reduced, ROUTE_TRANSITION)
 
   const filtered = useMemo(() => {
     if (!list.data) return []
@@ -83,6 +87,7 @@ export function ScopeExplorer({ selectedId }: ScopeExplorerProps) {
                   onChange={(e) => setFilter(e.target.value)}
                   placeholder="Filter scopes…"
                   className="pl-7"
+                  data-shortcut-target="search"
                 />
               </div>
               {list.isLoading && (
@@ -101,8 +106,15 @@ export function ScopeExplorer({ selectedId }: ScopeExplorerProps) {
                 data-testid="scope-list"
                 className="flex max-h-[60vh] flex-col gap-1 overflow-y-auto"
               >
-                {filtered.map((s) => (
-                  <li key={s.id}>
+                <AnimatePresence initial={!reduced}>
+                {filtered.map((s, i) => (
+                  <motion.li
+                    key={s.id}
+                    initial={reduced ? false : { opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={reduced ? { opacity: 0 } : { opacity: 0, y: -4 }}
+                    transition={{ ...transition, delay: reduced ? 0 : Math.min(i, 12) * LIST_STAGGER }}
+                  >
                     <button
                       type="button"
                       onClick={() =>
@@ -130,8 +142,9 @@ export function ScopeExplorer({ selectedId }: ScopeExplorerProps) {
                         {s.name}
                       </div>
                     </button>
-                  </li>
+                  </motion.li>
                 ))}
+                </AnimatePresence>
                 {!list.isLoading && filtered.length === 0 && (
                   <li>
                     <EmptyState

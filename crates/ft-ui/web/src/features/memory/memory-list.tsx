@@ -8,6 +8,8 @@
  */
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { Plus, FileWarning, Database, Filter } from 'lucide-react'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { LIST_STAGGER, ROUTE_TRANSITION, reducedTransition } from '@/lib/motion'
 import { EmptyState as SharedEmptyState } from '@/components/ui/empty-state'
 import type { MemoryKind } from '@/api/types/MemoryKind'
 import type { TrustStateInput } from '@/api/types/TrustStateInput'
@@ -46,6 +48,8 @@ export function MemoryList({ onCreateClick }: MemoryListProps) {
     stale: search.stale ?? false,
   }
   const { data, isLoading, error } = useMemoryList(filters)
+  const reduced = useReducedMotion() ?? false
+  const transition = reducedTransition(reduced, ROUTE_TRANSITION)
 
   function updateFilters(next: Partial<MemorySearchParams>) {
     const merged: MemorySearchParams = { ...search, ...next }
@@ -174,11 +178,19 @@ export function MemoryList({ onCreateClick }: MemoryListProps) {
             data-testid="memory-list"
             className="grid grid-cols-1 gap-2 overflow-y-auto md:grid-cols-2"
           >
-            {data.rows.map((row) => (
-              <li key={row.id}>
-                <MemoryCard row={row} />
-              </li>
-            ))}
+            <AnimatePresence initial={!reduced}>
+              {data.rows.map((row, i) => (
+                <motion.li
+                  key={row.id}
+                  initial={reduced ? false : { opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={reduced ? { opacity: 0 } : { opacity: 0, y: -4 }}
+                  transition={{ ...transition, delay: reduced ? 0 : Math.min(i, 12) * LIST_STAGGER }}
+                >
+                  <MemoryCard row={row} />
+                </motion.li>
+              ))}
+            </AnimatePresence>
           </ul>
         )}
       </section>

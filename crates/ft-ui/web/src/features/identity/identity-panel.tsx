@@ -8,6 +8,8 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Plus, UserX, ShieldCheck, ShieldX, Users } from 'lucide-react'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { LIST_STAGGER, ROUTE_TRANSITION, reducedTransition } from '@/lib/motion'
 import { EmptyState } from '@/components/ui/empty-state'
 import type { IdentityKindInput } from '@/api/types/IdentityKindInput'
 import type { IdentityStatusFilter } from '@/api/types/IdentityStatusFilter'
@@ -42,6 +44,8 @@ export function IdentityPanel({ selectedId }: IdentityPanelProps) {
   const [registerOpen, setRegisterOpen] = useState(false)
 
   const list = useIdentityList({ kind: kind ?? null, status: status ?? null })
+  const reduced = useReducedMotion() ?? false
+  const transition = reducedTransition(reduced, ROUTE_TRANSITION)
 
   return (
     <div className="mx-auto flex h-full max-w-6xl flex-col gap-4 p-6">
@@ -114,8 +118,15 @@ export function IdentityPanel({ selectedId }: IdentityPanelProps) {
             </p>
           )}
           <ul data-testid="identity-list" className="flex flex-col gap-1 overflow-y-auto">
-            {list.data?.identities.map((idn) => (
-              <li key={idn.id}>
+            <AnimatePresence initial={!reduced}>
+              {list.data?.identities.map((idn, i) => (
+                <motion.li
+                  key={idn.id}
+                  initial={reduced ? false : { opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={reduced ? { opacity: 0 } : { opacity: 0, y: -4 }}
+                  transition={{ ...transition, delay: reduced ? 0 : Math.min(i, 12) * LIST_STAGGER }}
+                >
                 <button
                   type="button"
                   onClick={() => navigate({ to: '/identity/$id', params: { id: idn.id } })}
@@ -135,8 +146,9 @@ export function IdentityPanel({ selectedId }: IdentityPanelProps) {
                     {idn.emails[0] ?? idn.name}
                   </div>
                 </button>
-              </li>
-            ))}
+                </motion.li>
+              ))}
+            </AnimatePresence>
             {list.data && list.data.identities.length === 0 && (
               <li>
                 <EmptyState

@@ -3,9 +3,14 @@ import type { MemoryKind } from '@/api/types/MemoryKind'
 import type { SearchMode } from '@/api/types/SearchMode'
 import type { TrustStateInput } from '@/api/types/TrustStateInput'
 import { MemorySearch, type SearchRouteParams } from '@/features/memory/memory-search'
+import { FeatureErrorBoundary } from '@/components/ui/error-boundary'
 
 export const Route = createFileRoute('/memory/search')({
-  component: MemorySearch,
+  component: () => (
+    <FeatureErrorBoundary>
+      <MemorySearch />
+    </FeatureErrorBoundary>
+  ),
   validateSearch: (search: Record<string, unknown>): SearchRouteParams => {
     const out: SearchRouteParams = {}
     if (typeof search.q === 'string') out.q = search.q

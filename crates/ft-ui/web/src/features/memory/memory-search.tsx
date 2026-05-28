@@ -133,6 +133,7 @@ export function MemorySearch() {
               onChange={(e) => setDraftQuery(e.target.value)}
               placeholder="What are you looking for?"
               className="flex-1"
+              data-shortcut-target="search"
             />
           </div>
         )}

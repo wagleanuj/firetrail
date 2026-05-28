@@ -4,6 +4,7 @@ import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { Board } from '@/features/tickets/board'
 import { CreateDialog } from '@/features/tickets/create-dialog'
 import { TicketDetail } from '@/features/tickets/ticket-detail'
+import { FeatureErrorBoundary } from '@/components/ui/error-boundary'
 
 /**
  * `/tickets/:id` — kanban board with the ticket drawer overlaid.
@@ -20,7 +21,7 @@ function TicketRoute() {
   const navigate = useNavigate()
   const [createOpen, setCreateOpen] = useState(false)
   return (
-    <>
+    <FeatureErrorBoundary>
       <Board onCreateClick={() => setCreateOpen(true)} />
       <CreateDialog open={createOpen} onOpenChange={setCreateOpen} />
       <Sheet
@@ -30,9 +31,11 @@ function TicketRoute() {
         }}
       >
         <SheetContent side="right" className="sm:max-w-2xl">
-          <TicketDetail id={id} />
+          <FeatureErrorBoundary>
+            <TicketDetail id={id} />
+          </FeatureErrorBoundary>
         </SheetContent>
       </Sheet>
-    </>
+    </FeatureErrorBoundary>
   )
 }

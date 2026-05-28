@@ -33,6 +33,16 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -177,14 +187,7 @@ export function TrustActions({ recordId, trustState, riskClass }: TrustActionsPr
         />
       )}
       {open === 'redact' && (
-        <ReasonDialog
-          title="Redact record"
-          submitLabel="Redact"
-          variant="destructive"
-          recordId={recordId}
-          fire={(reason) => postRedact(recordId, reason)}
-          onClose={() => setOpen(null)}
-        />
+        <RedactAlertDialog recordId={recordId} onClose={() => setOpen(null)} />
       )}
       {open === 'supersede' && (
         <SupersedeDialog recordId={recordId} onClose={() => setOpen(null)} />
@@ -552,6 +555,78 @@ function MergePreview({
         </ul>
       </div>
     </div>
+  )
+}
+
+/**
+ * Redact uses an AlertDialog (rather than the regular ReasonDialog) because
+ * the action permanently wipes the record body and cannot be undone. The
+ * confirmation requires a non-empty reason and forces the user past a
+ * destructive-styled action button.
+ */
+function RedactAlertDialog({
+  recordId,
+  onClose,
+}: {
+  recordId: string
+  onClose: () => void
+}) {
+  const qc = useQueryClient()
+  const [reason, setReason] = useState('')
+  const mut = useMutation({
+    mutationFn: () => postRedact(recordId, reason),
+    onSuccess: () => {
+      toast.success('Record redacted')
+      qc.invalidateQueries({ queryKey: memoryShowKey(recordId) })
+      onClose()
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.kind === 'conflict') {
+        toast.error('Wrong source state — refresh and try again')
+        qc.invalidateQueries({ queryKey: memoryShowKey(recordId) })
+        return
+      }
+      toastApiError(err)
+    },
+  })
+  return (
+    <AlertDialog open onOpenChange={(v) => !v && onClose()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle className="font-mono">Redact record?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This permanently wipes the record body and cannot be undone. The
+            tombstone remains in the history chain, but the original content is
+            unrecoverable.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <div className="space-y-1.5">
+          <Label>Reason *</Label>
+          <Textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={3}
+            autoFocus
+            placeholder="Why is redaction required?"
+          />
+        </div>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={onClose}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            data-testid="redact-confirm"
+            disabled={!reason.trim() || mut.isPending}
+            onClick={(e) => {
+              e.preventDefault()
+              mut.mutate()
+            }}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            {mut.isPending && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+            Redact
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }
 

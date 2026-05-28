@@ -6,6 +6,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { CheckCircle2, XCircle } from 'lucide-react'
+import { RelativeTime } from '@/components/ui/relative-time'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
@@ -204,16 +205,20 @@ export function ReviewView({ recordId }: { recordId: string }) {
           </p>
         ) : (
           <ul className="space-y-1.5">
-            {data.history.map((h, i) => (
-              <li key={i} className="rounded-md border border-border/60 bg-background/60 p-2 text-xs">
-                <span className="font-mono">
-                  {(h as { at?: string }).at ?? ''} · {(h as { event?: string }).event ?? ''}
-                </span>
-                <span className="ml-2 text-muted-foreground">
-                  {(h as { actor?: string }).actor ?? ''}
-                </span>
-              </li>
-            ))}
+            {data.history.map((h, i) => {
+              const at = (h as { at?: string }).at
+              const event = (h as { event?: string }).event ?? ''
+              const actor = (h as { actor?: string }).actor ?? ''
+              return (
+                <li key={i} className="rounded-md border border-border/60 bg-background/60 p-2 text-xs">
+                  <span className="font-mono">
+                    <RelativeTime value={at} className="text-muted-foreground" />
+                    {event && <> · {event}</>}
+                  </span>
+                  {actor && <span className="ml-2 text-muted-foreground">{actor}</span>}
+                </li>
+              )
+            })}
           </ul>
         )}
       </section>

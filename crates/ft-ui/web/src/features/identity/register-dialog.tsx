@@ -17,6 +17,16 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -160,6 +170,13 @@ export function RegisterIdentityDialog({ open, onOpenChange }: RegisterDialogPro
   )
 }
 
+/**
+ * Offboarding is destructive: it flips the identity to `offboarded` and (with
+ * `sweepClaims: true`, which the API wrapper sets unconditionally) releases
+ * every claim the identity currently holds. We use an `AlertDialog` so the
+ * action requires a deliberate confirmation rather than a click-outside
+ * dismissal, and we surface the count of released claims after success.
+ */
 export function OffboardConfirmDialog({
   id,
   open,
@@ -171,46 +188,57 @@ export function OffboardConfirmDialog({
 }) {
   const mutate = useOffboard(id)
   const [result, setResult] = useState<number | null>(null)
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle className="font-mono">Offboard {id}?</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3 text-sm">
-          {result === null ? (
-            <p className="text-muted-foreground">
-              This will mark {id} as offboarded and release any active claims they
-              hold. The action is recorded in the history chain.
-            </p>
-          ) : (
-            <p className="text-foreground">
-              Offboarded — <span className="font-mono text-primary">{result}</span>{' '}
-              claim{result === 1 ? '' : 's'} released.
-            </p>
-          )}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            {result === null ? 'Cancel' : 'Close'}
-          </Button>
-          {result === null && (
-            <Button
-              variant="destructive"
-              disabled={mutate.isPending}
-              onClick={async () => {
-                const out = await mutate.mutateAsync()
-                setResult(out.claimsReleased)
-              }}
-              className="gap-2"
-            >
-              {mutate.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-              Offboard
+  // While the result is shown, fall back to a regular Dialog so the user can
+  // dismiss the success state. The destructive confirmation flow uses
+  // AlertDialog (no click-outside dismiss).
+  if (result !== null) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="font-mono">Offboarded {id}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-foreground">
+            <span className="font-mono text-primary">{result}</span> claim
+            {result === 1 ? '' : 's'} released.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Close
             </Button>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    )
+  }
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle className="font-mono">Offboard {id}?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This marks the identity as offboarded and releases every claim they
+            currently hold (sweep). The transition is recorded in the history
+            chain and cannot be reversed without re-registering the identity.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={() => onOpenChange(false)}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={mutate.isPending}
+            onClick={async (e) => {
+              e.preventDefault()
+              const out = await mutate.mutateAsync()
+              setResult(out.claimsReleased)
+            }}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            {mutate.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
+            Offboard
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }
 

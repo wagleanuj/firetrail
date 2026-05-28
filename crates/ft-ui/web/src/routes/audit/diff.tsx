@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { DiffViewer } from '@/features/audit/diff-viewer'
+import { FeatureErrorBoundary } from '@/components/ui/error-boundary'
 
 interface DiffSearch {
   base?: string
@@ -24,19 +25,21 @@ function DiffRoute() {
   const search = Route.useSearch()
   const navigate = useNavigate({ from: '/audit/diff' })
   return (
-    <div className="mx-auto max-w-6xl space-y-4 p-6">
-      <h1 className="font-mono text-lg font-semibold tracking-tight">Diff</h1>
-      <DiffViewer
+    <FeatureErrorBoundary>
+      <div className="mx-auto max-w-6xl space-y-4 p-6">
+        <h1 className="font-mono text-lg font-semibold tracking-tight">Diff</h1>
+        <DiffViewer
         base={search.base ?? 'main'}
         head={search.head ?? 'HEAD'}
         scope={search.scope ?? ''}
         memoryOnly={search.memoryOnly ?? false}
-        onChange={(next) => {
-          navigate({
-            search: (prev) => ({ ...prev, ...next }),
-          })
-        }}
-      />
-    </div>
+          onChange={(next) => {
+            navigate({
+              search: (prev) => ({ ...prev, ...next }),
+            })
+          }}
+        />
+      </div>
+    </FeatureErrorBoundary>
   )
 }

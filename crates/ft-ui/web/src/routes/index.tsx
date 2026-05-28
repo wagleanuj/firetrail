@@ -3,6 +3,8 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { z } from 'zod'
 import { Board } from '@/features/tickets/board'
 import { CreateDialog } from '@/features/tickets/create-dialog'
+import { FeatureErrorBoundary } from '@/components/ui/error-boundary'
+import { useRegisterShortcut } from '@/components/shortcuts'
 
 const searchSchema = z.object({
   ready: z.boolean().optional(),
@@ -17,8 +19,9 @@ function HomePage() {
   const search = Route.useSearch()
   const navigate = useNavigate({ from: '/' })
   const [createOpen, setCreateOpen] = useState(false)
+  useRegisterShortcut({ openTicketCreate: () => setCreateOpen(true) })
   return (
-    <>
+    <FeatureErrorBoundary>
       <Board
         onCreateClick={() => setCreateOpen(true)}
         ready={search.ready ?? false}
@@ -30,6 +33,6 @@ function HomePage() {
         }}
       />
       <CreateDialog open={createOpen} onOpenChange={setCreateOpen} />
-    </>
+    </FeatureErrorBoundary>
   )
 }

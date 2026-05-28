@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { IdentityPanel } from '@/features/identity/identity-panel'
+import { FeatureErrorBoundary } from '@/components/ui/error-boundary'
 
 export const Route = createFileRoute('/identity/$id')({
   component: IdentityDetailRoute,
@@ -7,5 +8,9 @@ export const Route = createFileRoute('/identity/$id')({
 
 function IdentityDetailRoute() {
   const { id } = Route.useParams()
-  return <IdentityPanel selectedId={id} />
+  return (
+    <FeatureErrorBoundary>
+      <IdentityPanel selectedId={id} />
+    </FeatureErrorBoundary>
+  )
 }

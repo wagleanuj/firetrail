@@ -4,6 +4,7 @@ import type { MemoryKind } from '@/api/types/MemoryKind'
 import type { TrustStateInput } from '@/api/types/TrustStateInput'
 import { MemoryList } from '@/features/memory/memory-list'
 import { CreateMemoryDialog } from '@/features/memory/create-dialog'
+import { FeatureErrorBoundary } from '@/components/ui/error-boundary'
 
 interface MemoryRouteSearch {
   kind?: MemoryKind
@@ -25,9 +26,9 @@ export const Route = createFileRoute('/memory/')({
 function MemoryRoute() {
   const [createOpen, setCreateOpen] = useState(false)
   return (
-    <>
+    <FeatureErrorBoundary>
       <MemoryList onCreateClick={() => setCreateOpen(true)} />
       <CreateMemoryDialog open={createOpen} onOpenChange={setCreateOpen} />
-    </>
+    </FeatureErrorBoundary>
   )
 }

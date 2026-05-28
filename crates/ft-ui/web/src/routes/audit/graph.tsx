@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import type { GraphDirectionInput } from '@/api/types/GraphDirectionInput'
 import { GraphViewer } from '@/features/audit/graph-viewer'
+import { FeatureErrorBoundary } from '@/components/ui/error-boundary'
 
 interface GraphSearch {
   id?: string
@@ -26,18 +27,20 @@ function GraphRoute() {
   const search = Route.useSearch()
   const navigate = useNavigate({ from: '/audit/graph' })
   return (
-    <div className="mx-auto max-w-6xl space-y-4 p-6">
-      <h1 className="font-mono text-lg font-semibold tracking-tight">Graph</h1>
-      <GraphViewer
+    <FeatureErrorBoundary>
+      <div className="mx-auto max-w-6xl space-y-4 p-6">
+        <h1 className="font-mono text-lg font-semibold tracking-tight">Graph</h1>
+        <GraphViewer
         id={search.id ?? ''}
         direction={search.direction ?? 'both'}
         depth={search.depth ?? 2}
-        onChange={(next) => {
-          navigate({
-            search: (prev) => ({ ...prev, ...next }),
-          })
-        }}
-      />
-    </div>
+          onChange={(next) => {
+            navigate({
+              search: (prev) => ({ ...prev, ...next }),
+            })
+          }}
+        />
+      </div>
+    </FeatureErrorBoundary>
   )
 }

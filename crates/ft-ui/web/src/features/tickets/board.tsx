@@ -18,6 +18,8 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core'
 import { Plus, KanbanSquare } from 'lucide-react'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { LAYOUT_TRANSITION, reducedTransition } from '@/lib/motion'
 import { EmptyState as SharedEmptyState } from '@/components/ui/empty-state'
 import type { BoardCard } from '@/api/types/BoardCard'
 import type { BoardOutput } from '@/api/types/BoardOutput'
@@ -147,14 +149,16 @@ function DroppableColumn({ column, label, cards, activeDrag }: DroppableColumnPr
         </span>
       </div>
       <div className="flex flex-1 flex-col gap-2 overflow-y-auto">
-        {cards.map((card) => (
-          <DraggableCard
-            key={card.id}
-            card={card}
-            column={column}
-            dragging={activeDrag?.id === card.id}
-          />
-        ))}
+        <AnimatePresence initial={false}>
+          {cards.map((card) => (
+            <DraggableCard
+              key={card.id}
+              card={card}
+              column={column}
+              dragging={activeDrag?.id === card.id}
+            />
+          ))}
+        </AnimatePresence>
       </div>
     </div>
   )
@@ -171,19 +175,26 @@ function DraggableCard({ card, column, dragging }: DraggableCardProps) {
     id: card.id,
     data: { id: card.id, from: column },
   })
+  const reduced = useReducedMotion() ?? false
+  const transition = reducedTransition(reduced, LAYOUT_TRANSITION)
   const style = transform
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
     : undefined
   return (
-    <div
+    <motion.div
       ref={setNodeRef}
       style={style}
+      layout={!dragging && !reduced ? 'position' : false}
+      initial={reduced ? false : { opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={reduced ? { opacity: 0 } : { opacity: 0, y: -4 }}
+      transition={transition}
       {...listeners}
       {...attributes}
       data-testid={`card-${card.id}`}
       className={cn(
-        'group cursor-grab rounded-md border border-border/70 bg-background/80 p-3 text-left shadow-sm transition-all',
-        'hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-[0_0_0_1px_hsl(var(--primary)/0.25)] focus-within:ring-2 focus-within:ring-ring',
+        'group cursor-grab rounded-md border border-border/70 bg-background/80 p-3 text-left shadow-sm',
+        'hover:border-primary/40 hover:shadow-[0_0_0_1px_hsl(var(--primary)/0.25)] focus-within:ring-2 focus-within:ring-ring',
         dragging && 'opacity-40',
       )}
     >
@@ -212,7 +223,7 @@ function DraggableCard({ card, column, dragging }: DraggableCardProps) {
           <span className="truncate">{card.owner}</span>
         </div>
       )}
-    </div>
+    </motion.div>
   )
 }
 

@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { MemoryDetail } from '@/features/memory/memory-detail'
+import { FeatureErrorBoundary } from '@/components/ui/error-boundary'
 
 export const Route = createFileRoute('/memory/$id')({
   component: MemoryDetailRoute,
@@ -7,5 +8,9 @@ export const Route = createFileRoute('/memory/$id')({
 
 function MemoryDetailRoute() {
   const { id } = Route.useParams()
-  return <MemoryDetail id={id} />
+  return (
+    <FeatureErrorBoundary>
+      <MemoryDetail id={id} />
+    </FeatureErrorBoundary>
+  )
 }

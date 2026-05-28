@@ -14,6 +14,7 @@
  */
 import { Link, useNavigate } from '@tanstack/react-router'
 import { Sparkles, Lock } from 'lucide-react'
+import { RelativeTime } from '@/components/ui/relative-time'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -65,11 +66,11 @@ export function MemoryDetail({ id }: MemoryDetailProps) {
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           {env.owner && <span>owner: {env.owner.name}</span>}
           {env.owner && <span>•</span>}
-          <span>updated {formatDate(env.updated_at)}</span>
+          <RelativeTime value={env.updated_at} prefix="updated" />
           {env.closed_at && (
             <>
               <span>•</span>
-              <span>closed {formatDate(env.closed_at)}</span>
+              <RelativeTime value={env.closed_at} prefix="closed" />
             </>
           )}
         </div>
@@ -145,14 +146,6 @@ function DetailSkeleton() {
       <Skeleton className="h-40 w-full" />
     </div>
   )
-}
-
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString()
-  } catch {
-    return iso
-  }
 }
 
 /**

@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { ScopeExplorer } from '@/features/scope/scope-explorer'
+import { FeatureErrorBoundary } from '@/components/ui/error-boundary'
 
 export const Route = createFileRoute('/scope/$id')({
   component: ScopeDetailRoute,
@@ -7,5 +8,9 @@ export const Route = createFileRoute('/scope/$id')({
 
 function ScopeDetailRoute() {
   const { id } = Route.useParams()
-  return <ScopeExplorer selectedId={id} />
+  return (
+    <FeatureErrorBoundary>
+      <ScopeExplorer selectedId={id} />
+    </FeatureErrorBoundary>
+  )
 }

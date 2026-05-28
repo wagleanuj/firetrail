@@ -14,8 +14,11 @@ canonical. Run it before guessing syntax.
 firetrail doctor                       # verify workspace health (run first)
 firetrail ready                        # find unblocked work
 firetrail show <id>                    # read the full record before claiming
+firetrail search "<task keywords>"     # has this been solved before?
+firetrail prime --task <id>            # build a context pack for this task
 firetrail claim <id>                   # acquire exclusive lock (7d default)
 # … do the work …
+# (capture findings/gotchas/decisions as they surface — see below)
 firetrail close <id>                   # acceptance criteria must be complete
 ```
 
@@ -23,6 +26,12 @@ Never start work without claiming. Concurrent claims on the same record
 fail with a Conflict exit code (3) — that's the system catching a
 collision, not a bug. Resolve by coordinating with the current claimant
 or running `firetrail claim-takeover <id>` (admin-gated).
+
+**Always recall before you build.** `search` + `similar` + `prime` are
+the difference between a fresh agent and an agent with institutional
+memory. If a finding already exists for the failure mode you're about
+to investigate, you save the hour. If a decision already exists for
+the architectural call you're about to make, you stay consistent.
 
 ### Creating work
 
@@ -35,13 +44,50 @@ firetrail task    create "Build auth" --epic <epic-id>
 firetrail subtask create "Login form" --parent <task-id>
 firetrail bug     create "OAuth callback returns 500"
 firetrail criteria add <id> "Login works on Safari 17"
-firetrail dep      add <from-id> <to-id>                        # from depends on to
-firetrail link <from> <to> --type blocks                        # blocks|blocked-by|parent-of|child-of|related-to
 ```
 
 Every task/subtask/bug **must** declare acceptance criteria before close.
 `firetrail close` refuses to close incomplete records; `--force --reason`
 is reserved for genuine exceptions and is audited.
+
+### Wiring dependencies (mandatory for any non-trivial epic)
+
+**If an epic contains more than one task, you MUST wire the dependency
+graph before anyone — human or agent — runs `firetrail ready`.** Without
+edges, every task appears unblocked and parallel claims will produce
+work that has to be unwound (you can't build `useWeather` before the
+API module exists). The graph is what makes `firetrail ready` useful.
+
+Two relation surfaces, used for different things:
+
+```
+firetrail dep  add <from-id> <to-id>           # <from> depends on <to>
+                                                # (<to> blocks <from>)
+firetrail link <from> <to> --type blocks       # blocks | blocked-by
+                                                # | parent-of | child-of
+                                                # | related-to
+```
+
+Rule of thumb:
+- **`dep add`** — execution dependency. A task that cannot start until
+  another finishes. This is what drives `firetrail ready`.
+- **`link --type related-to`** — informational relation (this task
+  references that finding, this incident invoked that runbook). Does
+  not gate readiness.
+
+Workflow when you break an epic into tasks:
+
+1. Create the epic and all tasks first (titles only).
+2. Map the dependency graph on paper or in your head.
+3. `firetrail dep add` each edge in **leaf-to-root** order so you don't
+   reference an id that doesn't yet exist.
+4. `firetrail graph <epic-id>` — visually verify the shape.
+5. `firetrail ready` — confirm only the genuine leaves are unblocked.
+6. Now you may claim.
+
+A flat list of siblings under an epic is almost always a bug. If you
+truly believe the tasks are independent, say so explicitly in the epic
+description so reviewers know it was a decision, not an oversight.
 
 ### Recording knowledge (M2 records)
 
@@ -78,6 +124,21 @@ firetrail memory stale                 # records past freshness threshold
 
 Don't mark records `verified` yourself unless your identity has the
 `can_promote_verified` capability — check via `firetrail identity show <id>`.
+
+**When to capture (not optional — this is how the corpus grows):**
+
+| Trigger | Record kind |
+|---|---|
+| A bug you fixed turned out to have a non-obvious cause | `finding create` |
+| A production incident happened (live or recent) | `incident create` |
+| A reproducible "do these N steps" procedure emerged | `runbook create` |
+| You made an architectural call that future agents need to honour | `decision create` |
+| A subtle trap that bit you and will bite the next person | `gotcha create` |
+| Quick observation, can't decide kind yet | `capture --kind memory` |
+
+Capture *during* the work, not after. The next agent priming this task
+will read what you wrote — make it count. Aim for one finding or one
+decision per non-trivial task; runbooks and gotchas come opportunistically.
 
 ### Searching and priming context
 

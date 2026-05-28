@@ -526,7 +526,7 @@ fn agents_template_examples_stay_in_sync_with_cli() {
         ("firetrail subtask create",      &["subtask", "create", "--help"]),
         ("firetrail bug     create",      &["bug", "create", "--help"]),
         ("firetrail criteria add",        &["criteria", "add", "--help"]),
-        ("firetrail dep      add",        &["dep", "add", "--help"]),
+        ("firetrail dep  add <from-id> <to-id>", &["dep", "add", "--help"]),
         ("firetrail link <from> <to>",    &["link", "--help"]),
         ("firetrail finding  create",     &["finding", "create", "--help"]),
         ("firetrail incident create",     &["incident", "create", "--help"]),

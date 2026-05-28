@@ -22,7 +22,7 @@ use std::time::{Duration, Instant};
 
 use ft_core::RecordId;
 use ft_embed::daemon::{self, DaemonStatus, RecordIndexer, ServeOptions};
-use ft_embed::{Embedder, EmbedService, EmbeddingCache, EmbeddingsConfig, build_embedder};
+use ft_embed::{EmbedService, Embedder, EmbeddingCache, EmbeddingsConfig, build_embedder};
 use ft_search::SearchEngine;
 use serde::Serialize;
 
@@ -144,8 +144,10 @@ fn run_foreground(
         .map_err(|e| CliError::internal(CMD_START, format!("open cache: {e}")))?;
     let service = EmbedService::new(embedder, cache);
 
-    let indexer: Arc<dyn RecordIndexer> = Arc::new(SearchEngineIndexer::open(&ws.index_db_path())
-        .map_err(|e| CliError::internal(CMD_START, format!("open search index: {e}")))?);
+    let indexer: Arc<dyn RecordIndexer> = Arc::new(
+        SearchEngineIndexer::open(&ws.index_db_path())
+            .map_err(|e| CliError::internal(CMD_START, format!("open search index: {e}")))?,
+    );
     let opts = ServeOptions {
         idle_timeout: (idle_timeout_secs > 0).then(|| Duration::from_secs(idle_timeout_secs)),
         lock_path: Some(daemon_lock_path(ws)?),
@@ -193,10 +195,7 @@ pub fn stop(global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
                 "graceful shutdown failed ({e}); removing socket file as fallback"
             ));
             if let Err(rm) = std::fs::remove_file(&socket) {
-                return Err(CliError::internal(
-                    CMD_STOP,
-                    format!("remove socket: {rm}"),
-                ));
+                return Err(CliError::internal(CMD_STOP, format!("remove socket: {rm}")));
             }
             status_label = "force-stopped";
         }
@@ -279,7 +278,9 @@ impl RecordIndexer for SearchEngineIndexer {
     fn upsert_vector(&self, record_id: &str, embedding: &[f32]) -> Result<(), String> {
         let id = RecordId::from_string(record_id).map_err(|e| e.to_string())?;
         let guard = self.engine.lock().map_err(|e| e.to_string())?;
-        guard.upsert_vector(&id, embedding).map_err(|e| e.to_string())
+        guard
+            .upsert_vector(&id, embedding)
+            .map_err(|e| e.to_string())
     }
 }
 

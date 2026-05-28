@@ -70,7 +70,10 @@ fn migrate_embeddings_writes_jsonl_artifact_and_is_resumable() {
     );
     assert!(out.success(), "resume migrate failed: {}", out.stderr);
     let v = parse_json(&out);
-    assert_eq!(v["data"]["written"], 0, "expected zero new writes on resume");
+    assert_eq!(
+        v["data"]["written"], 0,
+        "expected zero new writes on resume"
+    );
     assert_eq!(v["data"]["skipped"], 3);
     assert_eq!(
         v["data"]["artifact_sha256"].as_str().unwrap(),
@@ -130,7 +133,10 @@ fn migrate_embeddings_refuses_lexical_provider() {
             "--json",
         ],
     );
-    assert!(!out.success(), "expected migrate to fail under lexical provider");
+    assert!(
+        !out.success(),
+        "expected migrate to fail under lexical provider"
+    );
     assert!(
         out.stderr.contains("lexical") || out.stdout.contains("lexical"),
         "expected error mentioning lexical, got stderr={:?} stdout={:?}",

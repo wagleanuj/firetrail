@@ -1371,7 +1371,7 @@ pub struct ServerHooksInstallArgs {
 /// Arguments for `firetrail init`.
 #[derive(Debug, Args)]
 #[allow(clippy::struct_excessive_bools)] // CLI flags accumulate; one struct
-                                         // is clearer than a sub-args enum.
+// is clearer than a sub-args enum.
 pub struct InitArgs {
     /// Storage backend. See ADR-0006.
     #[arg(long, value_enum, default_value_t = StorageModeArg::Embedded)]

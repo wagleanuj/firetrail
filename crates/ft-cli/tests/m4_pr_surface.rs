@@ -278,7 +278,12 @@ fn lint_memory_fix_emits_remediation_hints() {
     let create = run_firetrail(
         tr.root(),
         &[
-            "--json", "memory", "create", "tamper-target", "--body", "clean body",
+            "--json",
+            "memory",
+            "create",
+            "tamper-target",
+            "--body",
+            "clean body",
         ],
     );
     assert!(create.success(), "memory create: {}", create.stderr);

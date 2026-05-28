@@ -123,10 +123,16 @@ fn init_writes_embeddings_config_block() {
     std::fs::remove_dir_all(tr.firetrail_dir()).unwrap();
     let init = run_firetrail(tr.root(), &["init", "--json"]);
     assert!(init.success(), "init failed: {}", init.stderr);
-    let cfg = std::fs::read_to_string(tr.firetrail_dir().join("config.yml"))
-        .expect("read config.yml");
-    assert!(cfg.contains("embeddings:"), "missing embeddings block:\n{cfg}");
-    assert!(cfg.contains("provider: mock"), "default provider missing:\n{cfg}");
+    let cfg =
+        std::fs::read_to_string(tr.firetrail_dir().join("config.yml")).expect("read config.yml");
+    assert!(
+        cfg.contains("embeddings:"),
+        "missing embeddings block:\n{cfg}"
+    );
+    assert!(
+        cfg.contains("provider: mock"),
+        "default provider missing:\n{cfg}"
+    );
     assert!(
         cfg.contains("model: bge-small-en-v1.5"),
         "default model missing:\n{cfg}"
@@ -322,7 +328,10 @@ fn init_interactive_registers_identity_from_git_config() {
     let has_identity = created
         .iter()
         .any(|c| c.as_str().is_some_and(|s| s.starts_with("identity:alice")));
-    assert!(has_identity, "expected identity:alice in created: {created:?}");
+    assert!(
+        has_identity,
+        "expected identity:alice in created: {created:?}"
+    );
 
     // The registry file should now exist with alice.
     let registry_path = tr.firetrail_dir().join("identities.yaml");
@@ -356,7 +365,10 @@ fn init_non_interactive_flag_suppresses_prompts_even_with_force_tty() {
     let has_identity = created
         .iter()
         .any(|c| c.as_str().is_some_and(|s| s.starts_with("identity:")));
-    assert!(!has_identity, "no identity should auto-register: {created:?}");
+    assert!(
+        !has_identity,
+        "no identity should auto-register: {created:?}"
+    );
 }
 
 #[test]
@@ -391,9 +403,15 @@ fn init_fresh_writes_full_agents_claude_and_skill() {
     assert!(out.success(), "init failed: {}", out.stderr);
 
     let agents = std::fs::read_to_string(tr.root().join("AGENTS.md")).unwrap();
-    assert!(agents.contains("<!-- firetrail:begin -->"), "no begin marker");
+    assert!(
+        agents.contains("<!-- firetrail:begin -->"),
+        "no begin marker"
+    );
     assert!(agents.contains("<!-- firetrail:end -->"), "no end marker");
-    assert!(agents.contains("firetrail ready"), "workflow content missing");
+    assert!(
+        agents.contains("firetrail ready"),
+        "workflow content missing"
+    );
     assert!(agents.contains("firetrail check pr"), "PR content missing");
 
     let claude = std::fs::read_to_string(tr.root().join("CLAUDE.md")).unwrap();
@@ -404,8 +422,14 @@ fn init_fresh_writes_full_agents_claude_and_skill() {
 
     let skill =
         std::fs::read_to_string(tr.root().join(".claude/skills/firetrail/SKILL.md")).unwrap();
-    assert!(skill.contains("name: firetrail"), "skill frontmatter missing");
-    assert!(skill.contains("firetrail check pr"), "skill content missing");
+    assert!(
+        skill.contains("name: firetrail"),
+        "skill frontmatter missing"
+    );
+    assert!(
+        skill.contains("firetrail check pr"),
+        "skill content missing"
+    );
 }
 
 #[test]
@@ -441,8 +465,7 @@ fn init_existing_agents_without_markers_appends_block() {
 fn init_existing_agents_with_markers_refreshes_block_only() {
     let tr = TestRepo::new().unwrap();
     std::fs::remove_dir_all(tr.firetrail_dir()).unwrap();
-    let user_content =
-        "# AGENTS.md\n\n## Local rules\n\nKeep this.\n\n<!-- firetrail:begin -->\nSTALE\n<!-- firetrail:end -->\n\n## Footer\n\nKeep this too.\n";
+    let user_content = "# AGENTS.md\n\n## Local rules\n\nKeep this.\n\n<!-- firetrail:begin -->\nSTALE\n<!-- firetrail:end -->\n\n## Footer\n\nKeep this too.\n";
     std::fs::write(tr.root().join("AGENTS.md"), user_content).unwrap();
 
     let out = run_firetrail(tr.root(), &["init", "--json"]);
@@ -521,27 +544,48 @@ fn agents_template_examples_stay_in_sync_with_cli() {
     // Each entry: (substring in template, [args]) — args must produce a
     // successful --help invocation, proving the surface still exists.
     let pinned: &[(&str, &[&str])] = &[
-        ("firetrail epic    create",      &["epic", "create", "--help"]),
-        ("firetrail task    create",      &["task", "create", "--help"]),
-        ("firetrail subtask create",      &["subtask", "create", "--help"]),
-        ("firetrail bug     create",      &["bug", "create", "--help"]),
-        ("firetrail criteria add",        &["criteria", "add", "--help"]),
-        ("firetrail dep  add <from-id> <to-id>", &["dep", "add", "--help"]),
-        ("firetrail link <from> <to>",    &["link", "--help"]),
-        ("firetrail finding  create",     &["finding", "create", "--help"]),
-        ("firetrail incident create",     &["incident", "create", "--help"]),
-        ("firetrail runbook  create",     &["runbook", "create", "--help"]),
-        ("firetrail decision create",     &["decision", "create", "--help"]),
-        ("firetrail gotcha   create",     &["gotcha", "create", "--help"]),
-        ("firetrail capture  --kind",     &["capture", "--help"]),
-        ("firetrail memory review",       &["memory", "review", "--help"]),
-        ("firetrail memory promote",      &["memory", "promote", "--help"]),
-        ("firetrail memory supersede",    &["memory", "supersede", "--help"]),
+        ("firetrail epic    create", &["epic", "create", "--help"]),
+        ("firetrail task    create", &["task", "create", "--help"]),
+        ("firetrail subtask create", &["subtask", "create", "--help"]),
+        ("firetrail bug     create", &["bug", "create", "--help"]),
+        ("firetrail criteria add", &["criteria", "add", "--help"]),
+        (
+            "firetrail dep  add <from-id> <to-id>",
+            &["dep", "add", "--help"],
+        ),
+        ("firetrail link <from> <to>", &["link", "--help"]),
+        (
+            "firetrail finding  create",
+            &["finding", "create", "--help"],
+        ),
+        (
+            "firetrail incident create",
+            &["incident", "create", "--help"],
+        ),
+        (
+            "firetrail runbook  create",
+            &["runbook", "create", "--help"],
+        ),
+        (
+            "firetrail decision create",
+            &["decision", "create", "--help"],
+        ),
+        ("firetrail gotcha   create", &["gotcha", "create", "--help"]),
+        ("firetrail capture  --kind", &["capture", "--help"]),
+        ("firetrail memory review", &["memory", "review", "--help"]),
+        ("firetrail memory promote", &["memory", "promote", "--help"]),
+        (
+            "firetrail memory supersede",
+            &["memory", "supersede", "--help"],
+        ),
         ("firetrail check pr <base-ref>", &["check", "pr", "--help"]),
-        ("firetrail verify <id>",         &["verify", "--help"]),
-        ("firetrail diff <base-ref>",     &["diff", "--help"]),
-        ("firetrail claim-takeover",      &["claim-takeover", "--help"]),
-        ("firetrail identity register",   &["identity", "register", "--help"]),
+        ("firetrail verify <id>", &["verify", "--help"]),
+        ("firetrail diff <base-ref>", &["diff", "--help"]),
+        ("firetrail claim-takeover", &["claim-takeover", "--help"]),
+        (
+            "firetrail identity register",
+            &["identity", "register", "--help"],
+        ),
     ];
 
     let mut missing = Vec::new();

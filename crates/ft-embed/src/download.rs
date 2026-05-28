@@ -76,9 +76,7 @@ pub fn default_model_dir(model_id: &str) -> Result<PathBuf, EmbedError> {
         PathBuf::from(over)
     } else {
         let home = std::env::var_os("HOME").ok_or_else(|| {
-            EmbedError::ModelUnavailable(
-                "$HOME unset and $FIRETRAIL_CACHE_HOME not set".into(),
-            )
+            EmbedError::ModelUnavailable("$HOME unset and $FIRETRAIL_CACHE_HOME not set".into())
         })?;
         PathBuf::from(home).join(".cache")
     };
@@ -238,8 +236,7 @@ mod tests {
         let model_id = "bge-small-en-v1.5";
         let expected = base.join("firetrail").join("models").join(model_id);
         assert!(
-            expected
-                .ends_with(PathBuf::from("firetrail/models").join(model_id)),
+            expected.ends_with(PathBuf::from("firetrail/models").join(model_id)),
             "{expected:?}"
         );
     }
@@ -277,7 +274,10 @@ mod tests {
             events.push(format!("{label}:{}", art.filename));
         })
         .expect("reuse");
-        assert!(events.contains(&"reused:tokenizer.json".to_string()), "{events:?}");
+        assert!(
+            events.contains(&"reused:tokenizer.json".to_string()),
+            "{events:?}"
+        );
         assert!(events.contains(&"verifying:tokenizer.json".to_string()));
         assert_eq!(report.artifacts.len(), 1);
         assert!(!report.artifacts[0].downloaded);

@@ -380,7 +380,9 @@ mod tests {
         // Pre-populate the cache via a different embedder identity.
         cache.insert("other-model", "1", "h", &[1.0; 16]).unwrap();
         let svc = EmbedService::new(MockEmbedder::new(0, 16), cache);
-        let r = svc.detect_drift(10, 0.999, |_| Some("alpha".to_string())).unwrap();
+        let r = svc
+            .detect_drift(10, 0.999, |_| Some("alpha".to_string()))
+            .unwrap();
         assert_eq!(r.sampled, 1);
         assert_eq!(r.compared, 0);
         assert_eq!(r.skipped, 1);

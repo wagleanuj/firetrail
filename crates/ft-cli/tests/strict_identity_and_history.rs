@@ -162,10 +162,7 @@ fn non_strict_mode_allows_unregistered_actor() {
 #[test]
 fn task_create_seeds_history_with_create_entry() {
     let tr = fresh_repo();
-    let out = run_firetrail(
-        tr.root(),
-        &["--json", "task", "create", "h"],
-    );
+    let out = run_firetrail(tr.root(), &["--json", "task", "create", "h"]);
     assert!(out.success(), "create failed: {}", out.stderr);
     let v = parse_json(&out);
     let env = &v["data"]["record"]["envelope"];
@@ -210,10 +207,7 @@ fn update_chains_prev_state_hash_and_appends_history() {
         .to_string();
 
     // First update.
-    let up1 = run_firetrail(
-        tr.root(),
-        &["--json", "update", &id, "--title", "v2"],
-    );
+    let up1 = run_firetrail(tr.root(), &["--json", "update", &id, "--title", "v2"]);
     assert!(up1.success(), "update 1 failed: {}", up1.stderr);
     let v1 = parse_json(&up1);
     let env1 = &v1["data"]["record"]["envelope"];
@@ -230,15 +224,15 @@ fn update_chains_prev_state_hash_and_appends_history() {
         Some(create_to_hash.as_str()),
         "prev_state_hash must equal history[0].to_hash after first update",
     );
-    assert_eq!(history1[1]["from_hash"].as_str(), Some(create_to_hash.as_str()));
+    assert_eq!(
+        history1[1]["from_hash"].as_str(),
+        Some(create_to_hash.as_str())
+    );
     // state_hash must change relative to the create hash.
     assert_ne!(env1["state_hash"].as_str().unwrap(), hash_after_create);
 
     // Second update.
-    let up2 = run_firetrail(
-        tr.root(),
-        &["--json", "update", &id, "--priority", "p1"],
-    );
+    let up2 = run_firetrail(tr.root(), &["--json", "update", &id, "--priority", "p1"]);
     assert!(up2.success(), "update 2 failed: {}", up2.stderr);
     let v2 = parse_json(&up2);
     let env2 = &v2["data"]["record"]["envelope"];
@@ -249,7 +243,8 @@ fn update_chains_prev_state_hash_and_appends_history() {
         let prior_to = history2[i - 1]["to_hash"].as_str().unwrap();
         let this_from = history2[i]["from_hash"].as_str().unwrap();
         assert_eq!(
-            this_from, prior_to,
+            this_from,
+            prior_to,
             "history[{i}].from_hash must equal history[{}].to_hash; broken chain",
             i - 1,
         );

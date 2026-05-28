@@ -173,7 +173,12 @@ fn unclaim_takeover_on_expired_releases_claim() {
     let bin = env!("CARGO_BIN_EXE_firetrail");
     let out = Command::new(bin)
         .args([
-            "--json", "unclaim", &id, "--takeover", "--reason", "expired",
+            "--json",
+            "unclaim",
+            &id,
+            "--takeover",
+            "--reason",
+            "expired",
         ])
         .current_dir(tr.root())
         .env("FIRETRAIL_AUTHOR", "other@firetrail.test")
@@ -214,9 +219,7 @@ fn unclaim_takeover_on_live_without_admin_fails() {
     run_firetrail(tr.root(), &["claim", &id]);
     let bin = env!("CARGO_BIN_EXE_firetrail");
     let out = Command::new(bin)
-        .args([
-            "--json", "unclaim", &id, "--takeover", "--reason", "stale",
-        ])
+        .args(["--json", "unclaim", &id, "--takeover", "--reason", "stale"])
         .current_dir(tr.root())
         .env("FIRETRAIL_AUTHOR", "other@firetrail.test")
         .output()

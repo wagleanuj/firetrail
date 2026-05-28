@@ -147,13 +147,7 @@ fn update_can_edit_description() {
     let id = id_from_create(&create);
     let out = run_firetrail(
         tr.root(),
-        &[
-            "--json",
-            "update",
-            &id,
-            "--description",
-            "v2 - refined",
-        ],
+        &["--json", "update", &id, "--description", "v2 - refined"],
     );
     assert!(out.success(), "update --description failed: {}", out.stderr);
     let v = parse_json(&out);

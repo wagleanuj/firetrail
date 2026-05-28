@@ -110,7 +110,8 @@ pub fn embeddings(
         digest.update(line.as_bytes());
         digest.update(b"\n");
         writeln!(out, "{line}").map_err(|e| CliError::internal(CMD, e.to_string()))?;
-        out.flush().map_err(|e| CliError::internal(CMD, e.to_string()))?;
+        out.flush()
+            .map_err(|e| CliError::internal(CMD, e.to_string()))?;
         written += 1;
     }
 
@@ -243,4 +244,3 @@ impl MigrateEmbeddingsOutcome {
         )
     }
 }
-

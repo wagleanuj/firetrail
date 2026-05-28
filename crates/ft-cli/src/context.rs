@@ -239,13 +239,12 @@ impl WorkCtx {
         // entry; subsequent writes get an `Update` entry. Callers that need
         // a specific kind (TrustTransition, Close, Reopen, …) route through
         // [`Self::save_record_with_history`].
-        let kind = if record.envelope.history.is_empty()
-            && record.envelope.prev_state_hash.is_none()
-        {
-            HistoryEntryKind::Create
-        } else {
-            HistoryEntryKind::Update
-        };
+        let kind =
+            if record.envelope.history.is_empty() && record.envelope.prev_state_hash.is_none() {
+                HistoryEntryKind::Create
+            } else {
+                HistoryEntryKind::Update
+            };
         let kind_tag = record.envelope.kind.prefix().to_ascii_lowercase();
         let summary = match kind {
             HistoryEntryKind::Create => format!("{kind_tag} created via `{}`", self.command),
@@ -316,8 +315,7 @@ impl WorkCtx {
             Ok(s) => s,
             Err(e) => {
                 tracing::warn!(error = %e, command = %self.command, "resolve daemon socket path");
-                self.warnings
-                    .push(format!("embed-on-write skipped: {e}"));
+                self.warnings.push(format!("embed-on-write skipped: {e}"));
                 return;
             }
         };
@@ -329,8 +327,7 @@ impl WorkCtx {
             ft_embed::daemon::send_index_record(&socket, record.envelope.id.as_str(), &text)
         {
             tracing::warn!(error = %e, command = %self.command, "embed-on-write dispatch failed");
-            self.warnings
-                .push(format!("embed-on-write skipped: {e}"));
+            self.warnings.push(format!("embed-on-write skipped: {e}"));
         }
     }
 
@@ -524,10 +521,7 @@ fn strict_identity_enabled(root: &Path) -> bool {
         Ok(v) => v,
         Err(_) => return false,
     };
-    parsed
-        .identity
-        .and_then(|i| i.strict)
-        .unwrap_or(false)
+    parsed.identity.and_then(|i| i.strict).unwrap_or(false)
 }
 
 /// Parse a `key=value` label argument; returns the (key, value) pair or a user

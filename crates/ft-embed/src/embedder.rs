@@ -183,7 +183,8 @@ impl OnnxEmbedder {
         model_version: impl Into<String>,
         dim: usize,
     ) -> Result<Self, EmbedError> {
-        let inner = crate::onnx::OnnxBackend::load_from_dir(model_dir, model_id, model_version, dim)?;
+        let inner =
+            crate::onnx::OnnxBackend::load_from_dir(model_dir, model_id, model_version, dim)?;
         Ok(Self { inner })
     }
 
@@ -191,7 +192,12 @@ impl OnnxEmbedder {
     /// Equivalent to [`Self::load_dir`] with the canonical model id.
     #[cfg(feature = "onnx")]
     pub fn load_bge_small(model_dir: &std::path::Path) -> Result<Self, EmbedError> {
-        Self::load_dir(model_dir, crate::onnx::BGE_SMALL_EN_V15_ID, "1", crate::onnx::BGE_SMALL_EN_V15_DIM)
+        Self::load_dir(
+            model_dir,
+            crate::onnx::BGE_SMALL_EN_V15_ID,
+            "1",
+            crate::onnx::BGE_SMALL_EN_V15_DIM,
+        )
     }
 
     /// Stub constructor used when the `onnx` feature is **disabled**.

@@ -253,7 +253,10 @@ fn run_walkthrough(resolved: &mut ResolvedInit, report: &mut InitReport) -> Resu
 }
 
 fn git_config_get(key: &str) -> Option<String> {
-    let out = Command::new("git").args(["config", "--get", key]).output().ok()?;
+    let out = Command::new("git")
+        .args(["config", "--get", key])
+        .output()
+        .ok()?;
     if !out.status.success() {
         return None;
     }
@@ -448,19 +451,24 @@ pub fn run(args: &InitArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliEr
             eprintln!("model: {label} {} ({} bytes)", art.filename, art.size_bytes);
         }) {
             Ok(rep) => {
-                report.created.push(format!(
-                    "model:{}",
-                    rep.model_dir.display()
-                ));
+                report
+                    .created
+                    .push(format!("model:{}", rep.model_dir.display()));
                 for a in rep.artifacts {
                     let status = if a.downloaded {
-                        if a.verified { "downloaded+verified" } else { "downloaded" }
+                        if a.verified {
+                            "downloaded+verified"
+                        } else {
+                            "downloaded"
+                        }
                     } else if a.verified {
                         "reused+verified"
                     } else {
                         "reused"
                     };
-                    report.created.push(format!("  - {} ({status})", a.filename));
+                    report
+                        .created
+                        .push(format!("  - {} ({status})", a.filename));
                 }
             }
             Err(e) => {

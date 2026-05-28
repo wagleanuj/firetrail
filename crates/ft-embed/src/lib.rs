@@ -45,9 +45,7 @@ pub use cache::{
     CacheError, EmbeddingCache, IntegrityIssue, IntegrityReport, SampleRow, repo_cache_dir,
     repo_cache_dir_under, repo_identity,
 };
-pub use config::{
-    BuiltEmbedder, EmbeddingsConfig, Fallback, Provider, build_embedder,
-};
+pub use config::{BuiltEmbedder, EmbeddingsConfig, Fallback, Provider, build_embedder};
 pub use daemon::{
     DaemonLock, DaemonStatus, EmbedRequest, EmbedResponse, RecordIndexer, ServeOptions,
 };

@@ -465,15 +465,15 @@ fn check_cache_integrity(ws: &workspace::Workspace, checks: &mut Vec<CheckResult
             return;
         }
     };
-    let hint_remove = format!(
-        "remove `{}` to force a rebuild",
-        cache_db.display()
-    );
+    let hint_remove = format!("remove `{}` to force a rebuild", cache_db.display());
     if !cache_db.exists() {
         checks.push(CheckResult::ok(
             "embed.cache",
             "Embedding cache",
-            format!("no cache yet at {} (will be created on first use)", cache_db.display()),
+            format!(
+                "no cache yet at {} (will be created on first use)",
+                cache_db.display()
+            ),
         ));
         return;
     }

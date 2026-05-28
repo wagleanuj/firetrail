@@ -98,9 +98,8 @@ impl OnnxBackend {
             .commit_from_file(&model_path)
             .map_err(|e| EmbedError::ModelUnavailable(format!("ort load model: {e}")))?;
 
-        let tokenizer = Tokenizer::from_file(&tokenizer_path).map_err(|e| {
-            EmbedError::ModelUnavailable(format!("load tokenizer.json: {e}"))
-        })?;
+        let tokenizer = Tokenizer::from_file(&tokenizer_path)
+            .map_err(|e| EmbedError::ModelUnavailable(format!("load tokenizer.json: {e}")))?;
 
         Ok(Self {
             session: Mutex::new(session),

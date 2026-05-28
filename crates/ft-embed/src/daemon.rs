@@ -247,9 +247,7 @@ pub fn send_index_record(socket_path: &Path, id: &str, text: &str) -> Result<(),
     match read_frame::<EmbedResponse>(&mut s)? {
         EmbedResponse::Indexed => Ok(()),
         EmbedResponse::Err { message } => Err(EmbedError::Inference(message)),
-        _ => Err(EmbedError::Protocol(
-            "expected Indexed ack".to_string(),
-        )),
+        _ => Err(EmbedError::Protocol("expected Indexed ack".to_string())),
     }
 }
 
@@ -480,7 +478,10 @@ mod tests {
             .unwrap();
         });
 
-        assert!(wait_for(|| status(&sock) == DaemonStatus::Running, Duration::from_secs(2)));
+        assert!(wait_for(
+            || status(&sock) == DaemonStatus::Running,
+            Duration::from_secs(2)
+        ));
         let v = send_embed(&sock, "hello daemon").unwrap();
         assert_eq!(v.len(), 16);
 
@@ -564,7 +565,10 @@ mod tests {
             );
             flag2.store(true, Ordering::SeqCst);
         });
-        assert!(wait_for(|| status(&sock) == DaemonStatus::Running, Duration::from_secs(2)));
+        assert!(wait_for(
+            || status(&sock) == DaemonStatus::Running,
+            Duration::from_secs(2)
+        ));
         send_shutdown(&sock).unwrap();
         h.join().unwrap();
         assert!(stop_flag.load(Ordering::SeqCst));
@@ -578,7 +582,10 @@ mod tests {
         struct CapturingIndexer(Mutex<Vec<(String, usize)>>);
         impl RecordIndexer for CapturingIndexer {
             fn upsert_vector(&self, id: &str, embedding: &[f32]) -> Result<(), String> {
-                self.0.lock().unwrap().push((id.to_string(), embedding.len()));
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push((id.to_string(), embedding.len()));
                 Ok(())
             }
         }
@@ -604,7 +611,10 @@ mod tests {
             .unwrap();
         });
 
-        assert!(wait_for(|| status(&sock) == DaemonStatus::Running, Duration::from_secs(2)));
+        assert!(wait_for(
+            || status(&sock) == DaemonStatus::Running,
+            Duration::from_secs(2)
+        ));
 
         let started = Instant::now();
         super::send_index_record(&sock, "task-001", "hello index").unwrap();
@@ -643,7 +653,10 @@ mod tests {
             .unwrap();
         });
 
-        assert!(wait_for(|| status(&sock) == DaemonStatus::Running, Duration::from_secs(2)));
+        assert!(wait_for(
+            || status(&sock) == DaemonStatus::Running,
+            Duration::from_secs(2)
+        ));
 
         let err = super::send_index_record(&sock, "t-1", "x").unwrap_err();
         match err {

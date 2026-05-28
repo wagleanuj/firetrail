@@ -397,8 +397,11 @@ fn search_hybrid_with_dead_daemon_reports_lexical_mode() {
     let tr = fresh_repo();
     let cfg_path = tr.root().join(".firetrail").join("config.yml");
     let cfg = std::fs::read_to_string(&cfg_path).expect("read config.yml");
-    std::fs::write(&cfg_path, cfg.replace("provider: mock", "provider: lexical"))
-        .expect("rewrite provider to lexical");
+    std::fs::write(
+        &cfg_path,
+        cfg.replace("provider: mock", "provider: lexical"),
+    )
+    .expect("rewrite provider to lexical");
     let _ = create_two_records(tr.root());
 
     let out = run_firetrail(

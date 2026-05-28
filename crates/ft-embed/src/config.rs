@@ -111,12 +111,8 @@ impl EmbeddingsConfig {
             return Ok(Self::default());
         }
         let raw = std::fs::read_to_string(&path)?;
-        let parsed: WorkspaceConfigFile = serde_yaml::from_str(&raw).map_err(|e| {
-            EmbedError::Protocol(format!(
-                "parse {}: {e}",
-                path.display()
-            ))
-        })?;
+        let parsed: WorkspaceConfigFile = serde_yaml::from_str(&raw)
+            .map_err(|e| EmbedError::Protocol(format!("parse {}: {e}", path.display())))?;
         Ok(parsed.embeddings.unwrap_or_default().resolve())
     }
 }

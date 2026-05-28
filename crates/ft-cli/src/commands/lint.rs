@@ -238,8 +238,11 @@ impl LintMemoryOutcome {
                     f.severity, f.rule, f.record_id, f.message
                 );
             }
-            let with_hints: Vec<&LintFinding> =
-                self.findings.iter().filter(|f| f.suggested_fix.is_some()).collect();
+            let with_hints: Vec<&LintFinding> = self
+                .findings
+                .iter()
+                .filter(|f| f.suggested_fix.is_some())
+                .collect();
             if !with_hints.is_empty() {
                 s.push_str("\n## Suggested fixes\n\n");
                 for f in with_hints {

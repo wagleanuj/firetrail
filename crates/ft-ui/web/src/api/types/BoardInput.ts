@@ -11,4 +11,9 @@ scope: string | null,
 /**
  * Filter by owner.
  */
-owner: string | null, };
+owner: string | null, 
+/**
+ * When `true`, only return unblocked records (delegates to the ready
+ * index query). Mirrors the `?ready=true` flag on `/api/tickets`.
+ */
+ready: boolean, };

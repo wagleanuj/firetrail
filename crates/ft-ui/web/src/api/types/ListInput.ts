@@ -30,4 +30,11 @@ limit: bigint | null,
 /**
  * Skip the first N results.
  */
-offset: bigint | null, };
+offset: bigint | null, 
+/**
+ * When `true`, returns only unblocked records (records that have no
+ * open blockers and no active claim). Mirrors the CLI's
+ * `firetrail ready` command. When set, the `status` and `offset`
+ * filters are ignored (the index's ready query has its own gating).
+ */
+ready: boolean, };

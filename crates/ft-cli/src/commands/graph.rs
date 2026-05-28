@@ -48,7 +48,7 @@ pub fn run(args: &GraphArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliE
     }
     // Sort children for stable snapshots.
     for v in children.values_mut() {
-        v.sort_by(|a, b| (a.kind.clone(), a.id.clone()).cmp(&(b.kind.clone(), b.id.clone())));
+        v.sort_by_key(|a| (a.kind.clone(), a.id.clone()));
     }
 
     let reason = if children.is_empty() {

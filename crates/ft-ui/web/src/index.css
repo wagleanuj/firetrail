@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Light theme — restrained, but rarely used. */
+    --background: 0 0% 100%;
+    --foreground: 220 13% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 13% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 13% 12%;
+    --primary: 199 89% 42%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 220 13% 12%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 40%;
+    --accent: 220 14% 96%;
+    --accent-foreground: 220 13% 12%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 13% 88%;
+    --input: 220 13% 88%;
+    --ring: 199 89% 48%;
+
+    --success: 152 64% 52%;
+    --warning: 41 96% 56%;
+    --danger: 0 86% 73%;
+
+    --radius: 0.625rem;
+  }
+
+  .dark {
+    /* Dark dev-tools palette — JetBrains/Linear-ish with cyan accent. */
+    --background: 220 13% 9%;
+    --foreground: 220 14% 90%;
+    --card: 220 13% 11%;
+    --card-foreground: 220 14% 90%;
+    --popover: 220 13% 11%;
+    --popover-foreground: 220 14% 90%;
+    --primary: 199 89% 48%;
+    --primary-foreground: 220 13% 9%;
+    --secondary: 220 13% 16%;
+    --secondary-foreground: 220 14% 90%;
+    --muted: 220 13% 14%;
+    --muted-foreground: 220 9% 60%;
+    --accent: 220 13% 16%;
+    --accent-foreground: 220 14% 90%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 220 14% 90%;
+    --border: 220 13% 18%;
+    --input: 220 13% 18%;
+    --ring: 199 89% 48%;
+
+    --success: 152 64% 52%;
+    --warning: 41 96% 56%;
+    --danger: 0 86% 73%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html,
+  body,
+  #root {
+    @apply h-full;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+  code,
+  pre,
+  kbd,
+  samp {
+    @apply font-mono;
+  }
+}

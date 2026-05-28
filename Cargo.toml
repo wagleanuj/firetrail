@@ -17,6 +17,8 @@ members = [
     "crates/ft-git",
     "crates/ft-cli",
     "crates/ft-testkit",
+    "crates/ft-ui",
+    "xtask",
 ]
 
 [workspace.package]
@@ -68,6 +70,9 @@ globset = "0.4"
 
 # Async runtime (embedding daemon, added in M3)
 tokio = { version = "1", features = ["full"] }
+
+# HTTP server (ft-ui)
+axum = "0.7"
 
 # Testing
 proptest = "1.5"

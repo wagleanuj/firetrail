@@ -59,3 +59,42 @@ jobs:
       # Placeholder for the scenario suite, added in E-M1-10.
       # - name: Scenario suite
       #   run: cargo nextest run -p ft-testkit --test scenarios
+
+  ui:
+    name: ui (web)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
+      - name: Install web deps
+        run: pnpm -C crates/ft-ui/web install --frozen-lockfile=false
+
+      - name: Verify ts-rs bindings are up to date
+        run: cargo xtask check-ts
+
+      - name: Typecheck
+        run: pnpm -C crates/ft-ui/web typecheck
+
+      - name: Build web bundle
+        run: pnpm -C crates/ft-ui/web build
+
+      - name: Unit tests
+        run: pnpm -C crates/ft-ui/web test

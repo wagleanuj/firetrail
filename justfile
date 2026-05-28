@@ -53,3 +53,33 @@ schema:
 # Clean target/ and incremental caches.
 clean:
     cargo clean
+
+# --- UI (firetrail GUI) ---
+
+# Run Vite (5173) and ft-ui (5174) concurrently. Ctrl-C stops both.
+ui-dev:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    trap 'kill 0' INT TERM
+    (cd crates/ft-ui/web && pnpm dev) &
+    cargo run -p ft-ui -- --workspace "$(pwd)" --bind 127.0.0.1:5174 --dev --foreground &
+    wait
+
+# Build the web bundle and the ft-ui binary with bundled assets.
+ui-build:
+    pnpm -C crates/ft-ui/web install
+    pnpm -C crates/ft-ui/web build
+    cargo build -p ft-ui --features bundled-ui --release
+
+# Build + run the production server.
+ui:
+    just ui-build
+    cargo run -p ft-ui --features bundled-ui --release -- --workspace "$(pwd)"
+
+# Regenerate the TypeScript wire types from ft-ops.
+ui-gen-ts:
+    cargo xtask gen-ts
+
+# Fail if committed TS bindings drift from ft-ops's source of truth.
+ui-check-ts:
+    cargo xtask check-ts

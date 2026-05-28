@@ -10,11 +10,20 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as MemoryIndexRouteImport } from './routes/memory/index'
 import { Route as TicketsIdRouteImport } from './routes/tickets/$id'
+import { Route as MemorySearchRouteImport } from './routes/memory/search'
+import { Route as MemorySalvageRouteImport } from './routes/memory/salvage'
+import { Route as MemoryIdRouteImport } from './routes/memory/$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MemoryIndexRoute = MemoryIndexRouteImport.update({
+  id: '/memory/',
+  path: '/memory/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TicketsIdRoute = TicketsIdRouteImport.update({
@@ -22,31 +31,81 @@ const TicketsIdRoute = TicketsIdRouteImport.update({
   path: '/tickets/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MemorySearchRoute = MemorySearchRouteImport.update({
+  id: '/memory/search',
+  path: '/memory/search',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MemorySalvageRoute = MemorySalvageRouteImport.update({
+  id: '/memory/salvage',
+  path: '/memory/salvage',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MemoryIdRoute = MemoryIdRouteImport.update({
+  id: '/memory/$id',
+  path: '/memory/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/memory/$id': typeof MemoryIdRoute
+  '/memory/salvage': typeof MemorySalvageRoute
+  '/memory/search': typeof MemorySearchRoute
   '/tickets/$id': typeof TicketsIdRoute
+  '/memory/': typeof MemoryIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/memory/$id': typeof MemoryIdRoute
+  '/memory/salvage': typeof MemorySalvageRoute
+  '/memory/search': typeof MemorySearchRoute
   '/tickets/$id': typeof TicketsIdRoute
+  '/memory': typeof MemoryIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/memory/$id': typeof MemoryIdRoute
+  '/memory/salvage': typeof MemorySalvageRoute
+  '/memory/search': typeof MemorySearchRoute
   '/tickets/$id': typeof TicketsIdRoute
+  '/memory/': typeof MemoryIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/tickets/$id'
+  fullPaths:
+    | '/'
+    | '/memory/$id'
+    | '/memory/salvage'
+    | '/memory/search'
+    | '/tickets/$id'
+    | '/memory/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/tickets/$id'
-  id: '__root__' | '/' | '/tickets/$id'
+  to:
+    | '/'
+    | '/memory/$id'
+    | '/memory/salvage'
+    | '/memory/search'
+    | '/tickets/$id'
+    | '/memory'
+  id:
+    | '__root__'
+    | '/'
+    | '/memory/$id'
+    | '/memory/salvage'
+    | '/memory/search'
+    | '/tickets/$id'
+    | '/memory/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  MemoryIdRoute: typeof MemoryIdRoute
+  MemorySalvageRoute: typeof MemorySalvageRoute
+  MemorySearchRoute: typeof MemorySearchRoute
   TicketsIdRoute: typeof TicketsIdRoute
+  MemoryIndexRoute: typeof MemoryIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -58,6 +117,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/memory/': {
+      id: '/memory/'
+      path: '/memory'
+      fullPath: '/memory/'
+      preLoaderRoute: typeof MemoryIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/tickets/$id': {
       id: '/tickets/$id'
       path: '/tickets/$id'
@@ -65,12 +131,37 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TicketsIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/memory/search': {
+      id: '/memory/search'
+      path: '/memory/search'
+      fullPath: '/memory/search'
+      preLoaderRoute: typeof MemorySearchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/memory/salvage': {
+      id: '/memory/salvage'
+      path: '/memory/salvage'
+      fullPath: '/memory/salvage'
+      preLoaderRoute: typeof MemorySalvageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/memory/$id': {
+      id: '/memory/$id'
+      path: '/memory/$id'
+      fullPath: '/memory/$id'
+      preLoaderRoute: typeof MemoryIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  MemoryIdRoute: MemoryIdRoute,
+  MemorySalvageRoute: MemorySalvageRoute,
+  MemorySearchRoute: MemorySearchRoute,
   TicketsIdRoute: TicketsIdRoute,
+  MemoryIndexRoute: MemoryIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

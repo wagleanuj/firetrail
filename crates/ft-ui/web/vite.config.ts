@@ -31,7 +31,37 @@ export default defineConfig({
       },
     },
   },
-  build: { outDir: 'dist', emptyOutDir: true },
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+    // Split vendor chunks. W1-C's bundle report flagged a single 500kB+
+    // chunk; W2-C breaks the heavyweight deps out so each piece can be
+    // cached independently and the initial route doesn't pay for them all.
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          if (!id.includes('node_modules')) return undefined
+          if (id.includes('highlight.js') || id.includes('lowlight')) {
+            return 'highlight-vendor'
+          }
+          if (id.includes('@tiptap') || id.includes('tiptap-markdown') || id.includes('prosemirror')) {
+            return 'tiptap-vendor'
+          }
+          if (id.includes('@dnd-kit')) return 'dnd-vendor'
+          if (id.includes('@radix-ui')) return 'radix-vendor'
+          if (
+            id.includes('react-dom') ||
+            id.includes('@tanstack/react-query') ||
+            id.includes('@tanstack/react-router') ||
+            /\/react\//.test(id)
+          ) {
+            return 'react-vendor'
+          }
+          return undefined
+        },
+      },
+    },
+  },
   test: {
     environment: 'jsdom',
     globals: true,

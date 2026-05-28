@@ -229,3 +229,150 @@ fn outside_git_repo_returns_user_error_envelope() {
     assert_eq!(v["error"]["code"], 1);
     assert_eq!(v["error"]["kind"], "user_error");
 }
+
+// ── interactive walkthrough ─────────────────────────────────────────────────
+
+use std::io::Write;
+use std::process::Stdio;
+
+/// Drive `firetrail init` through the interactive walkthrough by piping
+/// scripted stdin and setting `FIRETRAIL_FORCE_TTY=1` so the prompt
+/// helpers engage even though `cargo test` doesn't allocate a pty.
+fn run_init_interactive(root: &Path, script: &str, args: &[&str]) -> CmdOutput {
+    let bin = env!("CARGO_BIN_EXE_firetrail");
+    let mut cmd = Command::new(bin);
+    let mut full = vec!["init"];
+    full.extend(args.iter().copied());
+    let mut child = cmd
+        .args(&full)
+        .current_dir(root)
+        .env("FIRETRAIL_FORCE_TTY", "1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn firetrail");
+    child
+        .stdin
+        .as_mut()
+        .expect("stdin")
+        .write_all(script.as_bytes())
+        .expect("write stdin");
+    let output = child.wait_with_output().expect("wait firetrail");
+    CmdOutput {
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        status: output.status,
+    }
+}
+
+#[test]
+fn init_interactive_accepts_all_defaults_and_skips_identity() {
+    let tr = TestRepo::new().unwrap();
+    std::fs::remove_dir_all(tr.firetrail_dir()).unwrap();
+
+    // Script: storage external? N, register identity? N, hooks? Y, agents? Y,
+    // download model? N. (Defaults all accepted via blank lines also work,
+    // but explicit answers make the test self-documenting.)
+    let script = "n\nn\ny\ny\nn\n";
+    let out = run_init_interactive(tr.root(), script, &["--json", "--interactive"]);
+    assert!(out.success(), "init failed: {}", out.stderr);
+
+    let v: serde_json::Value = serde_json::from_str(&out.stdout).expect("init --json");
+    assert_eq!(v["command"], "init");
+    assert!(tr.firetrail_dir().join("config.yml").exists());
+    assert!(tr.firetrail_dir().join("identity.yml").exists());
+
+    // Identity should NOT have been registered.
+    let identities = tr.firetrail_dir().join("identities.yaml");
+    if identities.exists() {
+        let body = std::fs::read_to_string(&identities).unwrap();
+        assert!(
+            !body.contains("kind: human"),
+            "no identity should be registered: {body}"
+        );
+    }
+}
+
+#[test]
+fn init_interactive_registers_identity_from_git_config() {
+    let tr = TestRepo::new().unwrap();
+    std::fs::remove_dir_all(tr.firetrail_dir()).unwrap();
+
+    // Seed git config so the walkthrough can pre-populate.
+    Command::new("git")
+        .args(["config", "user.email", "alice@example.com"])
+        .current_dir(tr.root())
+        .status()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Alice"])
+        .current_dir(tr.root())
+        .status()
+        .unwrap();
+
+    // Script: external? N, register? Y, id default (blank), name default
+    // (blank), strict? N, hooks? Y, agents? Y, model? N.
+    let script = "n\ny\n\n\nn\ny\ny\nn\n";
+    let out = run_init_interactive(tr.root(), script, &["--json", "--interactive"]);
+    assert!(out.success(), "init failed: {}", out.stderr);
+
+    let v: serde_json::Value = serde_json::from_str(&out.stdout).expect("init --json");
+    let created = v["data"]["created"].as_array().expect("created array");
+    let has_identity = created
+        .iter()
+        .any(|c| c.as_str().is_some_and(|s| s.starts_with("identity:alice")));
+    assert!(has_identity, "expected identity:alice in created: {created:?}");
+
+    // The registry file should now exist with alice.
+    let registry_path = tr.firetrail_dir().join("identities.yaml");
+    assert!(registry_path.exists(), "identities.yaml not written");
+    let body = std::fs::read_to_string(&registry_path).unwrap();
+    assert!(body.contains("alice@example.com"), "email missing: {body}");
+}
+
+#[test]
+fn init_non_interactive_flag_suppresses_prompts_even_with_force_tty() {
+    let tr = TestRepo::new().unwrap();
+    std::fs::remove_dir_all(tr.firetrail_dir()).unwrap();
+
+    // FIRETRAIL_FORCE_TTY=1 would normally engage prompts, but
+    // --non-interactive must override. We pipe no stdin script and assert
+    // success — if prompts engaged, stdin EOF would still return defaults,
+    // but the test verifies no identity registration happened (which only
+    // the walkthrough offers).
+    let bin = env!("CARGO_BIN_EXE_firetrail");
+    let out = Command::new(bin)
+        .args(["init", "--json", "--non-interactive"])
+        .current_dir(tr.root())
+        .env("FIRETRAIL_FORCE_TTY", "1")
+        .output()
+        .expect("spawn firetrail");
+    assert!(out.status.success(), "init failed: {out:?}");
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let created = v["data"]["created"].as_array().expect("created");
+    let has_identity = created
+        .iter()
+        .any(|c| c.as_str().is_some_and(|s| s.starts_with("identity:")));
+    assert!(!has_identity, "no identity should auto-register: {created:?}");
+}
+
+#[test]
+fn init_with_behavior_flag_skips_auto_interactive() {
+    let tr = TestRepo::new().unwrap();
+    std::fs::remove_dir_all(tr.firetrail_dir()).unwrap();
+
+    // Passing --no-agents must take init off the auto-interactive path
+    // even with FIRETRAIL_FORCE_TTY=1. No stdin script provided; success
+    // implies init did not block waiting for input.
+    let bin = env!("CARGO_BIN_EXE_firetrail");
+    let out = Command::new(bin)
+        .args(["init", "--json", "--no-agents"])
+        .current_dir(tr.root())
+        .env("FIRETRAIL_FORCE_TTY", "1")
+        .output()
+        .expect("spawn firetrail");
+    assert!(out.status.success(), "init failed: stderr={:?}", out.stderr);
+}

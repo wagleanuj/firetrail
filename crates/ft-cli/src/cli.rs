@@ -1406,6 +1406,16 @@ pub struct InitArgs {
     /// ADR-0011).
     #[arg(long)]
     pub download_model: bool,
+
+    /// Walk the operator through the choices above with prompts. Default:
+    /// auto-on when stdin/stdout are TTYs and no behaviour flags were
+    /// passed. Pass `--non-interactive` to force off.
+    #[arg(long, conflicts_with = "non_interactive")]
+    pub interactive: bool,
+
+    /// Force non-interactive mode even on a TTY. Useful in scripts.
+    #[arg(long, conflicts_with = "interactive")]
+    pub non_interactive: bool,
 }
 
 /// Arguments for `firetrail doctor`.

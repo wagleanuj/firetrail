@@ -16,6 +16,7 @@
 //! customisations.
 
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use ft_git::{HookName, Repo};
 use ft_index::Index;
@@ -25,6 +26,7 @@ use serde::Serialize;
 use crate::cli::{GlobalOpts, InitArgs, StorageModeArg};
 use crate::commands::CommandOutcome;
 use crate::error::CliError;
+use crate::prompt;
 use crate::workspace;
 
 const COMMAND: &str = "init";
@@ -88,6 +90,183 @@ impl InitReport {
     }
 }
 
+/// Resolved init choices after any interactive walkthrough. Behaviour
+/// downstream of [`run_walkthrough`] reads only this struct, not
+/// [`InitArgs`].
+#[derive(Debug, Clone)]
+#[allow(clippy::struct_excessive_bools)]
+struct ResolvedInit {
+    storage_mode: StorageModeArg,
+    data_repo_url: Option<String>,
+    pilot: Option<String>,
+    strict_identity: bool,
+    no_agents: bool,
+    no_hooks: bool,
+    download_model: bool,
+    /// When `Some`, register this identity (id, email, name) into the
+    /// registry after the workspace skeleton is created.
+    register_identity: Option<(String, String, String)>,
+}
+
+impl ResolvedInit {
+    fn from_args(args: &InitArgs) -> Self {
+        Self {
+            storage_mode: args.storage_mode,
+            data_repo_url: args.data_repo_url.clone(),
+            pilot: args.pilot.clone(),
+            strict_identity: args.strict_identity,
+            no_agents: args.no_agents,
+            no_hooks: args.no_hooks,
+            download_model: args.download_model,
+            register_identity: None,
+        }
+    }
+}
+
+/// Decide whether to enter the interactive walkthrough.
+///
+/// Rules:
+/// - `--non-interactive` → never.
+/// - `--interactive` → always (errors if stdin is not a TTY).
+/// - Otherwise → only when stdin+stdout are TTYs AND no behaviour flags
+///   were passed (so `firetrail init --no-agents` stays scriptable).
+fn should_prompt(args: &InitArgs) -> bool {
+    if args.non_interactive {
+        return false;
+    }
+    let any_behavior_flag = matches!(args.storage_mode, StorageModeArg::External)
+        || args.data_repo_url.is_some()
+        || args.pilot.is_some()
+        || args.strict_identity
+        || args.no_agents
+        || args.no_hooks
+        || args.download_model;
+    if args.interactive {
+        return true;
+    }
+    prompt::is_interactive() && !any_behavior_flag
+}
+
+/// Walk the operator through the init choices. Mutates `resolved` in place
+/// and records each prompt's outcome under `warnings` for the JSON envelope.
+fn run_walkthrough(resolved: &mut ResolvedInit, report: &mut InitReport) -> Result<(), CliError> {
+    use std::io::Write as _;
+
+    let mut stderr = std::io::stderr().lock();
+    let _ = writeln!(
+        stderr,
+        "\nfiretrail init — interactive walkthrough (press Enter to accept defaults)\n"
+    );
+    drop(stderr);
+
+    // 1. Storage mode.
+    let external = prompt::ask_yes_no(
+        "Use external storage (records live in a separate repo)?",
+        false,
+    )
+    .map_err(|e| CliError::internal(COMMAND, format!("prompt: {e}")))?;
+    if external {
+        resolved.storage_mode = StorageModeArg::External;
+        let url = prompt::ask_text("Data repository URL:", None)
+            .map_err(|e| CliError::internal(COMMAND, format!("prompt: {e}")))?;
+        if url.is_empty() {
+            return Err(CliError::user(
+                COMMAND,
+                "external storage requires a data-repo URL",
+            ));
+        }
+        resolved.data_repo_url = Some(url);
+    }
+
+    // 2. Identity registration. Pre-populate from git config.
+    let git_email = git_config_get("user.email").unwrap_or_default();
+    let git_name = git_config_get("user.name").unwrap_or_default();
+    let register = prompt::ask_yes_no(
+        &format!(
+            "Register the current git user as a firetrail identity? ({})",
+            if git_email.is_empty() {
+                "no git user.email set"
+            } else {
+                git_email.as_str()
+            }
+        ),
+        !git_email.is_empty(),
+    )
+    .map_err(|e| CliError::internal(COMMAND, format!("prompt: {e}")))?;
+    if register {
+        if git_email.is_empty() {
+            report.warnings.push(
+                "skipped identity registration: `git config user.email` is not set".to_string(),
+            );
+        } else {
+            let default_id = id_from_email(&git_email);
+            let id = prompt::ask_text("Identity id:", Some(&default_id))
+                .map_err(|e| CliError::internal(COMMAND, format!("prompt: {e}")))?;
+            let display_name = prompt::ask_text(
+                "Display name:",
+                Some(if git_name.is_empty() {
+                    id.as_str()
+                } else {
+                    git_name.as_str()
+                }),
+            )
+            .map_err(|e| CliError::internal(COMMAND, format!("prompt: {e}")))?;
+            resolved.register_identity = Some((id, git_email.clone(), display_name));
+        }
+    }
+
+    // 3. Strict identity (only sensible to ask if they did register).
+    if resolved.register_identity.is_some() {
+        let strict = prompt::ask_yes_no(
+            "Reject records authored by unregistered identities (strict mode)?",
+            false,
+        )
+        .map_err(|e| CliError::internal(COMMAND, format!("prompt: {e}")))?;
+        resolved.strict_identity = strict;
+    }
+
+    // 4. Git hooks.
+    let install_hooks = prompt::ask_yes_no(
+        "Install git hooks (pre-commit, post-checkout, post-merge)?",
+        true,
+    )
+    .map_err(|e| CliError::internal(COMMAND, format!("prompt: {e}")))?;
+    resolved.no_hooks = !install_hooks;
+
+    // 5. AGENTS.md + claude skill.
+    let write_agents = prompt::ask_yes_no(
+        "Write AGENTS.md and .claude/skills/firetrail/SKILL.md? (skipped if present)",
+        true,
+    )
+    .map_err(|e| CliError::internal(COMMAND, format!("prompt: {e}")))?;
+    resolved.no_agents = !write_agents;
+
+    // 6. Model download.
+    let download = prompt::ask_yes_no(
+        "Download the ONNX embedding model now? (~134 MiB; mock embedder works without it)",
+        false,
+    )
+    .map_err(|e| CliError::internal(COMMAND, format!("prompt: {e}")))?;
+    resolved.download_model = download;
+
+    Ok(())
+}
+
+fn git_config_get(key: &str) -> Option<String> {
+    let out = Command::new("git").args(["config", "--get", key]).output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let s = String::from_utf8(out.stdout).ok()?.trim().to_string();
+    if s.is_empty() { None } else { Some(s) }
+}
+
+/// Derive a plausible identity id from an email (`alice@example.com` →
+/// `alice`). Falls back to the full email when no `@`.
+fn id_from_email(email: &str) -> String {
+    email.split('@').next().unwrap_or(email).to_string()
+}
+
 /// Entry point.
 #[allow(clippy::too_many_lines)]
 pub fn run(args: &InitArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
@@ -103,8 +282,19 @@ pub fn run(args: &InitArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliEr
         warnings: Vec::new(),
     };
 
-    let external = matches!(args.storage_mode, StorageModeArg::External);
-    if external && args.data_repo_url.is_none() {
+    let mut resolved = ResolvedInit::from_args(args);
+    if should_prompt(args) {
+        if args.interactive && !prompt::is_interactive() {
+            return Err(CliError::user(
+                COMMAND,
+                "--interactive requires a TTY on stdin and stdout",
+            ));
+        }
+        run_walkthrough(&mut resolved, &mut report)?;
+    }
+
+    let external = matches!(resolved.storage_mode, StorageModeArg::External);
+    if external && resolved.data_repo_url.is_none() {
         return Err(CliError::user(
             COMMAND,
             "--storage-mode external requires --data-repo-url <url>",
@@ -130,11 +320,11 @@ pub fn run(args: &InitArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliEr
     } else {
         let yaml = if external {
             external_config_yaml(
-                args.strict_identity,
-                args.data_repo_url.as_deref().unwrap_or(""),
+                resolved.strict_identity,
+                resolved.data_repo_url.as_deref().unwrap_or(""),
             )
         } else {
-            default_config_yaml(args.strict_identity)
+            default_config_yaml(resolved.strict_identity)
         };
         std::fs::write(&config_path, yaml).map_err(|e| CliError::internal(COMMAND, e))?;
         report.created.push(".firetrail/config.yml".into());
@@ -143,7 +333,7 @@ pub fn run(args: &InitArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliEr
     // 2b. scopes.yaml — write a `enabled_scopes` pilot list if requested and
     // the file does not yet exist. The user is expected to fill in the
     // actual scope entries; we only seed the pilot filter.
-    if let Some(pilot) = &args.pilot {
+    if let Some(pilot) = &resolved.pilot {
         let scopes_path = ws.firetrail_dir().join("scopes.yaml");
         if scopes_path.exists() {
             report.preserved.push(".firetrail/scopes.yaml".into());
@@ -169,6 +359,11 @@ pub fn run(args: &InitArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliEr
         report.created.push(".firetrail/identity.yml".into());
     }
 
+    // 3b. Identity registration (interactive walkthrough only).
+    if let Some((id, email, name)) = resolved.register_identity.clone() {
+        register_identity_inline(&ws.root, &id, &email, &name, &mut report)?;
+    }
+
     // 4. Index DB — create / open is idempotent.
     {
         let _index = Index::open(&ws.root).map_err(|e| CliError::internal(COMMAND, e))?;
@@ -192,7 +387,7 @@ pub fn run(args: &InitArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliEr
     update_gitignore(&ws.root, &mut report)?;
 
     // 6. Hooks.
-    if !args.no_hooks {
+    if !resolved.no_hooks {
         let repo = Repo::open(&ws.root).map_err(|e| CliError::internal(COMMAND, e))?;
         for (hook, body) in default_hooks() {
             repo.install_hook(hook, body)
@@ -202,7 +397,7 @@ pub fn run(args: &InitArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliEr
     }
 
     // 7. AGENTS.md / .claude/skills/firetrail/SKILL.md.
-    if !args.no_agents {
+    if !resolved.no_agents {
         write_if_absent(
             &ws.root.join("AGENTS.md"),
             &default_agents_md(),
@@ -223,7 +418,7 @@ pub fn run(args: &InitArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliEr
     // `--download-model`; the default keeps `firetrail init` offline.
     // Failures here are recorded as warnings (not errors) so a network
     // hiccup doesn't strand the rest of init.
-    if args.download_model {
+    if resolved.download_model {
         match ft_embed::download_bge_small(|label, art| {
             eprintln!("model: {label} {} ({} bytes)", art.filename, art.size_bytes);
         }) {
@@ -256,6 +451,37 @@ pub fn run(args: &InitArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliEr
     let _ = global;
 
     Ok(CommandOutcome::Init(report))
+}
+
+fn register_identity_inline(
+    workspace_root: &Path,
+    id: &str,
+    email: &str,
+    name: &str,
+    report: &mut InitReport,
+) -> Result<(), CliError> {
+    use ft_identity::{IdentityKind, RegisteredIdentity, load_registry};
+
+    let mut registry = load_registry(workspace_root)
+        .map_err(|e| CliError::internal(COMMAND, format!("load registry: {e}")))?;
+    if registry.identities.iter().any(|i| i.id == id) {
+        report.preserved.push(format!("identity:{id}"));
+        return Ok(());
+    }
+    registry.identities.push(RegisteredIdentity {
+        id: id.to_string(),
+        name: name.to_string(),
+        kind: IdentityKind::Human,
+        emails: vec![email.to_string()],
+        machines: Vec::new(),
+        capabilities: ft_identity::PartialCapabilityMatrix::default(),
+        status: ft_identity::IdentityStatus::Active,
+    });
+    registry
+        .save(workspace_root)
+        .map_err(|e| CliError::internal(COMMAND, format!("save registry: {e}")))?;
+    report.created.push(format!("identity:{id} ({email})"));
+    Ok(())
 }
 
 fn track(report: &mut InitReport, path: &Path, label: &str, fresh: bool) {

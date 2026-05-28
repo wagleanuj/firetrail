@@ -376,3 +376,132 @@ fn init_with_behavior_flag_skips_auto_interactive() {
         .expect("spawn firetrail");
     assert!(out.status.success(), "init failed: stderr={:?}", out.stderr);
 }
+
+// ── AGENTS.md / CLAUDE.md / SKILL.md ────────────────────────────────────────
+
+#[test]
+fn init_fresh_writes_full_agents_claude_and_skill() {
+    let tr = TestRepo::new().unwrap();
+    std::fs::remove_dir_all(tr.firetrail_dir()).unwrap();
+    // Ensure no pre-existing agent files leak from TestRepo bootstrap.
+    let _ = std::fs::remove_file(tr.root().join("AGENTS.md"));
+    let _ = std::fs::remove_file(tr.root().join("CLAUDE.md"));
+
+    let out = run_firetrail(tr.root(), &["init", "--json"]);
+    assert!(out.success(), "init failed: {}", out.stderr);
+
+    let agents = std::fs::read_to_string(tr.root().join("AGENTS.md")).unwrap();
+    assert!(agents.contains("<!-- firetrail:begin -->"), "no begin marker");
+    assert!(agents.contains("<!-- firetrail:end -->"), "no end marker");
+    assert!(agents.contains("firetrail ready"), "workflow content missing");
+    assert!(agents.contains("firetrail check pr"), "PR content missing");
+
+    let claude = std::fs::read_to_string(tr.root().join("CLAUDE.md")).unwrap();
+    assert!(
+        claude.contains("AGENTS.md"),
+        "CLAUDE.md should point to AGENTS.md: {claude}"
+    );
+
+    let skill =
+        std::fs::read_to_string(tr.root().join(".claude/skills/firetrail/SKILL.md")).unwrap();
+    assert!(skill.contains("name: firetrail"), "skill frontmatter missing");
+    assert!(skill.contains("firetrail check pr"), "skill content missing");
+}
+
+#[test]
+fn init_existing_agents_without_markers_appends_block() {
+    let tr = TestRepo::new().unwrap();
+    std::fs::remove_dir_all(tr.firetrail_dir()).unwrap();
+    let user_content = "# AGENTS.md\n\n## My team's guidance\n\nSome existing rules here.\n";
+    std::fs::write(tr.root().join("AGENTS.md"), user_content).unwrap();
+
+    let out = run_firetrail(tr.root(), &["init", "--json"]);
+    assert!(out.success(), "init failed: {}", out.stderr);
+
+    let agents = std::fs::read_to_string(tr.root().join("AGENTS.md")).unwrap();
+    assert!(
+        agents.starts_with("# AGENTS.md\n\n## My team's guidance"),
+        "user content lost from top: {agents}"
+    );
+    assert!(
+        agents.contains("Some existing rules here."),
+        "user content lost: {agents}"
+    );
+    assert!(
+        agents.contains("<!-- firetrail:begin -->"),
+        "block not appended"
+    );
+    assert!(
+        agents.contains("firetrail ready"),
+        "workflow content missing"
+    );
+}
+
+#[test]
+fn init_existing_agents_with_markers_refreshes_block_only() {
+    let tr = TestRepo::new().unwrap();
+    std::fs::remove_dir_all(tr.firetrail_dir()).unwrap();
+    let user_content =
+        "# AGENTS.md\n\n## Local rules\n\nKeep this.\n\n<!-- firetrail:begin -->\nSTALE\n<!-- firetrail:end -->\n\n## Footer\n\nKeep this too.\n";
+    std::fs::write(tr.root().join("AGENTS.md"), user_content).unwrap();
+
+    let out = run_firetrail(tr.root(), &["init", "--json"]);
+    assert!(out.success(), "init failed: {}", out.stderr);
+
+    let agents = std::fs::read_to_string(tr.root().join("AGENTS.md")).unwrap();
+    assert!(agents.contains("Keep this."), "pre-block content lost");
+    assert!(agents.contains("Keep this too."), "post-block content lost");
+    assert!(!agents.contains("STALE"), "stale block content remained");
+    assert!(
+        agents.contains("firetrail check pr"),
+        "fresh content not inserted"
+    );
+}
+
+#[test]
+fn init_idempotent_for_agents_block() {
+    let tr = TestRepo::new().unwrap();
+    std::fs::remove_dir_all(tr.firetrail_dir()).unwrap();
+    let _ = std::fs::remove_file(tr.root().join("AGENTS.md"));
+
+    let first = run_firetrail(tr.root(), &["init", "--json"]);
+    assert!(first.success());
+    let agents_v1 = std::fs::read_to_string(tr.root().join("AGENTS.md")).unwrap();
+
+    let second = run_firetrail(tr.root(), &["init", "--json"]);
+    assert!(second.success());
+    let agents_v2 = std::fs::read_to_string(tr.root().join("AGENTS.md")).unwrap();
+
+    assert_eq!(
+        agents_v1, agents_v2,
+        "AGENTS.md must be byte-stable across re-init"
+    );
+    let v: serde_json::Value = serde_json::from_str(&second.stdout).unwrap();
+    let preserved = v["data"]["preserved"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|p| p.as_str())
+        .collect::<Vec<_>>();
+    assert!(
+        preserved.contains(&"AGENTS.md"),
+        "second run should report AGENTS.md preserved: {preserved:?}"
+    );
+}
+
+#[test]
+fn init_preserves_existing_claude_md() {
+    let tr = TestRepo::new().unwrap();
+    std::fs::remove_dir_all(tr.firetrail_dir()).unwrap();
+    let claude_user = "# CLAUDE.md\n\nMy team's specific Claude guidance.\n";
+    std::fs::write(tr.root().join("CLAUDE.md"), claude_user).unwrap();
+
+    let out = run_firetrail(tr.root(), &["init", "--json"]);
+    assert!(out.success(), "init failed: {}", out.stderr);
+
+    let claude_after = std::fs::read_to_string(tr.root().join("CLAUDE.md")).unwrap();
+    assert_eq!(
+        claude_user, claude_after,
+        "existing CLAUDE.md must not be modified"
+    );
+}

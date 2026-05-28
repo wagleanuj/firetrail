@@ -396,22 +396,47 @@ pub fn run(args: &InitArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliEr
         }
     }
 
-    // 7. AGENTS.md / .claude/skills/firetrail/SKILL.md.
+    // 7. AGENTS.md / CLAUDE.md / .claude/skills/firetrail/SKILL.md.
+    //
+    // AGENTS.md is the canonical agent driver. Its firetrail block is
+    // wrapped in `<!-- firetrail:begin -->` / `<!-- firetrail:end -->`
+    // markers and refreshed in place — user content outside the markers is
+    // preserved verbatim. CLAUDE.md is emitted as a one-time pointer when
+    // absent (we don't manage its contents — many repos already have a
+    // bespoke CLAUDE.md). SKILL.md is the Claude Code skill file; same
+    // managed-block semantics as AGENTS.md.
     if !resolved.no_agents {
-        write_if_absent(
+        upsert_agents_file(
             &ws.root.join("AGENTS.md"),
             &default_agents_md(),
+            &agents_md_block(),
             "AGENTS.md",
+            &mut report,
+        )?;
+        write_if_absent(
+            &ws.root.join("CLAUDE.md"),
+            &default_claude_md(),
+            "CLAUDE.md",
             &mut report,
         )?;
         let skill_dir = ws.root.join(".claude/skills/firetrail");
         std::fs::create_dir_all(&skill_dir).map_err(|e| CliError::internal(COMMAND, e))?;
-        write_if_absent(
-            &skill_dir.join("SKILL.md"),
-            &default_skill_md(),
-            ".claude/skills/firetrail/SKILL.md",
-            &mut report,
-        )?;
+        // SKILL.md is wholly firetrail-owned (the skill metadata frontmatter
+        // mandates a fixed shape), so we overwrite on every init rather
+        // than using the marker-based merge.
+        let skill_path = skill_dir.join("SKILL.md");
+        let new_skill = default_skill_md();
+        let label = ".claude/skills/firetrail/SKILL.md";
+        match std::fs::read_to_string(&skill_path) {
+            Ok(existing) if existing == new_skill => {
+                report.preserved.push(label.to_string());
+            }
+            _ => {
+                std::fs::write(&skill_path, new_skill)
+                    .map_err(|e| CliError::internal(COMMAND, e))?;
+                report.created.push(label.to_string());
+            }
+        }
     }
 
     // 8. Optional ONNX model download (firetrail-cmv). Opt-in via
@@ -451,6 +476,72 @@ pub fn run(args: &InitArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliEr
     let _ = global;
 
     Ok(CommandOutcome::Init(report))
+}
+
+/// Write or refresh a file that contains a firetrail-managed region.
+///
+/// Three cases:
+/// 1. **File does not exist** → write `fresh_full` verbatim, log as `created`.
+/// 2. **File exists and contains both markers** → replace the content
+///    between the markers with `block`, log as `created` (refreshed) only
+///    when the bytes changed, otherwise `preserved`.
+/// 3. **File exists without markers** → append two newlines + `block` to
+///    the existing content, log as `created` (refreshed).
+fn upsert_agents_file(
+    path: &Path,
+    fresh_full: &str,
+    block: &str,
+    label: &str,
+    report: &mut InitReport,
+) -> Result<(), CliError> {
+    if !path.exists() {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| CliError::internal(COMMAND, e))?;
+        }
+        std::fs::write(path, fresh_full).map_err(|e| CliError::internal(COMMAND, e))?;
+        report.created.push(label.to_string());
+        return Ok(());
+    }
+    let existing = std::fs::read_to_string(path).map_err(|e| CliError::internal(COMMAND, e))?;
+    let new_content = if let (Some(start), Some(end)) = (
+        existing.find(FIRETRAIL_BLOCK_BEGIN),
+        existing.find(FIRETRAIL_BLOCK_END),
+    ) {
+        if end <= start {
+            return Err(CliError::user(
+                COMMAND,
+                format!("{label}: firetrail block markers are out of order; fix manually"),
+            ));
+        }
+        let mut out = String::with_capacity(existing.len() + block.len());
+        out.push_str(&existing[..start]);
+        out.push_str(block);
+        let after_end = end + FIRETRAIL_BLOCK_END.len();
+        if let Some(rest) = existing.get(after_end..) {
+            // Skip a single trailing newline so the new block (which ends in
+            // its own newline) doesn't accumulate blanks on each refresh.
+            let rest = rest.strip_prefix('\n').unwrap_or(rest);
+            out.push_str(rest);
+        }
+        out
+    } else {
+        let mut out = existing;
+        if !out.is_empty() && !out.ends_with('\n') {
+            out.push('\n');
+        }
+        if !out.ends_with("\n\n") {
+            out.push('\n');
+        }
+        out.push_str(block);
+        out
+    };
+    if new_content == std::fs::read_to_string(path).unwrap_or_default() {
+        report.preserved.push(label.to_string());
+    } else {
+        std::fs::write(path, new_content).map_err(|e| CliError::internal(COMMAND, e))?;
+        report.created.push(label.to_string());
+    }
+    Ok(())
 }
 
 fn register_identity_inline(
@@ -601,29 +692,48 @@ fn default_identity_yaml() -> String {
         .to_string()
 }
 
+/// Marker that opens the firetrail-managed region in `AGENTS.md` /
+/// `CLAUDE.md`. Anything between [`FIRETRAIL_BLOCK_BEGIN`] and
+/// [`FIRETRAIL_BLOCK_END`] is owned by `firetrail init` and refreshed
+/// on every re-run; everything outside the markers is user-owned.
+const FIRETRAIL_BLOCK_BEGIN: &str = "<!-- firetrail:begin -->";
+const FIRETRAIL_BLOCK_END: &str = "<!-- firetrail:end -->";
+
+/// Comprehensive AGENTS.md content. Wraps the firetrail-managed block in
+/// markers so a re-init can swap the block in place without disturbing
+/// user-authored sections above or below.
+fn agents_md_block() -> String {
+    let body = include_str!("../../templates/AGENTS_FIRETRAIL_BLOCK.md");
+    format!("{FIRETRAIL_BLOCK_BEGIN}\n{body}{FIRETRAIL_BLOCK_END}\n")
+}
+
+/// First-time AGENTS.md when the file does not yet exist — a brief
+/// preamble plus the managed block.
 fn default_agents_md() -> String {
-    "# AGENTS.md\n\n\
-     This repository uses [Firetrail](https://github.com/firetrail/firetrail) for the work graph and memory layer.\n\n\
-     Agents working in this repo should:\n\n\
-     - Discover work via `firetrail ready` (M1+).\n\
-     - Claim a task via `firetrail claim <id>` before starting.\n\
-     - Record findings via `firetrail finding create` (M2+).\n\
-     - Run `firetrail doctor` to verify the workspace is healthy.\n"
+    format!(
+        "# AGENTS.md\n\n\
+         This repository uses [Firetrail](https://github.com/firetrail/firetrail) \
+         for its work graph and incident-memory layer. The block below is \
+         managed by `firetrail init` — edit content outside the markers \
+         freely; edits inside will be overwritten on re-init.\n\n\
+         {}",
+        agents_md_block()
+    )
+}
+
+/// First-time CLAUDE.md — a thin pointer that defers to AGENTS.md. Mirrors
+/// the convention used by most agent-aware repos.
+fn default_claude_md() -> String {
+    "# CLAUDE.md\n\n\
+     This file defers to `AGENTS.md` in the repo root, which contains the \
+     firetrail workflow driver and any project-specific agent guidance.\n\n\
+     Read `AGENTS.md` before doing anything in this repo.\n"
         .to_string()
 }
 
 fn default_skill_md() -> String {
-    "---\n\
-     name: firetrail\n\
-     description: Use the `firetrail` CLI for work-graph queries and updates.\n\
-     ---\n\n\
-     # Firetrail skill (M1 stub)\n\n\
-     Run `firetrail --help` for the full command surface. Key commands:\n\n\
-     - `firetrail ready` — list work ready to pick up.\n\
-     - `firetrail show <id>` — inspect a single record.\n\
-     - `firetrail doctor` — verify workspace health.\n\n\
-     This skill is intentionally minimal in M1; M2 ships the full agent skill.\n"
-        .to_string()
+    let body = include_str!("../../templates/SKILL.md");
+    body.to_string()
 }
 
 fn default_hooks() -> [(HookName, &'static str); 3] {

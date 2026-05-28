@@ -505,3 +505,61 @@ fn init_preserves_existing_claude_md() {
         "existing CLAUDE.md must not be modified"
     );
 }
+
+/// Guard against template drift: pin the command shapes that appear as
+/// examples in `AGENTS_FIRETRAIL_BLOCK.md`. If a CLI signature changes
+/// without the template being updated, this test fails.
+#[test]
+fn agents_template_examples_stay_in_sync_with_cli() {
+    let tr = TestRepo::new().unwrap();
+    std::fs::remove_dir_all(tr.firetrail_dir()).unwrap();
+    let _ = std::fs::remove_file(tr.root().join("AGENTS.md"));
+    run_firetrail(tr.root(), &["init"]);
+
+    let agents = std::fs::read_to_string(tr.root().join("AGENTS.md")).unwrap();
+
+    // Each entry: (substring in template, [args]) — args must produce a
+    // successful --help invocation, proving the surface still exists.
+    let pinned: &[(&str, &[&str])] = &[
+        ("firetrail epic    create",      &["epic", "create", "--help"]),
+        ("firetrail task    create",      &["task", "create", "--help"]),
+        ("firetrail subtask create",      &["subtask", "create", "--help"]),
+        ("firetrail bug     create",      &["bug", "create", "--help"]),
+        ("firetrail criteria add",        &["criteria", "add", "--help"]),
+        ("firetrail dep      add",        &["dep", "add", "--help"]),
+        ("firetrail link <from> <to>",    &["link", "--help"]),
+        ("firetrail finding  create",     &["finding", "create", "--help"]),
+        ("firetrail incident create",     &["incident", "create", "--help"]),
+        ("firetrail runbook  create",     &["runbook", "create", "--help"]),
+        ("firetrail decision create",     &["decision", "create", "--help"]),
+        ("firetrail gotcha   create",     &["gotcha", "create", "--help"]),
+        ("firetrail capture  --kind",     &["capture", "--help"]),
+        ("firetrail memory review",       &["memory", "review", "--help"]),
+        ("firetrail memory promote",      &["memory", "promote", "--help"]),
+        ("firetrail memory supersede",    &["memory", "supersede", "--help"]),
+        ("firetrail check pr <base-ref>", &["check", "pr", "--help"]),
+        ("firetrail verify <id>",         &["verify", "--help"]),
+        ("firetrail diff <base-ref>",     &["diff", "--help"]),
+        ("firetrail claim-takeover",      &["claim-takeover", "--help"]),
+        ("firetrail identity register",   &["identity", "register", "--help"]),
+    ];
+
+    let mut missing = Vec::new();
+    for (snippet, args) in pinned {
+        if !agents.contains(snippet) {
+            missing.push(format!("template lost: `{snippet}`"));
+            continue;
+        }
+        let out = run_firetrail(tr.root(), args);
+        if !out.success() {
+            missing.push(format!(
+                "CLI no longer accepts {args:?} (template references `{snippet}`)"
+            ));
+        }
+    }
+    assert!(
+        missing.is_empty(),
+        "AGENTS template drifted from CLI:\n  {}",
+        missing.join("\n  ")
+    );
+}

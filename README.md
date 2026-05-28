@@ -10,9 +10,11 @@ milestones.
 ## Status
 
 Local work graph (M1), incident memory (M2), search + prime (M3), PR safety
-(M4), multi-scope + identity (M5), and importers (M6) are implemented.
-Deferred per ADR: real Jira/Confluence MCP adapters, strict/auto-sync
-external storage, evidence URL fetching.
+(M4), multi-scope + identity (M5), and markdown importers (M6) are
+implemented. Deferred per ADR: strict/auto-sync external storage,
+evidence URL fetching. Jira/Confluence integration is out of scope by
+design (ADR-0014 addendum) — the calling agent uses its own MCP servers
+and pipes markdown into `firetrail import …`.
 
 ## Build
 

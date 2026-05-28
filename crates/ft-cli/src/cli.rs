@@ -225,10 +225,6 @@ pub enum Command {
     #[command(subcommand)]
     Import(ImportCmd),
 
-    /// Jira integration (M6).
-    #[command(subcommand)]
-    Jira(JiraCmd),
-
     /// Promote quarantined imported records into the canonical corpus (M6).
     #[command(name = "promote-import")]
     PromoteImport(PromoteImportArgs),
@@ -267,6 +263,11 @@ pub struct MigrateEmbeddingsArgs {
 }
 
 /// `firetrail import …` — M6 import surface (ADR-0014).
+///
+/// Firetrail ingests structured records from markdown on disk. Adapters for
+/// external systems (Jira, Confluence, GitHub, …) live in the *calling*
+/// agent: it talks to the upstream API (typically via its own MCP server),
+/// emits markdown into a directory, then invokes `firetrail import …`.
 #[derive(Debug, Subcommand)]
 pub enum ImportCmd {
     /// Import a directory of markdown incident reports.
@@ -275,8 +276,6 @@ pub enum ImportCmd {
     Adrs(ImportDirArgs),
     /// Import a directory of markdown runbooks.
     Runbooks(ImportDirArgs),
-    /// Import a Confluence page (requires MCP adapter — stub at M6).
-    Confluence(ImportConfluenceArgs),
     /// Re-pull and re-parse already-imported records from their source URLs.
     Refresh(ImportRefreshArgs),
 }
@@ -294,38 +293,11 @@ pub struct ImportDirArgs {
     pub apply: bool,
 }
 
-/// `firetrail import confluence <space>/<page-id>` arguments.
-#[derive(Debug, Args)]
-pub struct ImportConfluenceArgs {
-    /// `<space>/<page-id>` identifier.
-    pub target: String,
-}
-
 /// `firetrail import refresh` arguments.
 #[derive(Debug, Args)]
 pub struct ImportRefreshArgs {
     /// Optional record id to refresh; refresh everything when omitted.
     pub id: Option<String>,
-}
-
-/// `firetrail jira …`
-#[derive(Debug, Subcommand)]
-pub enum JiraCmd {
-    /// Import a Jira ticket by issue key (requires MCP adapter — stub at M6).
-    Import(JiraImportArgs),
-}
-
-/// `firetrail jira import <ISSUE-KEY>` arguments.
-#[derive(Debug, Args)]
-pub struct JiraImportArgs {
-    /// Jira issue key (e.g. `ENG-123`).
-    pub key: String,
-    /// Parse and report without writing.
-    #[arg(long, conflicts_with = "apply")]
-    pub dry_run: bool,
-    /// Parse and write the quarantined record to storage.
-    #[arg(long)]
-    pub apply: bool,
 }
 
 /// `firetrail promote-import` arguments.

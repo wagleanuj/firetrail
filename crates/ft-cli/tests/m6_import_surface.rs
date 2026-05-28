@@ -260,29 +260,6 @@ fn promote_import_listing_then_targeted_promote() {
     assert!(v["data"]["candidates"].as_array().unwrap().is_empty());
 }
 
-#[test]
-fn jira_import_stub_returns_user_error() {
-    let tr = fresh_repo();
-    let out = run_firetrail(tr.root(), &["--json", "jira", "import", "ENG-1"]);
-    assert!(!out.success(), "expected stub failure");
-    let v: serde_json::Value = serde_json::from_str(out.stderr.trim()).unwrap();
-    assert_eq!(v["error"]["kind"].as_str().unwrap(), "user_error");
-    assert!(
-        v["error"]["message"]
-            .as_str()
-            .unwrap()
-            .to_lowercase()
-            .contains("jira"),
-        "stub error message should mention jira: {}",
-        v["error"]["message"]
-    );
-}
-
-#[test]
-fn confluence_import_stub_returns_user_error() {
-    let tr = fresh_repo();
-    let out = run_firetrail(tr.root(), &["--json", "import", "confluence", "ENG/123"]);
-    assert!(!out.success(), "expected stub failure");
-    let v: serde_json::Value = serde_json::from_str(out.stderr.trim()).unwrap();
-    assert_eq!(v["error"]["kind"].as_str().unwrap(), "user_error");
-}
+// Jira/Confluence adapters are deliberately not in firetrail's surface — the
+// calling agent fetches via its own MCP server and pipes markdown into
+// `firetrail import …`. See ADR-0014.

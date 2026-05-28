@@ -68,9 +68,8 @@ fn main() -> ExitCode {
 fn dispatch(cli: &Cli) -> Result<commands::CommandOutcome, CliError> {
     use crate::cli::{
         BugCmd, CheckCmd, CriteriaCmd, DaemonCmd, DecisionCmd, DepCmd, EpicCmd, FindingCmd,
-        GotchaCmd, HookCmd, IdentityCmd, ImportCmd, IncidentCmd, IndexCmd, JiraCmd, LintCmd,
-        MemoryCmd, MigrateCmd, RunbookCmd, RunbookStepCmd, ScopeCmd, ServerHooksCmd, SubtaskCmd,
-        TaskCmd,
+        GotchaCmd, HookCmd, IdentityCmd, ImportCmd, IncidentCmd, IndexCmd, LintCmd, MemoryCmd,
+        MigrateCmd, RunbookCmd, RunbookStepCmd, ScopeCmd, ServerHooksCmd, SubtaskCmd, TaskCmd,
     };
     match &cli.command {
         Command::Init(args) => commands::init::run(args, &cli.global),
@@ -190,14 +189,8 @@ fn dispatch(cli: &Cli) -> Result<commands::CommandOutcome, CliError> {
         Command::Import(ImportCmd::Runbooks(args)) => {
             commands::import_cmd::runbooks(args, &cli.global)
         }
-        Command::Import(ImportCmd::Confluence(args)) => {
-            commands::import_cmd::confluence(args, &cli.global)
-        }
         Command::Import(ImportCmd::Refresh(args)) => {
             commands::import_cmd::refresh(args, &cli.global)
-        }
-        Command::Jira(JiraCmd::Import(args)) => {
-            commands::import_cmd::jira_import(args, &cli.global)
         }
         Command::PromoteImport(args) => commands::promote_import::run(args, &cli.global),
         Command::Migrate(MigrateCmd::Embeddings(args)) => {

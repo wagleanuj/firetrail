@@ -109,6 +109,32 @@ Negative:
 
 **Per-import promotion required for every record.** Too much human work for a thousand-record import. The hybrid (explicit + auto-candidate via inbound references) splits the load reasonably.
 
+## Addendum (2026-05-27): external systems are an agent concern
+
+Firetrail does not ship adapters for Jira, Confluence, GitHub, or any other
+external issue tracker. The import surface accepts markdown on disk and
+nothing else.
+
+Rationale: the typical caller is an AI agent that already has MCP servers
+for those upstream systems (Jira MCP, Confluence MCP, GitHub MCP). Asking
+firetrail to re-implement that integration duplicates work, doubles the
+auth/rate-limit surface, and ties firetrail releases to upstream API
+churn. The clean boundary is:
+
+- **Agent** owns credentials and upstream API access. It calls its MCP
+  servers, transforms the result into markdown, and writes it to a temp
+  directory.
+- **Firetrail** owns the canonical record schema. It ingests markdown via
+  `firetrail import incidents|adrs|runbooks <dir>`, quarantines, and runs
+  the promotion workflow described above.
+
+This supersedes any earlier note about a Jira or Confluence MCP adapter
+shipping inside firetrail. The `firetrail import confluence` and
+`firetrail jira import` stub subcommands have been removed; the
+`ft_import::ImportAdapter` trait and `MockJiraAdapter` remain as test
+fixtures and as a typed provenance surface (records carry `system: jira`
+or `system: confluence` on their `source`), not as a production code path.
+
 ## References
 
 - ADR-0013: Trust model (origin flag, draft hygiene)

@@ -5,20 +5,17 @@
 //! to storage when `--apply` is supplied; otherwise the command runs as a
 //! parse-only dry run.
 //!
-//! ## Confluence / Jira stubs
-//!
-//! `import confluence` and `jira import` return a `UserError` pointing at the
-//! follow-up adapter work (no MCP wiring at M6). The real adapter ships when
-//! the matching MCP server is in place.
+//! Firetrail itself does not talk to Jira, Confluence, or other external
+//! issue trackers. The calling agent (typically an AI agent with its own
+//! MCP servers for those systems) fetches the upstream content, writes it
+//! as markdown to a directory, and invokes `firetrail import …`.
 
 use std::path::Path;
 
 use ft_import::{ImportKind, ImportOptions, ImportReport, import_dir};
 use serde::Serialize;
 
-use crate::cli::{
-    GlobalOpts, ImportConfluenceArgs, ImportDirArgs, ImportRefreshArgs, JiraImportArgs,
-};
+use crate::cli::{GlobalOpts, ImportDirArgs, ImportRefreshArgs};
 use crate::commands::CommandOutcome;
 use crate::context::WorkCtx;
 use crate::error::CliError;
@@ -26,9 +23,7 @@ use crate::error::CliError;
 const CMD_INCIDENTS: &str = "import incidents";
 const CMD_ADRS: &str = "import adrs";
 const CMD_RUNBOOKS: &str = "import runbooks";
-const CMD_CONFLUENCE: &str = "import confluence";
 const CMD_REFRESH: &str = "import refresh";
-const CMD_JIRA: &str = "jira import";
 
 /// `firetrail import incidents <dir>`
 pub fn incidents(args: &ImportDirArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
@@ -80,47 +75,6 @@ fn import_one(
     )))
 }
 
-/// `firetrail import confluence <space>/<page-id>` — stub.
-pub fn confluence(
-    args: &ImportConfluenceArgs,
-    _global: &GlobalOpts,
-) -> Result<CommandOutcome, CliError> {
-    Err(CliError::UserError {
-        command: CMD_CONFLUENCE.to_string(),
-        message: format!(
-            "Confluence import requires the MCP adapter — follow-up tracked in firetrail-confluence-adapter (target: {})",
-            args.target
-        ),
-        details: serde_json::json!({
-            "target": args.target,
-            "adapter": "confluence",
-            "status": "not_implemented",
-            "follow_up": "firetrail-confluence-adapter",
-        }),
-    })
-}
-
-/// `firetrail jira import <KEY>` — stub.
-pub fn jira_import(
-    args: &JiraImportArgs,
-    _global: &GlobalOpts,
-) -> Result<CommandOutcome, CliError> {
-    Err(CliError::UserError {
-        command: CMD_JIRA.to_string(),
-        message: format!(
-            "Jira import requires the MCP adapter — follow-up tracked in firetrail-jira-adapter (key: {})",
-            args.key
-        ),
-        details: serde_json::json!({
-            "key": args.key,
-            "adapter": "jira",
-            "status": "not_implemented",
-            "follow_up": "firetrail-jira-adapter",
-            "note": "ft_import::MockJiraAdapter is used by integration tests; the production adapter is gated on the MCP Jira server.",
-        }),
-    })
-}
-
 /// `firetrail import refresh` — no-op for `LocalMarkdown` sources.
 pub fn refresh(args: &ImportRefreshArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
     let _ = WorkCtx::open(CMD_REFRESH, global.workspace.as_deref())?;
@@ -137,7 +91,7 @@ pub fn refresh(args: &ImportRefreshArgs, global: &GlobalOpts) -> Result<CommandO
         failures: Vec::new(),
         records: Vec::new(),
         note: Some(
-            "import refresh is a no-op for LocalMarkdown sources; Jira/Confluence refresh ships with the MCP adapters."
+            "import refresh is a no-op for LocalMarkdown sources; re-run `firetrail import <kind> <dir>` to re-ingest."
                 .to_string(),
         ),
         warnings: Vec::new(),

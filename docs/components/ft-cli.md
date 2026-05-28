@@ -348,7 +348,10 @@ pub enum CommandResult {
 - `search`, `similar`, `prime` — M3.
 - `check pr`, `lint memory`, `diff --memory` — M4.
 - `identity` registry commands — M5.
-- `import`, `jira`, `confluence`, `github` — M5/M6.
+- `import incidents|adrs|runbooks|refresh`, `promote-import` — M6.
+  Jira/Confluence/GitHub adapters are out of scope (ADR-0014 addendum);
+  the calling agent fetches via its own MCP servers and pipes markdown
+  into `firetrail import`.
 
 ---
 

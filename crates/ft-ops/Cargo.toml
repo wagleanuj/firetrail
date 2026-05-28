@@ -1,0 +1,45 @@
+[package]
+name = "ft-ops"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Transport-agnostic firetrail command bodies. Shared by ft-cli and ft-ui."
+
+[lints]
+workspace = true
+
+[dependencies]
+ft-core = { path = "../ft-core", version = "0.1.0" }
+ft-storage = { path = "../ft-storage", version = "0.1.0" }
+ft-index = { path = "../ft-index", version = "0.1.0" }
+ft-history = { path = "../ft-history", version = "0.1.0" }
+ft-search = { path = "../ft-search", version = "0.1.0" }
+ft-identity = { path = "../ft-identity", version = "0.1.0" }
+ft-embed = { path = "../ft-embed", version = "0.1.0" }
+ft-trust = { path = "../ft-trust", version = "0.1.0" }
+ft-import = { path = "../ft-import", version = "0.1.0" }
+ft-git = { path = "../ft-git", version = "0.1.0" }
+ft-pr = { path = "../ft-pr", version = "0.1.0" }
+ft-scope = { path = "../ft-scope", version = "0.1.0" }
+regex = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+humantime = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true, features = ["sync", "rt", "macros"] }
+ts-rs = { version = "9", optional = true }
+
+[features]
+default = []
+ts-rs = ["dep:ts-rs"]
+
+[dev-dependencies]
+tempfile = { workspace = true }
+ft-testkit = { path = "../ft-testkit", version = "0.1.0" }
+tokio = { workspace = true, features = ["macros", "rt", "sync"] }

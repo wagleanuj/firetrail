@@ -210,6 +210,9 @@ pub enum Command {
     #[command(subcommand)]
     Daemon(DaemonCmd),
 
+    /// Start the local Firetrail web UI server.
+    Ui(UiArgs),
+
     /// Identity registry management (M5).
     #[command(subcommand)]
     Identity(IdentityCmd),
@@ -630,6 +633,34 @@ pub enum DaemonCmd {
     Stop,
     /// Probe the embedding daemon's status.
     Status,
+}
+
+/// `firetrail ui` arguments.
+///
+/// Mirrors the shape of [`DaemonStartArgs`] — the CLI spawns the sibling
+/// `ft-ui` binary, captures its single-line ready announcement on stdout,
+/// then either blocks on the child (`--foreground`) or detaches on Unix.
+#[derive(Debug, Args)]
+pub struct UiArgs {
+    /// Shortcut: override the port on `--bind`.
+    #[arg(long)]
+    pub port: Option<u16>,
+
+    /// Socket address to bind the UI server to (default: `127.0.0.1:0`).
+    #[arg(long, value_name = "SOCKETADDR")]
+    pub bind: Option<String>,
+
+    /// Don't open the browser after the server is ready.
+    #[arg(long)]
+    pub no_open: bool,
+
+    /// Block on the child process instead of detaching. Tests + `--dev` use this.
+    #[arg(long)]
+    pub foreground: bool,
+
+    /// Pass through to `ft-ui`: relaxes the `Origin` check for Vite (`:5173`).
+    #[arg(long)]
+    pub dev: bool,
 }
 
 /// `firetrail daemon start` arguments.

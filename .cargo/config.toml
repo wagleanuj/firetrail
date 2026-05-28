@@ -14,5 +14,9 @@ rustflags = ["-C", "link-arg=-fuse-ld=mold"]
 [build]
 # Reasonable defaults; nothing project-specific yet.
 
+[alias]
+# `cargo xtask <cmd>` — repo automation (ts-rs codegen, etc.).
+xtask = "run --package xtask --"
+
 [term]
 color = "auto"

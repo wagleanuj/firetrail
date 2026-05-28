@@ -16,3 +16,20 @@ Cargo.lock.bak
 
 # Git worktrees
 .worktrees/
+
+# ts-rs default bindings output (we use cargo xtask gen-ts which writes
+# into crates/ft-ui/web/src/api/types/ instead; this is a leftover from
+# `cargo test -p ft-ops` runs that exercise TS::export_all_to)
+crates/ft-ops/bindings/
+
+# UI build artefacts (generated TS bindings under web/src/api/types/ are committed)
+crates/ft-ui/web/node_modules/
+crates/ft-ui/web/dist/
+crates/ft-ui/web/.vite/
+crates/ft-ui/web/coverage/
+crates/ft-ui/web/playwright-report/
+crates/ft-ui/web/test-results/
+crates/ft-ui/web/tsconfig.tsbuildinfo
+# Note: crates/ft-ui/web/src/routeTree.gen.ts IS committed — it's regenerated
+# by the TanStack Router vite plugin but checked in so fresh clones typecheck
+# without a build step.

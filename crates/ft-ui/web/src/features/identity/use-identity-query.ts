@@ -13,6 +13,8 @@ import {
   fetchCapabilities,
   registerIdentity,
   offboardIdentity,
+  updateCapabilities,
+  type CapabilityPatch,
   type IdentityListFilters,
   type IdentityRegisterBody,
   type IdentityOffboardResult,
@@ -69,6 +71,19 @@ export function useRegisterIdentity() {
       qc.invalidateQueries({ queryKey: ['identity-list'] })
     },
     onError: (err) => toastApiError(err, 'Register failed'),
+  })
+}
+
+export function useUpdateCapabilities(id: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (patches: CapabilityPatch[]) => updateCapabilities(id, patches),
+    onSuccess: () => {
+      toast.success('Capabilities updated')
+      qc.invalidateQueries({ queryKey: identityCapsKey(id) })
+      qc.invalidateQueries({ queryKey: identityShowKey(id) })
+    },
+    onError: (err) => toastApiError(err, 'Update failed'),
   })
 }
 

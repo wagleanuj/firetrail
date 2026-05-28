@@ -7,7 +7,8 @@
  */
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { Plus, UserX, ShieldCheck, ShieldX } from 'lucide-react'
+import { Plus, UserX, ShieldCheck, ShieldX, Users } from 'lucide-react'
+import { EmptyState } from '@/components/ui/empty-state'
 import type { IdentityKindInput } from '@/api/types/IdentityKindInput'
 import type { IdentityStatusFilter } from '@/api/types/IdentityStatusFilter'
 import type { IdentityView } from '@/api/types/IdentityView'
@@ -24,6 +25,7 @@ import {
 import { cn } from '@/lib/utils'
 import { useIdentityList, useIdentity } from './use-identity-query'
 import { CapabilityMatrix } from './capability-matrix'
+import { CapabilityEditor } from './capability-editor'
 import { RegisterIdentityDialog, OffboardConfirmDialog } from './register-dialog'
 
 const KIND_OPTIONS: IdentityKindInput[] = ['human', 'bot', 'ci']
@@ -136,8 +138,24 @@ export function IdentityPanel({ selectedId }: IdentityPanelProps) {
               </li>
             ))}
             {list.data && list.data.identities.length === 0 && (
-              <li className="rounded-md border border-dashed border-border/60 px-3 py-6 text-center text-sm text-muted-foreground">
-                No identities match.
+              <li>
+                <EmptyState
+                  icon={Users}
+                  title="No identities"
+                  description={
+                    kind || status
+                      ? 'No identities match the current filters.'
+                      : 'Register a human, bot, or CI service account to get started.'
+                  }
+                  action={
+                    !kind && !status ? (
+                      <Button size="sm" onClick={() => setRegisterOpen(true)} className="gap-2">
+                        <Plus className="h-4 w-4" />
+                        Register
+                      </Button>
+                    ) : undefined
+                  }
+                />
               </li>
             )}
           </ul>
@@ -228,6 +246,12 @@ function IdentityDetail({ id }: { id: string }) {
         </h3>
         <CapabilityMatrix identity={identity.id} />
       </section>
+
+      {active && (
+        <section>
+          <CapabilityEditor identity={identity.id} />
+        </section>
+      )}
 
       <OffboardConfirmDialog id={identity.id} open={offboardOpen} onOpenChange={setOffboardOpen} />
     </div>

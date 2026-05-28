@@ -18,12 +18,16 @@
 
 mod offboard;
 mod register;
+mod update_capabilities;
 mod views;
 
 pub use offboard::{IdentityOffboardOutput, OffboardInput, offboard};
 pub use register::{
     CapabilitiesInput, CapabilitiesOutput, CapabilityOverrideInput, CapabilityRow,
     IdentityKindInput, IdentityRegisterOutput, RegisterInput, capabilities, register,
+};
+pub use update_capabilities::{
+    CapabilityPatch, UpdateCapabilitiesInput, UpdateCapabilitiesOutput, update_capabilities,
 };
 pub use views::{
     IdentityListOutput, IdentityShowOutput, IdentityStatusFilter, IdentityView, ListInput,

@@ -9,6 +9,7 @@
 //! | GET    | `/api/identity/:id`                   | [`ft_ops::identity_ops::show`]           |
 //! | POST   | `/api/identity/:id/offboard`          | [`ft_ops::identity_ops::offboard`]       |
 //! | GET    | `/api/identity/:id/capabilities`      | [`ft_ops::identity_ops::capabilities`]   |
+//! | PATCH  | `/api/identity/:id/capabilities`      | [`ft_ops::identity_ops::update_capabilities`] |
 //!
 //! Writes thread `X-Firetrail-Request-Id` through to the
 //! [`ft_ops::Event::IdentityUpdated`] envelope so optimistic GUI updates
@@ -25,10 +26,10 @@ use axum::{
 };
 use ft_identity::{DefaultResolver, IdentityResolver};
 use ft_ops::identity_ops::{
-    self, CapabilitiesInput as IdentityCapabilitiesInput, CapabilityOverrideInput,
+    self, CapabilitiesInput as IdentityCapabilitiesInput, CapabilityOverrideInput, CapabilityPatch,
     IdentityKindInput, IdentityStatusFilter, ListInput as IdentityListInput,
     OffboardInput as IdentityOffboardInput, RegisterInput as IdentityRegisterInput,
-    ShowInput as IdentityShowInput,
+    ShowInput as IdentityShowInput, UpdateCapabilitiesInput as IdentityUpdateCapabilitiesInput,
 };
 use ft_ops::{Identity, Workspace};
 use serde::Deserialize;
@@ -44,7 +45,10 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/", get(list_handler).post(register_handler))
         .route("/:id", get(show_handler))
         .route("/:id/offboard", post(offboard_handler))
-        .route("/:id/capabilities", get(capabilities_handler))
+        .route(
+            "/:id/capabilities",
+            get(capabilities_handler).patch(update_capabilities_handler),
+        )
 }
 
 fn resolve_identity(ws: &Workspace) -> Result<Identity, AppError> {
@@ -73,9 +77,16 @@ pub struct ListQuery {
     /// Filter by lifecycle status.
     #[serde(default)]
     pub status: Option<IdentityStatusFilter>,
+    /// Filter by identity kind (`human` / `bot` / `ci`). Applied
+    /// client-side over the registry view; not pushed to the ops layer
+    /// because the ops `list` op doesn't yet accept a kind filter (the
+    /// registry is small enough that filtering at the route boundary
+    /// keeps the ops surface stable).
+    #[serde(default)]
+    pub kind: Option<IdentityKindInput>,
 }
 
-/// `GET /api/identity` — listing with optional status filter.
+/// `GET /api/identity` — listing with optional status / kind filters.
 #[tracing::instrument(skip_all)]
 pub async fn list_handler(
     State(state): State<Arc<AppState>>,
@@ -91,7 +102,23 @@ pub async fn list_handler(
         },
         &state.events,
     )?;
-    Ok((StatusCode::OK, Json(out)))
+    let kind_filter = q.kind.map(|k| match k {
+        IdentityKindInput::Human => "human",
+        IdentityKindInput::Bot => "bot",
+        IdentityKindInput::Ci => "ci",
+    });
+    let filtered = if let Some(want) = kind_filter {
+        ft_ops::identity_ops::IdentityListOutput {
+            identities: out
+                .identities
+                .into_iter()
+                .filter(|i| i.kind == want)
+                .collect(),
+        }
+    } else {
+        out
+    };
+    Ok((StatusCode::OK, Json(filtered)))
 }
 
 /// `GET /api/identity/:id` — single registered identity.
@@ -179,6 +206,33 @@ pub async fn offboard_handler(
         request_id: request_id(&headers),
     };
     let out = identity_ops::offboard(&state.workspace, &identity, input, &state.events)?;
+    Ok((StatusCode::OK, Json(out)))
+}
+
+/// Body for `PATCH /api/identity/:id/capabilities`.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateCapabilitiesBody {
+    /// Patches to apply. Each `value` is tri-state: `null` clears the
+    /// override; `true`/`false` set it.
+    pub capabilities: Vec<CapabilityPatch>,
+}
+
+/// `PATCH /api/identity/:id/capabilities` — update capability overrides.
+#[tracing::instrument(skip_all)]
+pub async fn update_capabilities_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<UpdateCapabilitiesBody>,
+) -> Result<impl IntoResponse, AppError> {
+    let identity = resolve_identity(&state.workspace)?;
+    let input = IdentityUpdateCapabilitiesInput {
+        id,
+        capabilities: body.capabilities,
+        request_id: request_id(&headers),
+    };
+    let out = identity_ops::update_capabilities(&state.workspace, &identity, input, &state.events)?;
     Ok((StatusCode::OK, Json(out)))
 }
 

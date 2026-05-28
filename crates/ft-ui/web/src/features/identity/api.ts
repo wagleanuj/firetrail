@@ -66,3 +66,27 @@ export function fetchCapabilities(
     `/api/identity/${encodeURIComponent(id)}/capabilities`,
   )
 }
+
+export interface CapabilityPatch {
+  /** Capability key (e.g. `can_promote_verified`). */
+  key: string
+  /** New value, or `null` to clear the override. */
+  value: boolean | null
+}
+
+export interface UpdateCapabilitiesResult {
+  identity: IdentityShowOutput['identity']
+}
+
+export function updateCapabilities(
+  id: string,
+  patches: CapabilityPatch[],
+): Promise<UpdateCapabilitiesResult> {
+  return apiFetch<UpdateCapabilitiesResult>(
+    `/api/identity/${encodeURIComponent(id)}/capabilities`,
+    {
+      method: 'PATCH',
+      body: { capabilities: patches },
+    },
+  )
+}

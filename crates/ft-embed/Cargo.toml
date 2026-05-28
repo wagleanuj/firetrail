@@ -16,19 +16,22 @@ default = []
 # Enable the real ONNX-backed embedder (`bge-small-en-v1.5`) via `ort`.
 # Disabled by default because it pulls in a native dependency and expects a
 # model file on disk; see crate docs for setup.
-onnx = ["dep:ort"]
+onnx = ["dep:ort", "dep:tokenizers"]
 
 [dependencies]
 ft-core = { path = "../ft-core", version = "0.0.0" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+serde_yaml = { workspace = true }
 thiserror = { workspace = true }
 rusqlite = { workspace = true }
 blake3 = { workspace = true }
 hex = { workspace = true }
+sha2 = { workspace = true }
 chrono = { workspace = true }
 tracing = { workspace = true }
 ort = { workspace = true, optional = true }
+tokenizers = { workspace = true, optional = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

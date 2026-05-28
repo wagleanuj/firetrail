@@ -13,6 +13,25 @@
 
 use crate::error::EmbedError;
 
+/// Blanket impl so callers can hold a heap-allocated trait object
+/// (`Box<dyn Embedder>`) wherever the API expects an `E: Embedder`. Used by
+/// [`crate::config::build_embedder`] / [`crate::EmbedService`] when the
+/// concrete embedder type isn't known until config-resolution time.
+impl<E: Embedder + ?Sized> Embedder for Box<E> {
+    fn embed(&self, text: &str) -> Result<Vec<f32>, EmbedError> {
+        (**self).embed(text)
+    }
+    fn dim(&self) -> usize {
+        (**self).dim()
+    }
+    fn model_id(&self) -> &str {
+        (**self).model_id()
+    }
+    fn model_version(&self) -> &str {
+        (**self).model_version()
+    }
+}
+
 /// Synchronous embedding interface.
 ///
 /// Implementations must be deterministic for a given `(model_id, text)` pair
@@ -124,46 +143,55 @@ impl Embedder for MockEmbedder {
 // OnnxEmbedder — feature-gated on `onnx`.
 // ---------------------------------------------------------------------------
 
-/// ONNX-backed embedder (`bge-small-en-v1.5` by default).
+/// ONNX-backed embedder (default: `bge-small-en-v1.5`).
 ///
 /// With feature `onnx` **off**, this type still compiles, but every
 /// constructor returns [`EmbedError::ModelUnavailable`]. This lets dependents
 /// compile against the same surface in both modes.
 ///
-/// With feature `onnx` **on**, [`OnnxEmbedder::load`] initialises an
-/// `ort::Session` from a path on disk. Tokenisation, pooling, and tensor
-/// plumbing for `bge-small-en-v1.5` are intentionally stubbed in this
-/// scaffolding crate — see follow-ups below.
+/// With feature `onnx` **on**, [`OnnxEmbedder::load_dir`] initialises an
+/// `ort::Session` plus a `tokenizer.json` from a model directory. Inference
+/// runs BERT-style tokenisation, executes the ONNX graph, mean-pools over
+/// the last hidden state weighted by the attention mask, and L2-normalises
+/// the result. See [`crate::onnx`] for the pipeline.
 #[derive(Debug)]
 pub struct OnnxEmbedder {
     #[cfg(feature = "onnx")]
-    _session: ort::session::Session,
+    inner: crate::onnx::OnnxBackend,
+    #[cfg(not(feature = "onnx"))]
     model_id: String,
+    #[cfg(not(feature = "onnx"))]
     dim: usize,
 }
 
 impl OnnxEmbedder {
-    /// Load the ONNX model from `model_path` and tag it with `model_id`.
+    /// Load `model.onnx` + `tokenizer.json` from `model_dir` and tag the
+    /// resulting embedder with `model_id` / `model_version`.
+    ///
+    /// `dim` is the embedding dimensionality the model produces (384 for
+    /// `bge-small-en-v1.5`). It is checked against the actual model output
+    /// on every call to [`Embedder::embed`].
     ///
     /// # Errors
     /// Returns [`EmbedError::ModelUnavailable`] when the `onnx` feature is
-    /// disabled, when the file is missing, or when `ort` rejects the model.
+    /// disabled, when the model or tokenizer file is missing, or when `ort`
+    /// or `tokenizers` rejects the input.
     #[cfg(feature = "onnx")]
-    pub fn load(
-        model_path: &std::path::Path,
+    pub fn load_dir(
+        model_dir: &std::path::Path,
         model_id: impl Into<String>,
+        model_version: impl Into<String>,
         dim: usize,
     ) -> Result<Self, EmbedError> {
-        use ort::session::Session;
-        let session = Session::builder()
-            .map_err(|e| EmbedError::ModelUnavailable(e.to_string()))?
-            .commit_from_file(model_path)
-            .map_err(|e| EmbedError::ModelUnavailable(e.to_string()))?;
-        Ok(Self {
-            _session: session,
-            model_id: model_id.into(),
-            dim,
-        })
+        let inner = crate::onnx::OnnxBackend::load_from_dir(model_dir, model_id, model_version, dim)?;
+        Ok(Self { inner })
+    }
+
+    /// Convenience: load `bge-small-en-v1.5` (384-dim) from `model_dir`.
+    /// Equivalent to [`Self::load_dir`] with the canonical model id.
+    #[cfg(feature = "onnx")]
+    pub fn load_bge_small(model_dir: &std::path::Path) -> Result<Self, EmbedError> {
+        Self::load_dir(model_dir, crate::onnx::BGE_SMALL_EN_V15_ID, "1", crate::onnx::BGE_SMALL_EN_V15_DIM)
     }
 
     /// Stub constructor used when the `onnx` feature is **disabled**.
@@ -172,11 +200,21 @@ impl OnnxEmbedder {
     /// Always returns [`EmbedError::ModelUnavailable`].
     #[cfg(not(feature = "onnx"))]
     #[allow(clippy::needless_pass_by_value)]
-    pub fn load(
-        _model_path: &std::path::Path,
+    pub fn load_dir(
+        _model_dir: &std::path::Path,
         _model_id: impl Into<String>,
+        _model_version: impl Into<String>,
         _dim: usize,
     ) -> Result<Self, EmbedError> {
+        Err(EmbedError::ModelUnavailable(
+            "ft-embed was built without the `onnx` feature".to_string(),
+        ))
+    }
+
+    /// Stub `bge-small-en-v1.5` constructor when the `onnx` feature is off.
+    #[cfg(not(feature = "onnx"))]
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn load_bge_small(_model_dir: &std::path::Path) -> Result<Self, EmbedError> {
         Err(EmbedError::ModelUnavailable(
             "ft-embed was built without the `onnx` feature".to_string(),
         ))
@@ -184,22 +222,51 @@ impl OnnxEmbedder {
 }
 
 impl Embedder for OnnxEmbedder {
-    fn embed(&self, _text: &str) -> Result<Vec<f32>, EmbedError> {
-        // Tokenisation + mean-pooling for bge-small-en-v1.5 is deferred to
-        // the full ADR-0007 daemon implementation. See follow-ups.
-        Err(EmbedError::Inference(
-            "OnnxEmbedder inference not yet implemented; \
-             use MockEmbedder until ADR-0007 daemon lands"
-                .to_string(),
-        ))
+    fn embed(&self, text: &str) -> Result<Vec<f32>, EmbedError> {
+        #[cfg(feature = "onnx")]
+        {
+            self.inner.embed(text)
+        }
+        #[cfg(not(feature = "onnx"))]
+        {
+            let _ = text;
+            Err(EmbedError::ModelUnavailable(
+                "ft-embed was built without the `onnx` feature".to_string(),
+            ))
+        }
     }
 
     fn dim(&self) -> usize {
-        self.dim
+        #[cfg(feature = "onnx")]
+        {
+            self.inner.dim()
+        }
+        #[cfg(not(feature = "onnx"))]
+        {
+            self.dim
+        }
     }
 
     fn model_id(&self) -> &str {
-        &self.model_id
+        #[cfg(feature = "onnx")]
+        {
+            self.inner.model_id()
+        }
+        #[cfg(not(feature = "onnx"))]
+        {
+            &self.model_id
+        }
+    }
+
+    fn model_version(&self) -> &str {
+        #[cfg(feature = "onnx")]
+        {
+            self.inner.model_version()
+        }
+        #[cfg(not(feature = "onnx"))]
+        {
+            "1"
+        }
     }
 }
 
@@ -242,7 +309,16 @@ mod tests {
     #[cfg(not(feature = "onnx"))]
     #[test]
     fn onnx_embedder_unavailable_without_feature() {
-        let r = OnnxEmbedder::load(std::path::Path::new("/nonexistent"), "bge", 384);
+        let r = OnnxEmbedder::load_dir(std::path::Path::new("/nonexistent"), "bge", "1", 384);
+        assert!(matches!(r, Err(EmbedError::ModelUnavailable(_))));
+    }
+
+    #[cfg(feature = "onnx")]
+    #[test]
+    fn onnx_embedder_reports_missing_files() {
+        // Empty dir → both files missing → ModelUnavailable.
+        let dir = tempfile::tempdir().unwrap();
+        let r = OnnxEmbedder::load_bge_small(dir.path());
         assert!(matches!(r, Err(EmbedError::ModelUnavailable(_))));
     }
 }

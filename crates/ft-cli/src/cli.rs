@@ -1358,6 +1358,8 @@ pub struct ServerHooksInstallArgs {
 
 /// Arguments for `firetrail init`.
 #[derive(Debug, Args)]
+#[allow(clippy::struct_excessive_bools)] // CLI flags accumulate; one struct
+                                         // is clearer than a sub-args enum.
 pub struct InitArgs {
     /// Storage backend. See ADR-0006.
     #[arg(long, value_enum, default_value_t = StorageModeArg::Embedded)]
@@ -1385,6 +1387,13 @@ pub struct InitArgs {
     /// Skip installing git hooks.
     #[arg(long)]
     pub no_hooks: bool,
+
+    /// Download the default ONNX embedding model (`bge-small-en-v1.5`,
+    /// ~134 MiB) into the machine-local model cache. Off by default —
+    /// `firetrail init` is offline-first and the user opts in (ADR-0007,
+    /// ADR-0011).
+    #[arg(long)]
+    pub download_model: bool,
 }
 
 /// Arguments for `firetrail doctor`.

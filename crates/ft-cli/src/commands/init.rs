@@ -218,6 +218,38 @@ pub fn run(args: &InitArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliEr
         )?;
     }
 
+    // 8. Optional ONNX model download (firetrail-cmv). Opt-in via
+    // `--download-model`; the default keeps `firetrail init` offline.
+    // Failures here are recorded as warnings (not errors) so a network
+    // hiccup doesn't strand the rest of init.
+    if args.download_model {
+        match ft_embed::download_bge_small(|label, art| {
+            eprintln!("model: {label} {} ({} bytes)", art.filename, art.size_bytes);
+        }) {
+            Ok(rep) => {
+                report.created.push(format!(
+                    "model:{}",
+                    rep.model_dir.display()
+                ));
+                for a in rep.artifacts {
+                    let status = if a.downloaded {
+                        if a.verified { "downloaded+verified" } else { "downloaded" }
+                    } else if a.verified {
+                        "reused+verified"
+                    } else {
+                        "reused"
+                    };
+                    report.created.push(format!("  - {} ({status})", a.filename));
+                }
+            }
+            Err(e) => {
+                report
+                    .warnings
+                    .push(format!("--download-model failed: {e}"));
+            }
+        }
+    }
+
     // Quiet flag is honoured at the formatter layer; verbose flag enables
     // tracing; nothing else to do here.
     let _ = global;
@@ -298,7 +330,8 @@ fn default_config_yaml(strict_identity: bool) -> String {
          format_version: 1\n\
          storage:\n  mode: embedded\n\
          identity:\n  strict: {strict}\n\
-         claim:\n  default_duration: 7d\n"
+         claim:\n  default_duration: 7d\n\
+         {EMBEDDINGS_BLOCK}"
     )
 }
 
@@ -309,9 +342,20 @@ fn external_config_yaml(strict_identity: bool, data_repo_url: &str) -> String {
          format_version: 1\n\
          storage:\n  mode: external\n  data_repo_url: {data_repo_url}\n  default_branch: main\n  sync_policy: loose\n\
          identity:\n  strict: {strict}\n\
-         claim:\n  default_duration: 7d\n"
+         claim:\n  default_duration: 7d\n\
+         {EMBEDDINGS_BLOCK}"
     )
 }
+
+// Seeded `embeddings:` section (firetrail-6n4). Defaults to `mock` so init
+// stays offline-first and host-independent. Operators flip `provider: local`
+// after running `firetrail init --download-model`.
+const EMBEDDINGS_BLOCK: &str = "embeddings:\n  \
+        # provider: local | mock | lexical\n  \
+        provider: mock\n  \
+        model: bge-small-en-v1.5\n  \
+        # fallback: mock | lexical | none\n  \
+        fallback: mock\n";
 
 fn scopes_pilot_yaml(pilot: &[String]) -> String {
     use std::fmt::Write as _;

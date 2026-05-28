@@ -32,16 +32,27 @@
 //! returns [`EmbedError::ModelUnavailable`].
 
 pub mod cache;
+pub mod config;
 pub mod daemon;
+pub mod download;
 pub mod embedder;
 pub mod error;
+#[cfg(feature = "onnx")]
+pub mod onnx;
 pub mod service;
 
 pub use cache::{
     CacheError, EmbeddingCache, IntegrityIssue, IntegrityReport, SampleRow, repo_cache_dir,
     repo_cache_dir_under, repo_identity,
 };
+pub use config::{
+    BuiltEmbedder, EmbeddingsConfig, Fallback, Provider, build_embedder,
+};
 pub use daemon::{DaemonStatus, EmbedRequest, EmbedResponse};
+pub use download::{
+    Artifact, ArtifactOutcome, BGE_SMALL_EN_V15_ARTIFACTS, DownloadReport, default_model_dir,
+    download_artifacts, download_bge_small,
+};
 pub use embedder::{Embedder, MockEmbedder, OnnxEmbedder};
 pub use error::EmbedError;
 pub use service::{DriftIssue, DriftReport, EmbedService, content_hash, cosine, record_text};

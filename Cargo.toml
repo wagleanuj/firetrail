@@ -76,6 +76,8 @@ assert_cmd = "2.0"
 
 # ML runtime (ONNX), added in M3
 ort = "2.0.0-rc.5"
+# BERT-style tokenizer for bge-small-en-v1.5 (M3 ONNX path).
+tokenizers = { version = "0.20", default-features = false, features = ["onig"] }
 
 # Schema / records
 jsonschema = "0.26"

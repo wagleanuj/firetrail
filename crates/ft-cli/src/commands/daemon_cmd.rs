@@ -19,7 +19,7 @@ use std::path::Path;
 use std::process::Command;
 
 use ft_embed::daemon::{self, DaemonStatus};
-use ft_embed::{EmbedService, EmbeddingCache, MockEmbedder};
+use ft_embed::{Embedder, EmbedService, EmbeddingCache, EmbeddingsConfig, build_embedder};
 use serde::Serialize;
 
 use crate::cli::{DaemonStartArgs, GlobalOpts};
@@ -94,10 +94,24 @@ pub fn start(args: &DaemonStartArgs, global: &GlobalOpts) -> Result<CommandOutco
 }
 
 fn run_foreground(ws_root: &Path, socket: &Path) -> Result<CommandOutcome, CliError> {
-    // Build a service backed by the mock embedder + the workspace cache.
+    // Resolve the configured embedder (firetrail-6n4): `embeddings:` in
+    // `.firetrail/config.yml` selects `local` (ONNX), `mock`, or `lexical`.
+    // `lexical` means there is nothing to serve — fail loudly so operators
+    // notice rather than running a no-op daemon.
+    let cfg = EmbeddingsConfig::from_workspace(ws_root)
+        .map_err(|e| CliError::internal(CMD_START, format!("load embeddings config: {e}")))?;
+    let built = build_embedder(&cfg)
+        .map_err(|e| CliError::internal(CMD_START, format!("build embedder: {e}")))?;
+    let warnings = built.warnings;
+    let embedder: Box<dyn Embedder> = built.embedder.ok_or_else(|| {
+        CliError::user(
+            CMD_START,
+            "embeddings.provider=lexical: nothing to serve via the daemon",
+        )
+    })?;
+
     let cache = EmbeddingCache::open_under(ws_root)
         .map_err(|e| CliError::internal(CMD_START, format!("open cache: {e}")))?;
-    let embedder = MockEmbedder::new(0, ft_search::EMBEDDING_DIM);
     let service = EmbedService::new(embedder, cache);
     daemon::serve(socket, &service)
         .map_err(|e| CliError::internal(CMD_START, format!("daemon serve: {e}")))?;
@@ -107,7 +121,7 @@ fn run_foreground(ws_root: &Path, socket: &Path) -> Result<CommandOutcome, CliEr
         socket: socket.display().to_string(),
         status: "exited".to_string(),
         pid: None,
-        warnings: Vec::new(),
+        warnings,
     }))
 }
 

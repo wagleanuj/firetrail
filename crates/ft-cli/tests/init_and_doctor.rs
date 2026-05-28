@@ -116,6 +116,24 @@ fn init_is_idempotent() {
 }
 
 #[test]
+fn init_writes_embeddings_config_block() {
+    // firetrail-6n4: a fresh `firetrail init` seeds the embeddings: section
+    // so the daemon and search paths have something explicit to read.
+    let tr = TestRepo::new().unwrap();
+    std::fs::remove_dir_all(tr.firetrail_dir()).unwrap();
+    let init = run_firetrail(tr.root(), &["init", "--json"]);
+    assert!(init.success(), "init failed: {}", init.stderr);
+    let cfg = std::fs::read_to_string(tr.firetrail_dir().join("config.yml"))
+        .expect("read config.yml");
+    assert!(cfg.contains("embeddings:"), "missing embeddings block:\n{cfg}");
+    assert!(cfg.contains("provider: mock"), "default provider missing:\n{cfg}");
+    assert!(
+        cfg.contains("model: bge-small-en-v1.5"),
+        "default model missing:\n{cfg}"
+    );
+}
+
+#[test]
 fn doctor_clean_on_fresh_init() {
     let tr = TestRepo::new().unwrap();
     std::fs::remove_dir_all(tr.firetrail_dir()).unwrap();

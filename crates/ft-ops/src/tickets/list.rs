@@ -1,7 +1,7 @@
 //! Index-backed ticket listing.
 
 use ft_core::Identity as CoreIdentity;
-use ft_index::{IndexedRecord, ListQuery};
+use ft_index::{IndexedRecord, ListQuery, ReadyQuery};
 use serde::{Deserialize, Serialize};
 
 use crate::error::OpsError;
@@ -104,6 +104,12 @@ pub struct ListInput {
     /// Skip the first N results.
     #[serde(default)]
     pub offset: Option<u64>,
+    /// When `true`, returns only unblocked records (records that have no
+    /// open blockers and no active claim). Mirrors the CLI's
+    /// `firetrail ready` command. When set, the `status` and `offset`
+    /// filters are ignored (the index's ready query has its own gating).
+    #[serde(default)]
+    pub ready: bool,
 }
 
 /// One row of [`ListOutput`].
@@ -167,6 +173,28 @@ pub fn list(
     _events: &EventBus,
 ) -> Result<ListOutput, OpsError> {
     let ctx = TicketCtx::open(ws, identity, "list")?;
+    if input.ready {
+        let mut rq = ReadyQuery::default();
+        if let Some(k) = input.kind {
+            rq.kinds = Some(vec![k.to_core()]);
+        }
+        if let Some(o) = input.owner {
+            let identity = CoreIdentity::new(o.clone())
+                .map_err(|e| OpsError::validation("owner", format!("invalid owner: {e}")))?;
+            rq.owners = Some(vec![identity]);
+        }
+        if let Some(s) = input.scope {
+            rq.scopes = Some(vec![s]);
+        }
+        rq.limit = input.limit;
+        let rows = ctx
+            .index
+            .ready(&rq)
+            .map_err(|e| OpsError::Internal(anyhow::anyhow!("ready: {e}")))?;
+        return Ok(ListOutput {
+            rows: rows.into_iter().map(ListedTicket::from).collect(),
+        });
+    }
     let mut q = ListQuery::default();
     if let Some(k) = input.kind {
         q.kinds = Some(vec![k.to_core()]);

@@ -26,6 +26,7 @@ mod create;
 pub(crate) mod ctx;
 mod link;
 mod list;
+mod reopen;
 mod show;
 mod update;
 
@@ -58,5 +59,6 @@ pub use create::{
 };
 pub use link::{LinkInput, LinkOutput, TicketRelationKind, link};
 pub use list::{ListInput, ListOutput, ListedTicket, TicketKindFilter, TicketStatusFilter, list};
+pub use reopen::{ReopenInput, ReopenOutput, reopen};
 pub use show::{ShowInput, ShowOutput, show};
 pub use update::{UpdateInput, UpdateOutput, update};

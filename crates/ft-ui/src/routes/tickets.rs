@@ -12,6 +12,7 @@
 //! | POST   | `/api/tickets/:id/claim`            | [`ft_ops::tickets::claim`]     |
 //! | POST   | `/api/tickets/:id/unclaim`          | [`ft_ops::tickets::unclaim`]   |
 //! | POST   | `/api/tickets/:id/close`            | [`ft_ops::tickets::close`]     |
+//! | POST   | `/api/tickets/:id/reopen`           | [`ft_ops::tickets::reopen`]    |
 //! | POST   | `/api/tickets/:id/links`            | [`ft_ops::tickets::link`]      |
 //!
 //! ## Discriminated create
@@ -58,8 +59,8 @@ use axum::{
 use ft_identity::{DefaultResolver, IdentityResolver};
 use ft_ops::tickets::{
     self, BoardInput, ClaimInput, CloseInput, CreateBugInput, CreateEpicInput, CreateSubtaskInput,
-    CreateTaskInput, LinkInput, ListInput, ShowInput, TicketRelationKind, UnclaimInput,
-    UpdateInput,
+    CreateTaskInput, LinkInput, ListInput, ReopenInput, ShowInput, TicketRelationKind,
+    UnclaimInput, UpdateInput,
 };
 use ft_ops::{Identity, Workspace};
 use serde::Deserialize;
@@ -82,6 +83,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/:id/claim", post(claim_handler))
         .route("/:id/unclaim", post(unclaim_handler))
         .route("/:id/close", post(close_handler))
+        .route("/:id/reopen", post(reopen_handler))
         .route("/:id/links", post(link_handler))
 }
 
@@ -356,6 +358,23 @@ pub async fn close_handler(
         request_id: request_id(&headers),
     };
     let out = tickets::close(&state.workspace, &identity, input, &state.events)?;
+    Ok((StatusCode::OK, Json(out)))
+}
+
+/// `POST /api/tickets/:id/reopen` — transition a closed/deferred ticket back
+/// to `Open`. Mirrors the CLI's `firetrail reopen` command.
+#[tracing::instrument(skip_all)]
+pub async fn reopen_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, AppError> {
+    let identity = resolve_identity(&state.workspace)?;
+    let input = ReopenInput {
+        id,
+        request_id: request_id(&headers),
+    };
+    let out = tickets::reopen(&state.workspace, &identity, input, &state.events)?;
     Ok((StatusCode::OK, Json(out)))
 }
 

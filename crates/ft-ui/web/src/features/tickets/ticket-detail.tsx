@@ -40,6 +40,7 @@ import {
   useClaimTicket,
   useCloseTicket,
   useLinkTicket,
+  useReopenTicket,
   useUnclaimTicket,
   useUpdateTicket,
 } from './use-ticket-mutations'
@@ -79,6 +80,8 @@ function DetailBody({ record, relations }: { record: RecordWire; relations: Rela
   const claimMut = useClaimTicket(env.id)
   const unclaimMut = useUnclaimTicket(env.id)
   const closeMut = useCloseTicket(env.id)
+  const reopenMut = useReopenTicket(env.id)
+  const isClosed = env.status === 'closed' || env.status === 'deferred'
 
   return (
     <div className="flex flex-col gap-6">
@@ -138,15 +141,27 @@ function DetailBody({ record, relations }: { record: RecordWire; relations: Rela
             Claim
           </Button>
         )}
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => closeMut.mutate()}
-          disabled={closeMut.isPending || env.status === 'closed'}
-        >
-          {closeMut.isPending && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
-          Close
-        </Button>
+        {isClosed ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => reopenMut.mutate()}
+            disabled={reopenMut.isPending}
+          >
+            {reopenMut.isPending && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+            Reopen
+          </Button>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => closeMut.mutate()}
+            disabled={closeMut.isPending}
+          >
+            {closeMut.isPending && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+            Close
+          </Button>
+        )}
       </div>
 
       {/* Description */}

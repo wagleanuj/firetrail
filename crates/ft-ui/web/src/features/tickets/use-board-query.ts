@@ -3,7 +3,7 @@ import type { BoardOutput } from '@/api/types/BoardOutput'
 import { fetchBoard, type BoardFilters } from './api'
 
 export const boardQueryKey = (filters: BoardFilters = {}) =>
-  ['board', filters.scope ?? null, filters.owner ?? null] as const
+  ['board', filters.scope ?? null, filters.owner ?? null, filters.ready ?? null] as const
 
 export function useBoardQuery(filters: BoardFilters = {}): UseQueryResult<BoardOutput> {
   return useQuery({

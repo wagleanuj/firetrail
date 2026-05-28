@@ -16,6 +16,7 @@ import {
   closeTicket,
   createTicket,
   linkTicket,
+  reopenTicket,
   unclaimTicket,
   updateTicket,
   type CreateBody,
@@ -159,6 +160,19 @@ export function useCloseTicket(id: string): UseMutationResult<CloseOutputWire, u
       qc.invalidateQueries({ queryKey: ticketQueryKey(id) })
       qc.invalidateQueries({ queryKey: ['board'] })
       toast.success('Closed')
+    },
+    onError: (err) => toastApiError(err),
+  })
+}
+
+export function useReopenTicket(id: string): UseMutationResult<CloseOutputWire, unknown, void> {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => reopenTicket(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ticketQueryKey(id) })
+      qc.invalidateQueries({ queryKey: ['board'] })
+      toast.success('Reopened')
     },
     onError: (err) => toastApiError(err),
   })

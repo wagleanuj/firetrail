@@ -17,7 +17,8 @@ import {
   useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core'
-import { Plus } from 'lucide-react'
+import { Plus, KanbanSquare } from 'lucide-react'
+import { EmptyState as SharedEmptyState } from '@/components/ui/empty-state'
 import type { BoardCard } from '@/api/types/BoardCard'
 import type { BoardOutput } from '@/api/types/BoardOutput'
 import { Button } from '@/components/ui/button'
@@ -37,10 +38,12 @@ const COLUMNS: Array<{ key: Column; label: string }> = [
 
 interface BoardProps {
   onCreateClick: () => void
+  ready?: boolean
+  onReadyChange?: (next: boolean) => void
 }
 
-export function Board({ onCreateClick }: BoardProps) {
-  const { data, isLoading, error } = useBoardQuery()
+export function Board({ onCreateClick, ready = false, onReadyChange }: BoardProps) {
+  const { data, isLoading, error } = useBoardQuery({ ready })
   const move = useMoveCard()
   const [activeDrag, setActiveDrag] = useState<{ id: string; from: Column } | null>(null)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
@@ -82,10 +85,24 @@ export function Board({ onCreateClick }: BoardProps) {
       <div className="flex h-full flex-col gap-4 p-4">
         <div className="flex items-center justify-between">
           <h1 className="font-mono text-lg font-semibold tracking-tight">Board</h1>
-          <Button onClick={onCreateClick} size="sm" className="gap-2">
-            <Plus className="h-4 w-4" />
-            New ticket
-          </Button>
+          <div className="flex items-center gap-2">
+            {onReadyChange && (
+              <Button
+                size="sm"
+                variant={ready ? 'default' : 'outline'}
+                onClick={() => onReadyChange(!ready)}
+                aria-pressed={ready}
+                data-testid="ready-toggle"
+                className="gap-2"
+              >
+                {ready ? 'Unblocked only' : 'Show all'}
+              </Button>
+            )}
+            <Button onClick={onCreateClick} size="sm" className="gap-2">
+              <Plus className="h-4 w-4" />
+              New ticket
+            </Button>
+          </div>
         </div>
         <div className="grid flex-1 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
           {COLUMNS.map(({ key, label }) => (
@@ -244,17 +261,17 @@ function BoardSkeleton() {
 function EmptyState({ onCreateClick }: { onCreateClick: () => void }) {
   return (
     <div className="flex h-full items-center justify-center p-8">
-      <div className="max-w-md rounded-xl border border-border/70 bg-card/50 p-8 text-center shadow-[0_0_0_1px_hsl(var(--border)/0.4)_inset]">
-        <h2 className="font-mono text-2xl font-semibold">No tickets yet</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Click the button below to file the first one. Daily-driver UI begins
-          here.
-        </p>
-        <Button onClick={onCreateClick} className="mt-6 gap-2">
-          <Plus className="h-4 w-4 text-primary-foreground" />
-          Create ticket
-        </Button>
-      </div>
+      <SharedEmptyState
+        icon={KanbanSquare}
+        title="No tickets yet"
+        description="File the first one — epics, tasks, subtasks, and bugs all live on the board."
+        action={
+          <Button onClick={onCreateClick} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Create ticket
+          </Button>
+        }
+      />
     </div>
   )
 }

@@ -1,7 +1,7 @@
 //! Kanban-style snapshot grouped by status.
 
 use ft_core::{Identity as CoreIdentity, Status};
-use ft_index::{IndexedRecord, ListQuery};
+use ft_index::{IndexedRecord, ListQuery, ReadyQuery};
 use serde::{Deserialize, Serialize};
 
 use crate::error::OpsError;
@@ -22,6 +22,10 @@ pub struct BoardInput {
     /// Filter by owner.
     #[serde(default)]
     pub owner: Option<String>,
+    /// When `true`, only return unblocked records (delegates to the ready
+    /// index query). Mirrors the `?ready=true` flag on `/api/tickets`.
+    #[serde(default)]
+    pub ready: bool,
 }
 
 /// A single card on the board.
@@ -66,6 +70,23 @@ pub fn board(
     _events: &EventBus,
 ) -> Result<BoardOutput, OpsError> {
     let ctx = TicketCtx::open(ws, identity, "board")?;
+
+    if input.ready {
+        let mut rq = ReadyQuery::default();
+        if let Some(o) = input.owner {
+            let identity = CoreIdentity::new(o.clone())
+                .map_err(|e| OpsError::validation("owner", format!("invalid owner: {e}")))?;
+            rq.owners = Some(vec![identity]);
+        }
+        if let Some(s) = input.scope {
+            rq.scopes = Some(vec![s]);
+        }
+        let rows = ctx
+            .index
+            .ready(&rq)
+            .map_err(|e| OpsError::Internal(anyhow::anyhow!("ready: {e}")))?;
+        return Ok(build_board(&rows));
+    }
 
     let mut q = ListQuery {
         include_closed: true,

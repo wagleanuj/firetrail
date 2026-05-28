@@ -25,12 +25,14 @@ import type {
 export interface BoardFilters {
   scope?: string | null
   owner?: string | null
+  ready?: boolean | null
 }
 
 export function fetchBoard(filters: BoardFilters = {}): Promise<BoardOutput> {
   const q = new URLSearchParams()
   if (filters.scope) q.set('scope', filters.scope)
   if (filters.owner) q.set('owner', filters.owner)
+  if (filters.ready) q.set('ready', 'true')
   const qs = q.toString()
   return apiFetch<BoardOutput>(`/api/tickets/board${qs ? `?${qs}` : ''}`)
 }
@@ -96,6 +98,13 @@ export function closeTicket(
   return apiFetch<CloseOutputWire>(`/api/tickets/${encodeURIComponent(id)}/close`, {
     method: 'POST',
     body: body ?? {},
+  })
+}
+
+export function reopenTicket(id: string): Promise<CloseOutputWire> {
+  return apiFetch<CloseOutputWire>(`/api/tickets/${encodeURIComponent(id)}/reopen`, {
+    method: 'POST',
+    body: {},
   })
 }
 

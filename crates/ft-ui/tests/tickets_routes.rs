@@ -251,6 +251,50 @@ async fn close_twice_yields_conflict() {
     assert_eq!(resp.status(), reqwest::StatusCode::CONFLICT, "second close");
 }
 
+#[tokio::test]
+async fn reopen_after_close_round_trip() {
+    let (addr, _state, client, _tr) = boot().await;
+    let body = create_task(&client, addr, "to-reopen").await;
+    let id = body["record"]["envelope"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Close first.
+    let resp = client
+        .post(format!("http://{addr}/api/tickets/{id}/close"))
+        .header("Host", addr.to_string())
+        .json(&serde_json::json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK, "close");
+
+    // Reopen.
+    let resp = client
+        .post(format!("http://{addr}/api/tickets/{id}/reopen"))
+        .header("Host", addr.to_string())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK, "reopen");
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["record"]["envelope"]["status"], "open");
+
+    // Reopening an already-open ticket is a conflict.
+    let resp = client
+        .post(format!("http://{addr}/api/tickets/{id}/reopen"))
+        .header("Host", addr.to_string())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::CONFLICT,
+        "reopen non-closed"
+    );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Links.
 // ─────────────────────────────────────────────────────────────────────────────

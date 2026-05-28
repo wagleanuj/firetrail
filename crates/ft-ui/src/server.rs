@@ -15,7 +15,8 @@ use cookie::Key;
 use ft_ops::{EmittedEvent, EventBus, Workspace};
 use rand::RngCore;
 use tokio::net::TcpListener;
-use tower_http::trace::TraceLayer;
+use tower_http::trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, TraceLayer};
+use tracing::Level;
 
 use crate::auth::SingleUseToken;
 use crate::sse::RingBuffer;
@@ -137,7 +138,14 @@ pub async fn run(opts: ServerOpts) -> anyhow::Result<()> {
 
     let (state, router) = build_state_and_router(workspace, bound_addr, opts.dev);
 
-    let app = router.layer(TraceLayer::new_for_http());
+    // Log per-request method/path/status/latency at INFO so operators get
+    // visibility on the default log level. Override via `RUST_LOG=...`.
+    let app = router.layer(
+        TraceLayer::new_for_http()
+            .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
+            .on_request(DefaultOnRequest::new().level(Level::INFO))
+            .on_response(DefaultOnResponse::new().level(Level::INFO)),
+    );
 
     // Single mandatory line on stdout — parsed by the `ft ui` subcommand.
     println!(

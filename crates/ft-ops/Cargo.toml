@@ -21,7 +21,9 @@ ft-embed = { path = "../ft-embed", version = "0.1.0" }
 ft-trust = { path = "../ft-trust", version = "0.1.0" }
 ft-import = { path = "../ft-import", version = "0.1.0" }
 ft-git = { path = "../ft-git", version = "0.1.0" }
+ft-pr = { path = "../ft-pr", version = "0.1.0" }
 ft-scope = { path = "../ft-scope", version = "0.1.0" }
+regex = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }

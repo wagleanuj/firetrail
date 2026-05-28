@@ -39,6 +39,16 @@ pub(crate) fn ctx_for_offboard<'a>(
     ctx::TicketCtx::open(ws, identity, "identity offboard")
 }
 
+/// Internal helper for criteria write ops (Wave 3-A): open the ticket
+/// context under a stable op-tag so history summaries make sense.
+pub(crate) fn ctx_for_criteria<'a>(
+    ws: &'a crate::workspace::Workspace,
+    identity: &crate::identity::Identity,
+    op: &'static str,
+) -> Result<ctx::TicketCtx<'a>, crate::error::OpsError> {
+    ctx::TicketCtx::open(ws, identity, op)
+}
+
 
 pub use board::{BoardCard, BoardInput, BoardOutput, board};
 pub use claim::{

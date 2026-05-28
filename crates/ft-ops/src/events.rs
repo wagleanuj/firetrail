@@ -131,6 +131,16 @@ pub enum Event {
         /// Reason text.
         reason: String,
     },
+    /// A lint pass completed (Wave 3-A).
+    LintRun {
+        /// Total findings produced.
+        findings: usize,
+    },
+    /// A verify pass completed (Wave 3-A).
+    VerifyRun {
+        /// `true` if every record passed chain verification.
+        ok: bool,
+    },
 }
 
 /// Per-record outcome of the salvage workflow.

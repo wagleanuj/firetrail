@@ -30,6 +30,14 @@ use ft_ops::tickets::{
     TicketKindFilter, TicketPriority, TicketRelationKind, TicketStatusFilter, UnclaimInput,
     UpdateInput,
 };
+use ft_ops::audit::{
+    CriteriaAddInput, CriteriaEvidenceInput, CriteriaListInput, CriteriaListOutput,
+    CriteriaListRow, CriteriaToggleInput, DiffChange, DiffInput, DiffOutput, DiffRow,
+    GraphDirectionInput, GraphEdge, GraphInput, GraphNode, GraphOutput, LintFinding, LintInput,
+    LintOutput, LintSeverity, ReviewAcRow, ReviewEvidenceRow, ReviewHistoryRow,
+    ReviewInput as AuditReviewInput, ReviewOutput as AuditReviewOutput, VerifyInput, VerifyOutput,
+    VerifyResult,
+};
 use ft_ops::events::SalvageDecision;
 use ft_ops::identity_ops::{
     CapabilitiesInput, CapabilitiesOutput, CapabilityRow, IdentityKindInput, IdentityListOutput,
@@ -206,6 +214,34 @@ fn export_into(dir: &Path) -> Result<()> {
     ReasonInput::export_all_to(dir).context("export ReasonInput")?;
     SupersedeInput::export_all_to(dir).context("export SupersedeInput")?;
     MergeInput::export_all_to(dir).context("export MergeInput")?;
+    // Audit ops (W3-A).
+    LintInput::export_all_to(dir).context("export LintInput")?;
+    LintOutput::export_all_to(dir).context("export LintOutput")?;
+    LintFinding::export_all_to(dir).context("export LintFinding")?;
+    LintSeverity::export_all_to(dir).context("export LintSeverity")?;
+    VerifyInput::export_all_to(dir).context("export VerifyInput")?;
+    VerifyOutput::export_all_to(dir).context("export VerifyOutput")?;
+    VerifyResult::export_all_to(dir).context("export VerifyResult")?;
+    AuditReviewInput::export_all_to(dir).context("export audit ReviewInput")?;
+    AuditReviewOutput::export_all_to(dir).context("export audit ReviewOutput")?;
+    ReviewAcRow::export_all_to(dir).context("export ReviewAcRow")?;
+    ReviewEvidenceRow::export_all_to(dir).context("export ReviewEvidenceRow")?;
+    ReviewHistoryRow::export_all_to(dir).context("export ReviewHistoryRow")?;
+    CriteriaAddInput::export_all_to(dir).context("export CriteriaAddInput")?;
+    CriteriaListInput::export_all_to(dir).context("export CriteriaListInput")?;
+    CriteriaListOutput::export_all_to(dir).context("export CriteriaListOutput")?;
+    CriteriaListRow::export_all_to(dir).context("export CriteriaListRow")?;
+    CriteriaToggleInput::export_all_to(dir).context("export CriteriaToggleInput")?;
+    CriteriaEvidenceInput::export_all_to(dir).context("export CriteriaEvidenceInput")?;
+    DiffInput::export_all_to(dir).context("export DiffInput")?;
+    DiffOutput::export_all_to(dir).context("export DiffOutput")?;
+    DiffRow::export_all_to(dir).context("export DiffRow")?;
+    DiffChange::export_all_to(dir).context("export DiffChange")?;
+    GraphInput::export_all_to(dir).context("export GraphInput")?;
+    GraphOutput::export_all_to(dir).context("export GraphOutput")?;
+    GraphNode::export_all_to(dir).context("export GraphNode")?;
+    GraphEdge::export_all_to(dir).context("export GraphEdge")?;
+    GraphDirectionInput::export_all_to(dir).context("export GraphDirectionInput")?;
     Ok(())
 }
 

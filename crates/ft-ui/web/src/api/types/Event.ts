@@ -113,4 +113,12 @@ id: string,
 /**
  * Reason text.
  */
-reason: string, };
+reason: string, } | { "kind": "lint_run", 
+/**
+ * Total findings produced.
+ */
+findings: number, } | { "kind": "verify_run", 
+/**
+ * `true` if every record passed chain verification.
+ */
+ok: boolean, };

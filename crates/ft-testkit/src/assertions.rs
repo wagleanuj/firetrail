@@ -205,7 +205,7 @@ fn dump_dir(out: &mut String, dir: &Path, depth: usize) {
             let _ = writeln!(out, "{indent}{}/", name.to_string_lossy());
             dump_dir(out, &path, depth + 1);
         } else {
-            let size = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            let size = fs::metadata(&path).map_or(0, |m| m.len());
             let _ = writeln!(out, "{indent}{} ({size} bytes)", name.to_string_lossy());
         }
     }

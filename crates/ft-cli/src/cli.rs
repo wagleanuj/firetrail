@@ -1761,6 +1761,12 @@ pub struct UpdateArgs {
     /// New owner identity.
     #[arg(long)]
     pub owner: Option<String>,
+
+    /// New free-form description. Supported for work-graph kinds
+    /// (epic/task/subtask/bug); memory kinds use structured fields and
+    /// must be edited via their respective `*-create` command surfaces.
+    #[arg(long)]
+    pub description: Option<String>,
 }
 
 /// `firetrail close <id> [--force --reason <text>]`

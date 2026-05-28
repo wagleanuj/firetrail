@@ -4,7 +4,7 @@
 //! preserved verbatim. `state_hash` is recomputed by [`WorkCtx::save_record`].
 
 use chrono::Utc;
-use ft_core::{Identity, Status};
+use ft_core::{Identity, RecordBody, Status};
 
 use crate::cli::{GlobalOpts, UpdateArgs};
 use crate::commands::{CommandOutcome, RecordOutcome};
@@ -54,11 +54,29 @@ pub fn run(args: &UpdateArgs, global: &GlobalOpts) -> Result<CommandOutcome, Cli
         }
         touched = true;
     }
+    if let Some(d) = &args.description {
+        match &mut record.body {
+            RecordBody::Epic(e) => d.clone_into(&mut e.description),
+            RecordBody::Task(t) => d.clone_into(&mut t.description),
+            RecordBody::Subtask(s) => d.clone_into(&mut s.description),
+            RecordBody::Bug(b) => d.clone_into(&mut b.description),
+            other => {
+                return Err(CliError::user(
+                    COMMAND,
+                    format!(
+                        "--description is not supported for {:?} records; edit the record's structured fields via its kind-specific commands instead",
+                        other.kind()
+                    ),
+                ));
+            }
+        }
+        touched = true;
+    }
 
     if !touched {
         return Err(CliError::user(
             COMMAND,
-            "no fields to update; supply at least one of --title --status --priority --owner",
+            "no fields to update; supply at least one of --title --status --priority --owner --description",
         ));
     }
 

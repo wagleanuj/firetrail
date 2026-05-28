@@ -129,6 +129,46 @@ fn update_changes_status_and_priority() {
 }
 
 #[test]
+fn update_can_edit_description() {
+    // firetrail-y7s: --description rewrites the body.description field
+    // on work-graph kinds, and the change is captured by the history chain.
+    let tr = fresh_repo();
+    let create = run_firetrail(
+        tr.root(),
+        &[
+            "--json",
+            "task",
+            "create",
+            "describe me",
+            "--description",
+            "v1",
+        ],
+    );
+    let id = id_from_create(&create);
+    let out = run_firetrail(
+        tr.root(),
+        &[
+            "--json",
+            "update",
+            &id,
+            "--description",
+            "v2 - refined",
+        ],
+    );
+    assert!(out.success(), "update --description failed: {}", out.stderr);
+    let v = parse_json(&out);
+    assert_eq!(v["data"]["record"]["body"]["description"], "v2 - refined");
+    let history = v["data"]["record"]["envelope"]["history"]
+        .as_array()
+        .expect("history is an array");
+    assert!(
+        history.len() >= 2,
+        "expected history to grow (create + update), got {}",
+        history.len()
+    );
+}
+
+#[test]
 fn update_requires_at_least_one_field() {
     let tr = fresh_repo();
     let id = id_from_create(&run_firetrail(

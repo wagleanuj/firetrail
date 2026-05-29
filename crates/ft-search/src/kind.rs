@@ -82,12 +82,16 @@ impl DocId {
     }
 
     /// Parse the storage form. A string that is a valid `RecordId` → `Record`;
-    /// a `<tag>:<key>` string → `Synthetic`. Anything else falls back to a
-    /// `Record`-parse attempt and, failing that, an `Audit` synthetic (so an
-    /// unknown id never panics — it just won't resolve metadata).
+    /// a `<tag>:<key>` string → `Synthetic`. Anything else falls back to an
+    /// `Audit` synthetic (so an unknown id never panics — it just won't resolve
+    /// metadata). `Audit` is the chosen fallback because the only non-
+    /// self-describing keys we emit are audit-history keys.
+    ///
+    /// `split_once(':')` splits on the first colon only, so a `key` containing
+    /// colons round-trips through [`Self::as_storage_str`].
     #[must_use]
     pub fn parse(s: &str) -> Self {
-        if let Ok(id) = RecordId::from_string(s.to_string()) {
+        if let Ok(id) = RecordId::from_string(s) {
             return DocId::Record(id);
         }
         if let Some((tag, key)) = s.split_once(':') {
@@ -191,6 +195,17 @@ mod tests {
         let d = DocId::Synthetic { kind: IndexKind::Audit, key: key.clone() };
         assert_eq!(d.as_storage_str(), format!("audit:{key}"));
         assert_eq!(DocId::parse(&format!("audit:{key}")), d);
+    }
+
+    #[test]
+    fn docid_synthetic_key_with_colon_roundtrips() {
+        // split_once(':') keeps colons in the key intact.
+        let d = DocId::parse("scope:org:team");
+        assert_eq!(
+            d,
+            DocId::Synthetic { kind: IndexKind::Scope, key: "org:team".to_string() }
+        );
+        assert_eq!(d.as_storage_str(), "scope:org:team");
     }
 
     #[test]

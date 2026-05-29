@@ -17,6 +17,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Separator } from '@/components/ui/separator'
+import { PageHeader } from '@/components/page-header'
 import { cn } from '@/lib/utils'
 import { fetchReview } from './api'
 
@@ -27,10 +28,19 @@ export function ReviewView({ recordId }: { recordId: string }) {
     enabled: !!recordId,
   })
 
-  if (isLoading) return <Skeleton className="h-96 w-full" />
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-7 w-2/3" />
+        <Skeleton className="h-4 w-1/2" />
+        <Skeleton className="h-40 w-full" />
+        <Skeleton className="h-40 w-full" />
+      </div>
+    )
+  }
   if (error) {
     return (
-      <p className="text-sm text-destructive">
+      <p className="rounded-[var(--radius)] border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
         Failed to load review: {(error as Error).message}
       </p>
     )
@@ -42,58 +52,48 @@ export function ReviewView({ recordId }: { recordId: string }) {
 
   return (
     <div className="space-y-6">
-      <header className="space-y-2">
-        <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-muted-foreground">
-          <Link to="/audit" className="hover:text-primary">
-            audit
-          </Link>
-          <span>/</span>
-          <span>review</span>
-          <span>/</span>
-          <span>{data.id}</span>
-        </div>
-        <div className="flex items-baseline gap-3">
-          <span className="rounded-sm bg-primary/15 px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold uppercase tracking-wider text-primary">
-            {data.kind}
-          </span>
-          <h1 className="text-xl font-semibold">{data.title}</h1>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <span>status: {data.status}</span>
-          <span>•</span>
-          <span>priority: {data.priority}</span>
-          {data.owner && (
-            <>
-              <span>•</span>
-              <span>owner: {data.owner}</span>
-            </>
-          )}
-          {data.trustState && (
-            <>
-              <span>•</span>
-              <span>trust: {data.trustState}</span>
-            </>
-          )}
-          {data.riskClass && (
-            <>
-              <span>•</span>
-              <span>risk: {data.riskClass}</span>
-              {data.highStakes && <span className="text-amber-300">high-stakes</span>}
-            </>
-          )}
-        </div>
-        <div
-          className={cn(
-            'inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs',
-            data.chainValid
-              ? 'border-primary/30 bg-primary/5 text-primary'
-              : 'border-destructive/30 bg-destructive/5 text-destructive',
-          )}
-        >
-          {data.chainValid ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
-          Chain: {data.chainStatus}
-        </div>
-        <div className="pt-2">
+      <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-muted-foreground">
+        <Link to="/audit" className="hover:text-primary">
+          audit
+        </Link>
+        <span>/</span>
+        <span>review</span>
+        <span>/</span>
+        <span className="text-foreground">{data.id}</span>
+      </div>
+
+      <PageHeader
+        title={data.title}
+        subtitle={
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+            <span className="rounded-sm bg-primary/15 px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold uppercase tracking-wider text-primary">
+              {data.kind}
+            </span>
+            <span>status: {data.status}</span>
+            <span>•</span>
+            <span>priority: {data.priority}</span>
+            {data.owner && (
+              <>
+                <span>•</span>
+                <span>owner: {data.owner}</span>
+              </>
+            )}
+            {data.trustState && (
+              <>
+                <span>•</span>
+                <span>trust: {data.trustState}</span>
+              </>
+            )}
+            {data.riskClass && (
+              <>
+                <span>•</span>
+                <span>risk: {data.riskClass}</span>
+                {data.highStakes && <span className="text-warning">high-stakes</span>}
+              </>
+            )}
+          </div>
+        }
+        actions={
           <Link
             to={isTicket ? '/tickets/$id' : '/memory/$id'}
             params={{ id: data.id }}
@@ -101,17 +101,29 @@ export function ReviewView({ recordId }: { recordId: string }) {
           >
             Open record →
           </Link>
-        </div>
-      </header>
+        }
+      />
+
+      <div
+        className={cn(
+          'inline-flex items-center gap-2 rounded-[var(--radius)] border px-3 py-1.5 text-xs',
+          data.chainValid
+            ? 'border-success/30 bg-success/10 text-success'
+            : 'border-danger/30 bg-danger/10 text-danger',
+        )}
+      >
+        {data.chainValid ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
+        Chain: {data.chainStatus}
+      </div>
 
       <Separator />
 
       <section className="space-y-2">
-        <h2 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+        <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
           Acceptance criteria
         </h2>
         {data.acceptanceCriteria.length === 0 ? (
-          <p className="rounded-md border border-dashed border-border/60 px-3 py-3 text-sm text-muted-foreground">
+          <p className="rounded-[var(--radius)] border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
             None.
           </p>
         ) : (
@@ -133,7 +145,7 @@ export function ReviewView({ recordId }: { recordId: string }) {
                   <TableCell className="text-sm">{ac.text}</TableCell>
                   <TableCell className="text-center">
                     {ac.status === 'checked' ? (
-                      <CheckCircle2 className="mx-auto h-4 w-4 text-primary" />
+                      <CheckCircle2 className="mx-auto h-4 w-4 text-success" />
                     ) : (
                       <XCircle className="mx-auto h-4 w-4 text-muted-foreground" />
                     )}
@@ -160,11 +172,11 @@ export function ReviewView({ recordId }: { recordId: string }) {
       </section>
 
       <section className="space-y-2">
-        <h2 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+        <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
           Evidence
         </h2>
         {data.evidence.length === 0 ? (
-          <p className="rounded-md border border-dashed border-border/60 px-3 py-3 text-sm text-muted-foreground">
+          <p className="rounded-[var(--radius)] border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
             None.
           </p>
         ) : (
@@ -196,11 +208,11 @@ export function ReviewView({ recordId }: { recordId: string }) {
       </section>
 
       <section className="space-y-2">
-        <h2 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+        <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
           History
         </h2>
         {data.history.length === 0 ? (
-          <p className="rounded-md border border-dashed border-border/60 px-3 py-3 text-sm text-muted-foreground">
+          <p className="rounded-[var(--radius)] border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
             No history entries.
           </p>
         ) : (
@@ -210,7 +222,7 @@ export function ReviewView({ recordId }: { recordId: string }) {
               const event = (h as { event?: string }).event ?? ''
               const actor = (h as { actor?: string }).actor ?? ''
               return (
-                <li key={i} className="rounded-md border border-border/60 bg-background/60 p-2 text-xs">
+                <li key={i} className="rounded-[var(--radius)] border border-border bg-card p-2 text-xs">
                   <span className="font-mono">
                     <RelativeTime value={at} className="text-muted-foreground" />
                     {event && <> · {event}</>}
@@ -225,8 +237,8 @@ export function ReviewView({ recordId }: { recordId: string }) {
 
       <Separator />
 
-      <section className="rounded-md border border-border/70 bg-background/60 p-3 text-sm">
-        <span className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+      <section className="rounded-[var(--radius)] border border-border bg-surface-2 p-3 text-sm shadow-elevation-1">
+        <span className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
           Suggested next action
         </span>
         <p className="mt-1">{data.suggestedNextAction}</p>

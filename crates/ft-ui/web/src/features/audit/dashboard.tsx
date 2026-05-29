@@ -7,6 +7,7 @@ import { Link } from '@tanstack/react-router'
 import { ShieldAlert, ShieldCheck, GitCompare, Network, History } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
+import { PageHeader } from '@/components/page-header'
 
 const TILES = [
   {
@@ -37,15 +38,13 @@ const TILES = [
 
 export function AuditDashboard() {
   return (
-    <div className="mx-auto max-w-6xl space-y-4 p-6">
-      <header>
-        <h1 className="font-mono text-lg font-semibold tracking-tight">Audit</h1>
-        <p className="text-sm text-muted-foreground">
-          Lint, verify, diff, and walk the relation graph.
-        </p>
-      </header>
-      <section className="space-y-2">
-        <h2 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+    <div className="mx-auto max-w-6xl space-y-6 px-6 py-6">
+      <PageHeader
+        title="Audit"
+        subtitle="Lint, verify, diff, and walk the relation graph."
+      />
+      <section className="space-y-2.5">
+        <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
           Recent runs
         </h2>
         <EmptyState
@@ -54,27 +53,27 @@ export function AuditDashboard() {
           description="Lint, verify, and diff runs from this session will appear here once you launch one."
         />
       </section>
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
         {TILES.map((tile) => {
           const Icon = tile.icon
           return (
             <Link
               key={tile.to}
               to={tile.to}
-              className="group block focus:outline-none"
+              className="group block rounded-[var(--radius)] focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               data-testid={`audit-tile-${tile.title.toLowerCase()}`}
             >
-              <Card className="h-full transition-all group-hover:-translate-y-0.5 group-hover:border-primary/40 group-focus-visible:border-primary/60">
-                <CardHeader>
+              <Card className="h-full p-3 transition-all hover:bg-surface-2 group-hover:-translate-y-0.5 group-hover:border-primary/40 group-focus-visible:border-primary/60">
+                <CardHeader className="p-0">
                   <div className="flex items-center gap-3">
                     <span className="rounded-md bg-primary/15 p-2 text-primary">
                       <Icon className="h-4 w-4" />
                     </span>
-                    <CardTitle className="font-mono text-base">{tile.title}</CardTitle>
+                    <CardTitle className="text-sm font-medium">{tile.title}</CardTitle>
                   </div>
                 </CardHeader>
-                <CardContent>
-                  <CardDescription>{tile.description}</CardDescription>
+                <CardContent className="p-0 pt-2">
+                  <CardDescription className="leading-snug">{tile.description}</CardDescription>
                 </CardContent>
               </Card>
             </Link>

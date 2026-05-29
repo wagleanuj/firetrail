@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import type { GraphDirectionInput } from '@/api/types/GraphDirectionInput'
 import { GraphViewer } from '@/features/audit/graph-viewer'
 import { FeatureErrorBoundary } from '@/components/ui/error-boundary'
+import { PageHeader } from '@/components/page-header'
 
 interface GraphSearch {
   id?: string
@@ -28,8 +29,11 @@ function GraphRoute() {
   const navigate = useNavigate({ from: '/audit/graph' })
   return (
     <FeatureErrorBoundary>
-      <div className="mx-auto max-w-6xl space-y-4 p-6">
-        <h1 className="font-mono text-lg font-semibold tracking-tight">Graph</h1>
+      <div className="mx-auto max-w-6xl space-y-6 px-6 py-6">
+        <PageHeader
+          title="Graph"
+          subtitle="Walk relations outward from a record. Force-directed view."
+        />
         <GraphViewer
         id={search.id ?? ''}
         direction={search.direction ?? 'both'}

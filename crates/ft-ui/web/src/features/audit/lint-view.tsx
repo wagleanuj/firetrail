@@ -27,6 +27,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { PageHeader } from '@/components/page-header'
 import { toastApiError } from '@/api/error'
 import { cn } from '@/lib/utils'
 import { postLint } from './api'
@@ -71,32 +72,36 @@ export function LintView({ initial }: LintViewProps) {
   }
 
   return (
-    <div className="space-y-4">
-      <header className="flex items-end justify-between gap-3">
-        <div>
-          <h2 className="font-mono text-base font-semibold">Lint</h2>
-          {data && (
-            <p className="text-xs text-muted-foreground" data-testid="lint-summary">
+    <div className="space-y-6">
+      <PageHeader
+        title="Lint"
+        subtitle={
+          data ? (
+            <span data-testid="lint-summary">
               Scanned {data.scanned} · {data.errors} errors · {data.warnings} warnings
               {lastRun && ` · last run ${lastRun}`}
-            </p>
-          )}
-        </div>
-        <Button
-          size="sm"
-          onClick={() => mut.mutate()}
-          disabled={mut.isPending}
-          className="gap-2"
-          data-testid="lint-run"
-        >
-          {mut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-          {data ? 'Re-run' : 'Run lint'}
-        </Button>
-      </header>
+            </span>
+          ) : (
+            'Scan every record for rule violations and surface suggested fixes.'
+          )
+        }
+        actions={
+          <Button
+            size="sm"
+            onClick={() => mut.mutate()}
+            disabled={mut.isPending}
+            className="gap-2"
+            data-testid="lint-run"
+          >
+            {mut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+            {data ? 'Re-run' : 'Run lint'}
+          </Button>
+        }
+      />
 
       {data && (
         <>
-          <div className="flex items-end gap-3 rounded-md border border-border/70 bg-background/60 p-3">
+          <div className="flex flex-wrap items-end gap-3 rounded-[var(--radius)] border border-border bg-surface-2 p-3">
             <div className="space-y-1.5">
               <Label className="text-xs">Severity</Label>
               <Select
@@ -120,7 +125,7 @@ export function LintView({ initial }: LintViewProps) {
           </div>
 
           {findings.length === 0 ? (
-            <p className="rounded-md border border-dashed border-border/60 px-3 py-6 text-center text-sm text-muted-foreground">
+            <p className="rounded-[var(--radius)] border border-dashed border-border px-3 py-8 text-center text-sm text-muted-foreground">
               No findings match the filters.
             </p>
           ) : (
@@ -166,7 +171,7 @@ export function LintView({ initial }: LintViewProps) {
                       </TableRow>
                       {isOpen && f.suggestedFix && (
                         <TableRow key={`${i}-fix`}>
-                          <TableCell colSpan={4} className="bg-muted/30">
+                          <TableCell colSpan={4} className="bg-surface-2">
                             <div className="font-mono text-xs">
                               <span className="text-muted-foreground">Suggested fix: </span>
                               {f.suggestedFix}
@@ -193,8 +198,8 @@ function SeverityPill({ severity }: { severity: LintSeverity }) {
       className={cn(
         'inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[0.625rem] uppercase tracking-wider',
         severity === 'error'
-          ? 'bg-destructive/15 text-destructive'
-          : 'bg-amber-400/15 text-amber-300',
+          ? 'bg-danger/15 text-danger'
+          : 'bg-warning/15 text-warning',
       )}
     >
       <Icon className="h-3 w-3" />

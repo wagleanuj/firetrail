@@ -104,19 +104,19 @@ export function CriteriaEditor({ recordId }: { recordId: string }) {
 
   return (
     <div className="space-y-3" data-testid="criteria-editor">
-      <h3 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+      <h3 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
         Acceptance criteria
       </h3>
       {data.items.length === 0 ? (
-        <p className="rounded-md border border-dashed border-border/60 px-3 py-3 text-sm text-muted-foreground">
+        <p className="rounded-[var(--radius)] border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
           No acceptance criteria yet.
         </p>
       ) : (
-        <ul className="space-y-1.5">
+        <ul className="space-y-2">
           {data.items.map((it) => (
             <li
               key={it.id}
-              className="flex items-start gap-3 rounded-md border border-border/60 bg-background/60 p-2"
+              className="flex items-start gap-3 rounded-[var(--radius)] border border-border bg-card p-3 transition-colors hover:bg-surface-2"
             >
               <button
                 type="button"

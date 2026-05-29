@@ -40,7 +40,7 @@ export function DiffViewer({ base, head, memoryOnly, scope, onChange }: DiffView
 
   return (
     <div className="space-y-4">
-      <header className="flex items-end justify-between gap-3 rounded-md border border-border/70 bg-background/60 p-3">
+      <header className="flex flex-wrap items-end justify-between gap-3 rounded-[var(--radius)] border border-border bg-surface-2 p-3">
         <div className="grid flex-1 grid-cols-2 gap-3 lg:grid-cols-4">
           <div className="space-y-1.5">
             <Label className="text-xs">Base</Label>
@@ -72,14 +72,21 @@ export function DiffViewer({ base, head, memoryOnly, scope, onChange }: DiffView
         </Button>
       </header>
 
-      {isLoading && <Skeleton className="h-40 w-full" />}
+      {isLoading && (
+        <div className="space-y-2">
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-9 w-5/6" />
+        </div>
+      )}
       {error && (
-        <p className="text-sm text-destructive">
+        <p className="rounded-[var(--radius)] border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
           Failed to load diff: {(error as Error).message}
         </p>
       )}
       {data && data.rows.length === 0 && (
-        <p className="rounded-md border border-dashed border-border/60 px-3 py-6 text-center text-sm text-muted-foreground">
+        <p className="rounded-[var(--radius)] border border-dashed border-border px-3 py-8 text-center text-sm text-muted-foreground">
           No differences between <code className="font-mono">{base}</code> and{' '}
           <code className="font-mono">{head}</code>.
         </p>
@@ -96,8 +103,17 @@ export function DiffViewer({ base, head, memoryOnly, scope, onChange }: DiffView
             </TableRow>
           </TableHeader>
           <TableBody>
-            {data.rows.map((row) => (
-              <TableRow key={`${row.path}-${row.id ?? ''}`}>
+            {data.rows.map((row) => {
+              const changeText =
+                typeof row.change === 'string' ? row.change : JSON.stringify(row.change)
+              const rowTone =
+                changeText === 'added'
+                  ? 'bg-success/5'
+                  : changeText === 'removed'
+                    ? 'bg-danger/5'
+                    : undefined
+              return (
+              <TableRow key={`${row.path}-${row.id ?? ''}`} className={rowTone}>
                 <TableCell>
                   <code className="break-all font-mono text-xs">{row.path}</code>
                 </TableCell>
@@ -128,7 +144,8 @@ export function DiffViewer({ base, head, memoryOnly, scope, onChange }: DiffView
                   )}
                 </TableCell>
               </TableRow>
-            ))}
+              )
+            })}
           </TableBody>
         </Table>
       )}
@@ -140,9 +157,9 @@ function ChangePill({ change }: { change: DiffChange }) {
   const text = typeof change === 'string' ? change : JSON.stringify(change)
   const tone =
     text === 'added'
-      ? 'bg-primary/15 text-primary'
+      ? 'bg-success/15 text-success'
       : text === 'removed'
-        ? 'bg-destructive/15 text-destructive'
+        ? 'bg-danger/15 text-danger'
         : 'bg-muted text-muted-foreground'
   return (
     <span className={cn('rounded px-1.5 py-0.5 font-mono text-[0.625rem] uppercase tracking-wider', tone)}>

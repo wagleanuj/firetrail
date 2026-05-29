@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { DiffViewer } from '@/features/audit/diff-viewer'
 import { FeatureErrorBoundary } from '@/components/ui/error-boundary'
+import { PageHeader } from '@/components/page-header'
 
 interface DiffSearch {
   base?: string
@@ -26,8 +27,11 @@ function DiffRoute() {
   const navigate = useNavigate({ from: '/audit/diff' })
   return (
     <FeatureErrorBoundary>
-      <div className="mx-auto max-w-6xl space-y-4 p-6">
-        <h1 className="font-mono text-lg font-semibold tracking-tight">Diff</h1>
+      <div className="mx-auto max-w-6xl space-y-6 px-6 py-6">
+        <PageHeader
+          title="Diff"
+          subtitle="Compare two refs and classify per-record changes."
+        />
         <DiffViewer
         base={search.base ?? 'main'}
         head={search.head ?? 'HEAD'}

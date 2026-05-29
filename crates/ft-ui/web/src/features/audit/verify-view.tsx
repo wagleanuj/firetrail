@@ -15,6 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { PageHeader } from '@/components/page-header'
 import { toastApiError } from '@/api/error'
 import { cn } from '@/lib/utils'
 import { postVerify } from './api'
@@ -28,29 +29,33 @@ export function VerifyView() {
   })
   const failures = data?.results.filter((r) => !r.ok) ?? []
   return (
-    <div className="space-y-4">
-      <header className="flex items-end justify-between">
-        <div>
-          <h2 className="font-mono text-base font-semibold">Verify</h2>
-          {data && (
-            <p className="text-xs text-muted-foreground" data-testid="verify-summary">
+    <div className="space-y-6">
+      <PageHeader
+        title="Verify"
+        subtitle={
+          data ? (
+            <span data-testid="verify-summary">
               {data.total} records · {data.failures} failure{data.failures === 1 ? '' : 's'}
-            </p>
-          )}
-        </div>
-        <Button size="sm" onClick={() => mut.mutate()} disabled={mut.isPending} className="gap-2">
-          {mut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-          {data ? 'Re-run' : 'Run verify'}
-        </Button>
-      </header>
+            </span>
+          ) : (
+            'Walk each record’s history chain and confirm signatures hold.'
+          )
+        }
+        actions={
+          <Button size="sm" onClick={() => mut.mutate()} disabled={mut.isPending} className="gap-2">
+            {mut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+            {data ? 'Re-run' : 'Run verify'}
+          </Button>
+        }
+      />
       {data && (
         <>
           <div
             className={cn(
-              'rounded-md border px-4 py-3 text-sm',
+              'rounded-[var(--radius)] border px-4 py-3 text-sm',
               data.failures === 0
-                ? 'border-primary/30 bg-primary/5 text-primary'
-                : 'border-destructive/30 bg-destructive/5 text-destructive',
+                ? 'border-success/30 bg-success/10 text-success'
+                : 'border-danger/30 bg-danger/10 text-danger',
             )}
           >
             {data.failures === 0 ? (
@@ -79,7 +84,7 @@ export function VerifyView() {
                     <TableCell>
                       <code className="font-mono text-xs">{r.id}</code>
                     </TableCell>
-                    <TableCell className="text-sm text-destructive">{r.reason}</TableCell>
+                    <TableCell className="text-sm text-danger">{r.reason}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

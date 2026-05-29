@@ -30,6 +30,8 @@ ft-vec = { path = "../ft-vec", version = "0.1.0", optional = true }
 ft-core = { path = "../ft-core", version = "0.1.0" }
 ft-storage = { path = "../ft-storage", version = "0.1.0" }
 ft-index = { path = "../ft-index", version = "0.1.0" }
+ft-scope = { path = "../ft-scope", version = "0.1.0" }
+ft-identity = { path = "../ft-identity", version = "0.1.0" }
 
 [dev-dependencies]
 serde_json = { workspace = true }

@@ -6,57 +6,83 @@
   :root {
     /* Light theme — restrained, but rarely used. */
     --background: 0 0% 100%;
-    --foreground: 220 13% 12%;
+    --foreground: 215 28% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 220 13% 12%;
+    --card-foreground: 215 28% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 220 13% 12%;
-    --primary: 199 89% 42%;
+    --popover-foreground: 215 28% 12%;
+    --primary: 191 91% 38%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 14% 96%;
-    --secondary-foreground: 220 13% 12%;
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 40%;
-    --accent: 220 14% 96%;
-    --accent-foreground: 220 13% 12%;
+    --secondary: 215 20% 95%;
+    --secondary-foreground: 215 28% 12%;
+    --muted: 215 20% 96%;
+    --muted-foreground: 215 12% 42%;
+    --accent: 215 20% 95%;
+    --accent-foreground: 215 28% 12%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 13% 88%;
-    --input: 220 13% 88%;
-    --ring: 199 89% 48%;
+    --border: 215 16% 88%;
+    --input: 215 16% 88%;
+    --ring: 191 91% 42%;
 
-    --success: 152 64% 52%;
-    --warning: 41 96% 56%;
-    --danger: 0 86% 73%;
+    /* semantic */
+    --success: 152 55% 40%;
+    --warning: 38 90% 45%;
+    --danger: 0 72% 55%;
+    --info: 191 91% 40%;
+
+    /* elevation surfaces */
+    --surface-1: 0 0% 100%;
+    --surface-2: 215 20% 98%;
+    --surface-3: 215 20% 96%;
+
+    /* type-of-work accents */
+    --type-feature: 191 91% 40%;
+    --type-bug: 0 72% 55%;
+    --type-task: 255 70% 60%;
+    --type-epic: 38 90% 42%;
 
     --radius: 0.625rem;
   }
 
   .dark {
-    /* Dark dev-tools palette — JetBrains/Linear-ish with cyan accent. */
-    --background: 220 13% 9%;
-    --foreground: 220 14% 90%;
-    --card: 220 13% 11%;
-    --card-foreground: 220 14% 90%;
-    --popover: 220 13% 11%;
-    --popover-foreground: 220 14% 90%;
-    --primary: 199 89% 48%;
-    --primary-foreground: 220 13% 9%;
-    --secondary: 220 13% 16%;
-    --secondary-foreground: 220 14% 90%;
-    --muted: 220 13% 14%;
-    --muted-foreground: 220 9% 60%;
-    --accent: 220 13% 16%;
-    --accent-foreground: 220 14% 90%;
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 220 14% 90%;
-    --border: 220 13% 18%;
-    --input: 220 13% 18%;
-    --ring: 199 89% 48%;
+    /* Dark dev-tools palette — deep cool charcoal with cyan signal accent. */
+    --background: 215 28% 7%;
+    --foreground: 213 25% 92%;
+    --card: 215 25% 10%;
+    --card-foreground: 213 25% 92%;
+    --popover: 215 25% 11%;
+    --popover-foreground: 213 25% 92%;
+    --primary: 187 92% 52%;
+    --primary-foreground: 215 28% 7%;
+    --secondary: 215 22% 16%;
+    --secondary-foreground: 213 25% 92%;
+    --muted: 215 20% 15%;
+    --muted-foreground: 215 14% 60%;
+    --accent: 215 22% 16%;
+    --accent-foreground: 213 25% 92%;
+    --destructive: 0 72% 58%;
+    --destructive-foreground: 213 25% 95%;
+    --border: 215 18% 18%;
+    --input: 215 18% 18%;
+    --ring: 187 92% 52%;
 
-    --success: 152 64% 52%;
-    --warning: 41 96% 56%;
-    --danger: 0 86% 73%;
+    /* semantic */
+    --success: 152 60% 50%;
+    --warning: 38 92% 58%;
+    --danger: 0 75% 64%;
+    --info: 187 92% 52%;
+
+    /* elevation surfaces (for depth) */
+    --surface-1: 215 25% 10%;
+    --surface-2: 215 24% 13%;
+    --surface-3: 215 22% 16%;
+
+    /* type-of-work accents (chips/pills) */
+    --type-feature: 187 92% 52%;
+    --type-bug: 0 75% 64%;
+    --type-task: 255 92% 78%;
+    --type-epic: 38 92% 60%;
   }
 }
 

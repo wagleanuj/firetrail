@@ -13,6 +13,10 @@ const badgeVariants = cva(
         destructive:
           'border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80',
         outline: 'text-foreground',
+        feature: 'border-transparent bg-type-feature/15 text-type-feature',
+        bug: 'border-transparent bg-type-bug/15 text-type-bug',
+        task: 'border-transparent bg-type-task/15 text-type-task',
+        epic: 'border-transparent bg-type-epic/15 text-type-epic',
       },
     },
     defaultVariants: { variant: 'default' },

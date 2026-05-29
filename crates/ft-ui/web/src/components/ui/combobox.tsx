@@ -158,7 +158,7 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(
         {open && (filtered.length > 0 || loading) && (
           <ul
             data-testid={testId ? `${testId}-list` : undefined}
-            className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-md"
+            className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-border bg-surface-3 p-1 shadow-elevation-2"
           >
             {loading && filtered.length === 0 && (
               <li className="px-2 py-1.5 text-xs text-muted-foreground">
@@ -176,7 +176,7 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(
                   onMouseEnter={() => setHighlight(i)}
                   className={cn(
                     'flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-sm',
-                    i === highlight ? 'bg-accent text-accent-foreground' : '',
+                    i === highlight ? 'bg-surface-2 text-accent-foreground' : '',
                   )}
                 >
                   <span className="truncate font-mono text-xs">

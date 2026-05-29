@@ -4,6 +4,8 @@
 //! are additive and idempotent so a fresh checkout of an existing repository
 //! upgrades cleanly on the next `firetrail search` invocation.
 
+use std::collections::HashSet;
+
 use rusqlite::Connection;
 
 use crate::error::SearchError;
@@ -45,17 +47,56 @@ CREATE VIRTUAL TABLE IF NOT EXISTS records_vec USING vec0(
 /// tracking kinds default to `reviewed`). Search ranking, the
 /// `--min-trust` filter, and the `--trust` filter all read this column so
 /// trust transitions become visible to search without an index rebuild.
+///
+/// The `kind`, `title`, `updated_at`, and `owning_scope` columns allow
+/// synthetic documents (scopes, identities, audit entries) that have no
+/// corresponding `records` row to be found by search without a JOIN.
 const META_TABLE: &str = "
 CREATE TABLE IF NOT EXISTS records_search_meta (
     id TEXT PRIMARY KEY,
-    trust TEXT NOT NULL
+    trust TEXT NOT NULL,
+    kind TEXT,
+    title TEXT,
+    updated_at TEXT,
+    owning_scope TEXT
 );
 ";
+
+/// Columns added to `records_search_meta` after its original (id, trust)
+/// shape. Added idempotently so existing databases upgrade in place.
+const META_ADDED_COLUMNS: &[(&str, &str)] = &[
+    ("kind", "TEXT"),
+    ("title", "TEXT"),
+    ("updated_at", "TEXT"),
+    ("owning_scope", "TEXT"),
+];
 
 /// Ensure the FTS5 virtual table and side metadata table exist. Always runs.
 pub fn ensure_fts(conn: &Connection) -> Result<(), SearchError> {
     conn.execute_batch(FTS_TABLE)?;
     conn.execute_batch(META_TABLE)?;
+    migrate_meta_columns(conn)?;
+    Ok(())
+}
+
+/// Add any missing `records_search_meta` columns. `ALTER TABLE ADD COLUMN` has
+/// no `IF NOT EXISTS`, so we probe `PRAGMA table_info` first.
+fn migrate_meta_columns(conn: &Connection) -> Result<(), SearchError> {
+    let mut existing = HashSet::new();
+    {
+        let mut stmt = conn.prepare("PRAGMA table_info(records_search_meta)")?;
+        let rows = stmt.query_map([], |r| r.get::<_, String>(1))?;
+        for name in rows {
+            existing.insert(name?);
+        }
+    }
+    for (name, ty) in META_ADDED_COLUMNS {
+        if !existing.contains(*name) {
+            conn.execute_batch(&format!(
+                "ALTER TABLE records_search_meta ADD COLUMN {name} {ty};"
+            ))?;
+        }
+    }
     Ok(())
 }
 

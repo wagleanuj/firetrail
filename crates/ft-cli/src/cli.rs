@@ -499,6 +499,63 @@ pub enum EmbedderArg {
     Daemon,
 }
 
+/// Kind selector for `firetrail search --kind`. Superset of record kinds plus
+/// the synthetic search domains (scope/identity/audit).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[clap(rename_all = "lower")]
+pub enum SearchKindArg {
+    /// Epic.
+    Epic,
+    /// Task.
+    Task,
+    /// Subtask.
+    Subtask,
+    /// Bug.
+    Bug,
+    /// Incident.
+    Incident,
+    /// Finding.
+    Finding,
+    /// Runbook.
+    Runbook,
+    /// Decision.
+    Decision,
+    /// Gotcha.
+    Gotcha,
+    /// Generic memory note.
+    Memory,
+    /// Scope definition.
+    Scope,
+    /// Registered identity.
+    Identity,
+    /// Audit/history entry.
+    Audit,
+}
+
+impl SearchKindArg {
+    /// Convert to `ft_search::IndexKind`.
+    #[must_use]
+    pub fn to_index_kind(self) -> ft_search::IndexKind {
+        use ft_core::RecordKind as R;
+        use ft_search::IndexKind as I;
+        match self {
+            Self::Epic => I::Record(R::Epic),
+            Self::Task => I::Record(R::Task),
+            Self::Subtask => I::Record(R::Subtask),
+            Self::Bug => I::Record(R::Bug),
+            Self::Incident => I::Record(R::Incident),
+            Self::Finding => I::Record(R::Finding),
+            Self::Runbook => I::Record(R::Runbook),
+            Self::Decision => I::Record(R::Decision),
+            Self::Gotcha => I::Record(R::Gotcha),
+            Self::Memory => I::Record(R::Memory),
+            Self::Scope => I::Scope,
+            Self::Identity => I::Identity,
+            Self::Audit => I::Audit,
+        }
+    }
+}
+
 /// All record-kind selector covering work + memory kinds (for search/prime
 /// filters which apply to every record kind).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -556,9 +613,9 @@ pub struct SearchArgs {
     /// Minimum trust floor (e.g. `reviewed`, `verified`).
     #[arg(long, value_enum)]
     pub trust: Option<TrustStateArg>,
-    /// Restrict to a record kind. Repeatable.
+    /// Restrict to a kind (record kinds + scope/identity/audit). Repeatable.
     #[arg(long = "kind", value_enum)]
-    pub kinds: Vec<AnyKindArg>,
+    pub kinds: Vec<SearchKindArg>,
     /// Restrict to owning scope.
     #[arg(long)]
     pub scope: Option<String>,

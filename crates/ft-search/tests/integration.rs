@@ -133,7 +133,7 @@ fn upsert_then_search_finds_body_term() {
 
     let hits = fix.engine.search(&SearchQuery::new("clock-pro")).unwrap();
     assert!(!hits.is_empty(), "should match record by body term");
-    assert_eq!(hits[0].id, task.envelope.id);
+    assert_eq!(hits[0].id.as_record_id(), Some(&task.envelope.id));
     assert_eq!(hits[0].mode, HitMode::Lexical);
 }
 
@@ -208,12 +208,12 @@ fn kind_filter_restricts_results() {
     // Both records contain "reliability" / "platform"; filter to Bug only.
     let q = SearchQuery {
         text: "platform".into(),
-        kind_filter: vec![ft_core::RecordKind::Bug],
+        kind_filter: vec![ft_search::IndexKind::Record(ft_core::RecordKind::Bug)],
         ..SearchQuery::default()
     };
     let hits = fix.engine.search(&q).unwrap();
     assert_eq!(hits.len(), 1);
-    assert_eq!(hits[0].id, bug.envelope.id);
+    assert_eq!(hits[0].id.as_record_id(), Some(&bug.envelope.id));
 }
 
 #[test]
@@ -231,7 +231,9 @@ fn delete_removes_from_search() {
         .unwrap();
     assert_eq!(hits.len(), 1);
 
-    fix.engine.delete(&task.envelope.id).unwrap();
+    fix.engine
+        .delete(&ft_search::DocId::Record(task.envelope.id.clone()))
+        .unwrap();
     let hits = fix
         .engine
         .search(&SearchQuery::new("whimsicality"))
@@ -259,15 +261,15 @@ fn similar_lexical_returns_other_hits_not_self() {
     fix.ingest(&unrelated);
 
     let hits = fix.engine.similar(&a.envelope.id, 5).unwrap();
-    let ids: Vec<&str> = hits.iter().map(|h| h.id.as_str()).collect();
+    let ids: Vec<String> = hits.iter().map(|h| h.id.as_storage_str()).collect();
     assert!(
-        !ids.contains(&a.envelope.id.as_str()),
+        !ids.contains(&a.envelope.id.as_str().to_string()),
         "similar() must exclude the source record from lexical fallback"
     );
     // We expect `b` (cache warmup) to show up; the unrelated row may or may
     // not depending on FTS scoring noise, but `b` should be present.
     assert!(
-        ids.contains(&b.envelope.id.as_str()),
+        ids.contains(&b.envelope.id.as_str().to_string()),
         "expected the related cache-warmup task to show up, got {ids:?}"
     );
 }
@@ -303,7 +305,10 @@ fn upsert_vector_is_noop_without_extension() {
     fix.ingest(&task);
     // Should be a no-op + warn, not an error.
     fix.engine
-        .upsert_vector(&task.envelope.id, &vec![0.0; ft_search::EMBEDDING_DIM])
+        .upsert_vector(
+            &ft_search::DocId::Record(task.envelope.id.clone()),
+            &vec![0.0; ft_search::EMBEDDING_DIM],
+        )
         .unwrap();
 }
 
@@ -314,7 +319,10 @@ fn dimension_mismatch_rejects() {
     fix.ingest(&task);
     let err = fix
         .engine
-        .upsert_vector(&task.envelope.id, &[0.0, 1.0, 2.0])
+        .upsert_vector(
+            &ft_search::DocId::Record(task.envelope.id.clone()),
+            &[0.0, 1.0, 2.0],
+        )
         .expect_err("wrong dimension must error even in lexical-only build");
     assert!(matches!(
         err,
@@ -396,10 +404,16 @@ fn vector_search_ranks_nearest_first() {
 
     // Orthogonal embeddings: `near` on axis 0, `far` on axis 1.
     fix.engine
-        .upsert_vector(&near.envelope.id, &one_hot(0))
+        .upsert_vector(
+            &ft_search::DocId::Record(near.envelope.id.clone()),
+            &one_hot(0),
+        )
         .unwrap();
     fix.engine
-        .upsert_vector(&far.envelope.id, &one_hot(1))
+        .upsert_vector(
+            &ft_search::DocId::Record(far.envelope.id.clone()),
+            &one_hot(1),
+        )
         .unwrap();
 
     // Query embedding sits on axis 0 → `near` must be the closest neighbour.
@@ -412,10 +426,32 @@ fn vector_search_ranks_nearest_first() {
     let hits = fix.engine.search(&q).unwrap();
     assert!(!hits.is_empty(), "vector search should return hits");
     assert_eq!(
-        hits[0].id, near.envelope.id,
+        hits[0].id.as_record_id(),
+        Some(&near.envelope.id),
         "the record whose embedding matches the query must rank first"
     );
     assert_eq!(hits[0].mode, HitMode::Vector);
+}
+
+#[test]
+fn meta_table_has_synthetic_columns() {
+    let tmp = tempfile::tempdir().unwrap();
+    let db = tmp.path().join("index.db");
+    let engine = ft_search::SearchEngine::open(&db).unwrap();
+    engine.ensure_schema().unwrap();
+    // Re-open to prove the migration is idempotent across connections
+    // (drop the first handle so this is a clean sequential re-open).
+    drop(engine);
+    let engine2 = ft_search::SearchEngine::open(&db).unwrap();
+    engine2.ensure_schema().unwrap();
+
+    let cols = engine2.debug_meta_columns().unwrap();
+    for expected in ["id", "trust", "kind", "title", "updated_at", "owning_scope"] {
+        assert!(
+            cols.contains(&expected.to_string()),
+            "missing column {expected}"
+        );
+    }
 }
 
 #[test]
@@ -429,4 +465,36 @@ fn now_used_for_recency_is_reasonable() {
         .unwrap();
     assert!(hits.is_empty());
     let _ = Utc::now(); // silence unused-import lint when refactored.
+}
+
+#[test]
+fn synthetic_doc_resolves_without_records_row() {
+    let fix = Fixture::new();
+    // A scope-kind synthetic doc — note: NO insert_record_row call.
+    let doc = ft_search::IndexDoc {
+        id: ft_search::DocId::Synthetic {
+            kind: ft_search::IndexKind::Scope,
+            key: "apps/checkout".to_string(),
+        },
+        kind: ft_search::IndexKind::Scope,
+        title: "Checkout".to_string(),
+        body: "apps/checkout payments owner".to_string(),
+        trust: ft_core::TrustState::Verified,
+        owning_scope: Some("apps/checkout".to_string()),
+        updated_at: chrono::Utc::now(),
+    };
+    fix.engine.upsert_document(&doc).unwrap();
+
+    let hits = fix
+        .engine
+        .search(&ft_search::SearchQuery::new("payments"))
+        .unwrap();
+    assert_eq!(
+        hits.len(),
+        1,
+        "synthetic scope doc should be searchable with no records row"
+    );
+    assert_eq!(hits[0].kind, ft_search::IndexKind::Scope);
+    assert_eq!(hits[0].trust, ft_core::TrustState::Verified);
+    assert_eq!(hits[0].id.as_storage_str(), "scope:apps/checkout");
 }

@@ -85,7 +85,7 @@ pub fn search(args: &SearchArgs, global: &GlobalOpts) -> Result<CommandOutcome, 
         query.min_trust = Some(t.to_core());
     }
     if !args.kinds.is_empty() {
-        query.kind_filter = args.kinds.iter().map(|k| k.to_core()).collect();
+        query.kind_filter = args.kinds.iter().map(|k| k.to_index_kind()).collect();
     }
     if let Some(s) = &args.scope {
         query.scope_filter = Some(s.clone());
@@ -106,9 +106,9 @@ pub fn search(args: &SearchArgs, global: &GlobalOpts) -> Result<CommandOutcome, 
     let hit_views: Vec<SearchHitView> = hits
         .into_iter()
         .filter_map(|h| {
-            let quarantined = match ctx.storage.read(&h.id) {
-                Ok(rec) => is_quarantined(&rec),
-                Err(_) => false,
+            let quarantined = match h.id.as_record_id() {
+                Some(rid) => ctx.storage.read(rid).is_ok_and(|rec| is_quarantined(&rec)),
+                None => false, // synthetic docs (scope/identity/audit) are never quarantined
             };
             if quarantined && !args.include_quarantine {
                 return None;
@@ -224,8 +224,8 @@ pub struct SearchHitView {
 impl From<SearchHit> for SearchHitView {
     fn from(h: SearchHit) -> Self {
         Self {
-            id: h.id.as_str().to_string(),
-            kind: serde_lower(&h.kind),
+            id: h.id.as_storage_str(),
+            kind: h.kind.label().to_string(),
             title: h.title,
             score: h.score,
             trust: serde_lower(&h.trust),

@@ -215,7 +215,113 @@ fn index_rebuild_succeeds_and_search_works_after() {
     let v = parse_json(&out);
     let hits = v["data"]["hits"].as_array().expect("hits");
     assert!(!hits.is_empty());
-    assert_eq!(hits[0]["id"].as_str().unwrap(), id1);
+    // The top hit must be the payment-webhook record or one of its audit
+    // entries (audit docs for the same record are indexed alongside it and
+    // may rank equally, causing either to appear first).
+    let top_id = hits[0]["id"].as_str().unwrap();
+    assert!(
+        top_id == id1 || top_id.starts_with(&format!("audit:{id1}")),
+        "expected top hit to be {id1} or its audit doc, got {top_id}"
+    );
+    // Guard against the audit doc masking a vanished record: the record itself
+    // must still appear somewhere in the results after rebuild.
+    assert!(
+        hits.iter().any(|h| h["id"].as_str() == Some(id1.as_str())),
+        "record {id1} must appear in search results after rebuild"
+    );
+}
+
+#[test]
+fn search_finds_scopes_identities_and_audit_after_rebuild() {
+    // Task 9: prove `firetrail search --kind scope|identity|audit` works after
+    // `index rebuild` synthesizes the corresponding domain docs.
+    let tr = fresh_repo();
+
+    // 1. A task create writes a history entry (h0), which yields an audit doc.
+    let task = run_firetrail(
+        tr.root(),
+        &[
+            "task",
+            "create",
+            "Investigate flaky payment webhook",
+            "--description",
+            "payment webhook drops messages",
+            "--json",
+        ],
+    );
+    assert!(task.success(), "task create failed: {}", task.stderr);
+
+    // 2. Scope registry.
+    std::fs::create_dir_all(tr.root().join(".firetrail")).unwrap();
+    std::fs::write(
+        tr.root().join(".firetrail").join("scopes.yaml"),
+        "scopes:\n  - id: apps/checkout\n    name: Checkout\n    applies_to:\n      - \"apps/checkout/**\"\n    aliases:\n      - checkout\n",
+    )
+    .unwrap();
+
+    // 3. Identity registry.
+    std::fs::write(
+        tr.root().join(".firetrail").join("identities.yaml"),
+        "identities:\n  - id: alice\n    name: Alice Smith\n    kind: human\n    emails:\n      - alice@example.com\n",
+    )
+    .unwrap();
+
+    // 4. Rebuild the index so the scope/identity/audit synthetic docs land in
+    //    the lexical index. (Rebuild may best-effort spawn an embed daemon and
+    //    emit warnings if none is available; lexical indexing still happens.)
+    let rebuild = run_firetrail(tr.root(), &["index", "rebuild", "--json"]);
+    assert!(rebuild.success(), "rebuild failed: {}", rebuild.stderr);
+
+    let search = |query: &str, kind: &str| {
+        let out = run_firetrail(tr.root(), &["search", query, "--kind", kind, "--json"]);
+        assert!(
+            out.success(),
+            "search {query} --kind {kind} failed: {}",
+            out.stderr
+        );
+        parse_json(&out)["data"]["hits"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+    };
+
+    // Scope.
+    let scope_hits = search("checkout", "scope");
+    assert!(
+        scope_hits
+            .iter()
+            .any(|h| h["kind"].as_str() == Some("scope")
+                && h["id"].as_str() == Some("scope:apps/checkout")),
+        "expected a scope hit with id scope:apps/checkout, got {scope_hits:#?}"
+    );
+
+    // Identity.
+    let identity_hits = search("alice", "identity");
+    assert!(
+        identity_hits
+            .iter()
+            .any(|h| h["kind"].as_str() == Some("identity")
+                && h["id"].as_str() == Some("identity:alice")),
+        "expected an identity hit with id identity:alice, got {identity_hits:#?}"
+    );
+
+    // Audit (the audit doc title contains "Investigate flaky payment webhook").
+    let audit_hits = search("webhook", "audit");
+    assert!(
+        audit_hits
+            .iter()
+            .any(|h| h["kind"].as_str() == Some("audit")
+                && h["id"].as_str().is_some_and(|id| id.starts_with("audit:"))),
+        "expected an audit hit with id starting audit:, got {audit_hits:#?}"
+    );
+
+    // Kind isolation: filtering by --kind identity must not surface the scope
+    // doc, proving the --kind filter is honored.
+    let isolated = search("checkout", "identity");
+    assert!(
+        isolated.iter().all(|h| h["kind"].as_str() != Some("scope")),
+        "--kind identity must not return scope docs, got {isolated:#?}"
+    );
 }
 
 #[test]

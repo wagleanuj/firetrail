@@ -37,15 +37,19 @@
 mod engine;
 mod error;
 mod hit;
+mod kind;
 mod query;
 mod ranking;
 mod schema;
+mod sources;
 
-pub use engine::SearchEngine;
+pub use engine::{IndexDoc, SearchEngine};
 pub use error::SearchError;
 pub use hit::{HitMode, SearchHit};
+pub use kind::{DocId, IndexKind};
 pub use query::{SearchMode, SearchQuery};
 pub use ranking::{ALPHA, BETA, DELTA, GAMMA, trust_weight};
+pub use sources::{audit_docs, identity_doc, scope_doc};
 
 /// Dimension of the embedding vectors stored in `records_vec`.
 ///

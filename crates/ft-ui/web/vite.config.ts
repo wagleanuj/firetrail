@@ -50,25 +50,35 @@ export default defineConfig({
           if (id.includes('@dnd-kit')) return 'dnd-vendor'
           if (
             id.includes('react-force-graph') ||
-            id.includes('d3-force') ||
             id.includes('force-graph') ||
-            id.includes('d3-quadtree') ||
-            id.includes('d3-binarytree') ||
-            id.includes('d3-zoom') ||
-            id.includes('d3-drag') ||
-            id.includes('d3-selection') ||
-            id.includes('d3-octree') ||
+            // Catch ALL d3-* submodules, not a hand-picked subset. d3 packages
+            // depend on each other (d3-zoom -> d3-transition -> d3-color, ...);
+            // leaving some in graph-vendor and letting the rest fall through to
+            // react-vendor splits that web across chunks and recreates a
+            // circular import.
+            id.includes('d3-') ||
             id.includes('three')
           ) {
             return 'graph-vendor'
           }
-          if (id.includes('@radix-ui')) return 'radix-vendor'
-          if (
-            id.includes('react-dom') ||
-            id.includes('@tanstack/react-query') ||
-            id.includes('@tanstack/react-router') ||
-            /\/react\//.test(id)
-          ) {
+          // React core ONLY (react, react-dom, scheduler) goes in react-vendor.
+          // These packages have no third-party runtime imports, so this chunk
+          // has zero outgoing cross-chunk edges -- it is a pure sink and can
+          // never be part of a circular import.
+          //
+          // Everything that consumes React's namespace at module-init time
+          // (Radix, @floating-ui, cmdk, TanStack, scroll-lock utils) is left to
+          // the default/shared chunk on purpose. Those read `React.useLayoutEffect`
+          // at the top level; they MUST import React one-directionally from a
+          // fully-initialized chunk. The previous config split @radix-ui into its
+          // own chunk AND split @floating-ui across radix-vendor/react-vendor,
+          // which -- once the redesign added popper-based components and cmdk --
+          // made react-vendor and radix-vendor import each other. On that ESM
+          // cycle, radix-vendor ran before react-vendor finished initializing,
+          // so the React namespace binding was still `undefined`:
+          // "Cannot read properties of undefined (reading 'useLayoutEffect')".
+          // Keeping react-vendor a pure sink eliminates the whole class of bug.
+          if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) {
             return 'react-vendor'
           }
           return undefined

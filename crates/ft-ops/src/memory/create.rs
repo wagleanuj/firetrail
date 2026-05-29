@@ -116,6 +116,11 @@ impl MemoryKind {
             Self::Memory => RecordKind::Memory,
         }
     }
+
+    /// Convert to the search-layer kind.
+    pub(crate) fn to_index_kind(self) -> ft_search::IndexKind {
+        ft_search::IndexKind::Record(self.to_core())
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

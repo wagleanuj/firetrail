@@ -8,6 +8,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::error::SearchError;
 use crate::hit::{HitMode, SearchHit};
+use crate::kind::{DocId, IndexKind};
 use crate::query::{SearchMode, SearchQuery};
 use crate::ranking;
 use crate::schema;
@@ -91,27 +92,49 @@ impl SearchEngine {
         Ok(())
     }
 
-    /// Upsert the lexical (FTS5) row for `record` and refresh the search
-    /// metadata side table (`records_search_meta`) so trust filtering and
-    /// trust-weighted ranking see the current `trust` from the record body.
-    pub fn upsert_lexical(&self, record: &Record) -> Result<(), SearchError> {
-        let (title, body) = record_to_text(record);
-        // External-content FTS5 doesn't have a unique key constraint we can
-        // upsert against; emulate via DELETE + INSERT.
-        let id_str = record.envelope.id.as_str();
+    /// Upsert a document's lexical row and full search metadata. The metadata
+    /// is written self-sufficiently (`kind`/`title`/`updated_at`/`owning_scope`/`trust`)
+    /// so synthetic docs resolve without a `records` row.
+    pub fn upsert_document(&self, doc: &IndexDoc) -> Result<(), SearchError> {
+        let id_str = doc.id.as_storage_str();
         self.conn
             .execute("DELETE FROM records_fts WHERE id = ?1", params![id_str])?;
         self.conn.execute(
             "INSERT INTO records_fts(id, title, body) VALUES (?1, ?2, ?3)",
-            params![id_str, title, body],
+            params![id_str, doc.title, doc.body],
         )?;
-        let trust = trust_for_record(record);
         self.conn.execute(
-            "INSERT INTO records_search_meta(id, trust) VALUES (?1, ?2) \
-             ON CONFLICT(id) DO UPDATE SET trust = excluded.trust",
-            params![id_str, trust_str(trust)],
+            "INSERT INTO records_search_meta(id, trust, kind, title, updated_at, owning_scope) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
+             ON CONFLICT(id) DO UPDATE SET \
+               trust = excluded.trust, kind = excluded.kind, title = excluded.title, \
+               updated_at = excluded.updated_at, owning_scope = excluded.owning_scope",
+            params![
+                id_str,
+                trust_str(doc.trust),
+                doc.kind.label(),
+                doc.title,
+                doc.updated_at.to_rfc3339(),
+                doc.owning_scope,
+            ],
         )?;
         Ok(())
+    }
+
+    /// Upsert the lexical row + metadata for a record. Thin wrapper over
+    /// [`Self::upsert_document`].
+    pub fn upsert_lexical(&self, record: &Record) -> Result<(), SearchError> {
+        let (title, body) = record_to_text(record);
+        let doc = IndexDoc {
+            id: DocId::Record(record.envelope.id.clone()),
+            kind: IndexKind::Record(record.envelope.kind),
+            title,
+            body,
+            trust: trust_for_record(record),
+            owning_scope: record.envelope.owning_scope.clone(),
+            updated_at: record.envelope.updated_at,
+        };
+        self.upsert_document(&doc)
     }
 
     /// Upsert the vector for `id`.
@@ -215,11 +238,10 @@ impl SearchEngine {
             }
 
             let (mode, score) = combine_score(&row, &meta, now, query.mode, self.vec_loaded);
-            let record_id = RecordId::from_string(id_str.clone())
-                .map_err(|e| SearchError::Integrity(e.to_string()))?;
+            let doc_id = DocId::parse(&id_str);
 
             hits.push(SearchHit {
-                id: record_id,
+                id: doc_id,
                 kind: meta.kind,
                 title: meta.title,
                 score,
@@ -262,7 +284,7 @@ impl SearchEngine {
                     ..SearchQuery::default()
                 };
                 let mut hits = self.search(&query)?;
-                hits.retain(|h| h.id.as_str() != id_str);
+                hits.retain(|h| h.id.as_storage_str() != id_str);
                 hits.truncate(limit);
                 return Ok(hits);
             }
@@ -290,10 +312,8 @@ impl SearchEngine {
             };
             let score =
                 ranking::lexical_only_score(row.lexical_score, meta.trust, meta.updated_at, now);
-            let record_id = RecordId::from_string(row.id_str.clone())
-                .map_err(|e| SearchError::Integrity(e.to_string()))?;
             hits.push(SearchHit {
-                id: record_id,
+                id: DocId::parse(&row.id_str),
                 kind: meta.kind,
                 title: meta.title,
                 score,
@@ -435,15 +455,21 @@ impl SearchEngine {
 
     fn lookup_meta(&self, id_str: &str) -> Result<Option<RecordMeta>, SearchError> {
         let mut stmt = self.conn.prepare(
-            "SELECT r.kind, r.title, r.updated_at, r.owning_scope, m.trust \
-             FROM records r LEFT JOIN records_search_meta m ON m.id = r.id \
-             WHERE r.id = ?1",
+            "SELECT \
+               COALESCE(r.kind, m.kind), \
+               COALESCE(r.title, m.title), \
+               COALESCE(r.updated_at, m.updated_at), \
+               COALESCE(r.owning_scope, m.owning_scope), \
+               m.trust \
+             FROM records_search_meta m \
+             LEFT JOIN records r ON r.id = m.id \
+             WHERE m.id = ?1",
         )?;
         let row = stmt
             .query_row(params![id_str], |r| {
-                let kind_s: String = r.get(0)?;
-                let title: String = r.get(1)?;
-                let updated_at_s: String = r.get(2)?;
+                let kind_s: Option<String> = r.get(0)?;
+                let title: Option<String> = r.get(1)?;
+                let updated_at_s: Option<String> = r.get(2)?;
                 let owning_scope: Option<String> = r.get(3)?;
                 let trust_s: Option<String> = r.get(4)?;
                 Ok((kind_s, title, updated_at_s, owning_scope, trust_s))
@@ -453,24 +479,24 @@ impl SearchEngine {
         let Some((kind_s, title, updated_at_s, owning_scope, trust_s)) = row else {
             return Ok(None);
         };
-        let kind = parse_kind(&kind_s)
+        let kind_s = kind_s
+            .ok_or_else(|| SearchError::Integrity("missing kind for indexed doc".into()))?;
+        let kind = IndexKind::parse_label(&kind_s)
             .ok_or_else(|| SearchError::Integrity(format!("unknown kind `{kind_s}`")))?;
+        let updated_at_s = updated_at_s
+            .ok_or_else(|| SearchError::Integrity("missing updated_at".into()))?;
         let updated_at = DateTime::parse_from_rfc3339(&updated_at_s)
             .map(|d| d.with_timezone(&Utc))
             .map_err(|e| SearchError::Integrity(format!("bad updated_at `{updated_at_s}`: {e}")))?;
 
-        // Prefer the materialised per-record trust (written by
-        // `upsert_lexical` from the record body). Records that pre-date the
-        // side table — or that have never been upserted — fall back to the
-        // kind-driven default so existing scenarios continue to surface.
         let trust = trust_s
             .as_deref()
             .and_then(parse_trust)
-            .unwrap_or_else(|| default_trust_for_kind(kind));
+            .unwrap_or_else(|| default_trust_for_index_kind(kind));
 
         Ok(Some(RecordMeta {
             kind,
-            title,
+            title: title.unwrap_or_default(),
             trust,
             owning_scope,
             updated_at,
@@ -519,6 +545,41 @@ impl SearchEngine {
     }
 }
 
+/// A unit of searchable text + metadata, independent of `ft_core::Record`.
+/// Records and synthetic domains (scope/identity/audit) both lower to this.
+#[derive(Debug, Clone)]
+pub struct IndexDoc {
+    /// Document id.
+    pub id: DocId,
+    /// Document kind.
+    pub kind: IndexKind,
+    /// Short title (FTS `title` column + surfaced on the hit).
+    pub title: String,
+    /// Body text (FTS `body` column).
+    pub body: String,
+    /// Trust state written to `records_search_meta.trust`.
+    pub trust: TrustState,
+    /// Owning scope (filterable), if any.
+    pub owning_scope: Option<String>,
+    /// Last-updated timestamp used by recency ranking.
+    pub updated_at: DateTime<Utc>,
+}
+
+impl IndexDoc {
+    /// Text handed to the embedder (title + body). Mirrors the FTS content so
+    /// lexical and vector indexes see the same source.
+    #[must_use]
+    pub fn embed_text(&self) -> String {
+        if self.body.is_empty() {
+            self.title.clone()
+        } else if self.title.is_empty() {
+            self.body.clone()
+        } else {
+            format!("{}\n\n{}", self.title, self.body)
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct ScoringRow {
     id_str: String,
@@ -530,7 +591,7 @@ struct ScoringRow {
 
 #[derive(Debug, Clone)]
 struct RecordMeta {
-    kind: RecordKind,
+    kind: IndexKind,
     title: String,
     trust: TrustState,
     owning_scope: Option<String>,
@@ -673,20 +734,16 @@ fn default_trust_for_kind(kind: RecordKind) -> TrustState {
     }
 }
 
-fn parse_kind(s: &str) -> Option<RecordKind> {
-    Some(match s {
-        "epic" => RecordKind::Epic,
-        "task" => RecordKind::Task,
-        "subtask" => RecordKind::Subtask,
-        "bug" => RecordKind::Bug,
-        "incident" => RecordKind::Incident,
-        "finding" => RecordKind::Finding,
-        "runbook" => RecordKind::Runbook,
-        "decision" => RecordKind::Decision,
-        "gotcha" => RecordKind::Gotcha,
-        "memory" => RecordKind::Memory,
-        _ => return None,
-    })
+/// Trust fallback for an indexed doc with no materialised `trust` column.
+/// Records delegate to the existing `default_trust_for_kind`; scopes/identities
+/// are authoritative configuration → `Verified`; audit is a fallback
+/// (`Reviewed`) since audit docs always carry an inherited trust at write time.
+fn default_trust_for_index_kind(kind: IndexKind) -> TrustState {
+    match kind {
+        IndexKind::Record(k) => default_trust_for_kind(k),
+        IndexKind::Scope | IndexKind::Identity => TrustState::Verified,
+        IndexKind::Audit => TrustState::Reviewed,
+    }
 }
 
 /// Convert a record into `(title, body)` text suitable for FTS5.

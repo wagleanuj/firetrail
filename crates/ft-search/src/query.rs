@@ -1,6 +1,8 @@
 //! Query and mode types for [`crate::SearchEngine::search`].
 
-use ft_core::{RecordKind, TrustState};
+use ft_core::TrustState;
+
+use crate::kind::IndexKind;
 
 /// Which signal(s) the caller wants the engine to use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -33,7 +35,7 @@ pub struct SearchQuery {
     /// `None` means "no trust filter" (drafts included).
     pub min_trust: Option<TrustState>,
     /// Restrict to these kinds. Empty means "all kinds".
-    pub kind_filter: Vec<RecordKind>,
+    pub kind_filter: Vec<IndexKind>,
     /// Restrict to this owning scope. `None` means "any scope".
     pub scope_filter: Option<String>,
     /// Maximum number of hits to return.

@@ -133,7 +133,7 @@ fn upsert_then_search_finds_body_term() {
 
     let hits = fix.engine.search(&SearchQuery::new("clock-pro")).unwrap();
     assert!(!hits.is_empty(), "should match record by body term");
-    assert_eq!(hits[0].id, task.envelope.id);
+    assert_eq!(hits[0].id.as_record_id(), Some(&task.envelope.id));
     assert_eq!(hits[0].mode, HitMode::Lexical);
 }
 
@@ -208,12 +208,12 @@ fn kind_filter_restricts_results() {
     // Both records contain "reliability" / "platform"; filter to Bug only.
     let q = SearchQuery {
         text: "platform".into(),
-        kind_filter: vec![ft_core::RecordKind::Bug],
+        kind_filter: vec![ft_search::IndexKind::Record(ft_core::RecordKind::Bug)],
         ..SearchQuery::default()
     };
     let hits = fix.engine.search(&q).unwrap();
     assert_eq!(hits.len(), 1);
-    assert_eq!(hits[0].id, bug.envelope.id);
+    assert_eq!(hits[0].id.as_record_id(), Some(&bug.envelope.id));
 }
 
 #[test]
@@ -259,15 +259,15 @@ fn similar_lexical_returns_other_hits_not_self() {
     fix.ingest(&unrelated);
 
     let hits = fix.engine.similar(&a.envelope.id, 5).unwrap();
-    let ids: Vec<&str> = hits.iter().map(|h| h.id.as_str()).collect();
+    let ids: Vec<String> = hits.iter().map(|h| h.id.as_storage_str()).collect();
     assert!(
-        !ids.contains(&a.envelope.id.as_str()),
+        !ids.contains(&a.envelope.id.as_str().to_string()),
         "similar() must exclude the source record from lexical fallback"
     );
     // We expect `b` (cache warmup) to show up; the unrelated row may or may
     // not depending on FTS scoring noise, but `b` should be present.
     assert!(
-        ids.contains(&b.envelope.id.as_str()),
+        ids.contains(&b.envelope.id.as_str().to_string()),
         "expected the related cache-warmup task to show up, got {ids:?}"
     );
 }
@@ -412,7 +412,8 @@ fn vector_search_ranks_nearest_first() {
     let hits = fix.engine.search(&q).unwrap();
     assert!(!hits.is_empty(), "vector search should return hits");
     assert_eq!(
-        hits[0].id, near.envelope.id,
+        hits[0].id.as_record_id(),
+        Some(&near.envelope.id),
         "the record whose embedding matches the query must rank first"
     );
     assert_eq!(hits[0].mode, HitMode::Vector);

@@ -22,6 +22,38 @@ bd close <id>         # Complete work
 - Run `bd prime` for detailed command reference and session close protocol
 - Use `bd remember` for persistent knowledge — do NOT use MEMORY.md files
 
+### Filing children under an epic
+
+When you file an issue that belongs under an existing epic, use the `--parent` flag —
+do NOT use `bd dep add child epic` with the default `blocks` type. The default
+inverts the relationship (epic blocks child), which forces `--force` closes later.
+
+```bash
+# Correct: epic depends on child (parent-child); epic auto-unblocks when children close
+bd create --parent firetrail-44v --title "Reopen route" --type=feature --priority=1
+
+# If the issue already exists:
+bd dep add firetrail-44v firetrail-n77 --type=parent-child
+```
+
+### Closing issues via commit messages
+
+A `post-commit` hook at `.beads/hooks/post-commit` parses commit messages and
+auto-closes any issues referenced with trailer-style keywords:
+
+```
+Closes: firetrail-abc
+Fixes: firetrail-abc, firetrail-xyz
+Resolves: firetrail-abc
+```
+
+The colon is required; bare prose like "this closes the dialog" is ignored.
+Set `BD_NO_AUTOCLOSE=1` to opt out for a single commit.
+
+This means once a commit lands you do NOT need to also `bd close` — the hook
+handles it. Still run `bd close --reason ...` manually for issues that
+ship without a code change (e.g. won't-fix, deferred to ADR).
+
 ## Session Completion
 
 **When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.

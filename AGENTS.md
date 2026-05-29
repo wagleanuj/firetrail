@@ -158,12 +158,24 @@ bd update <id> --claim  # claim atomically so other agents do not pick the same 
 - If you discover related work mid-task, file a new issue with
   `--deps discovered-from:<parent-id>`. Do not silently expand scope.
 - Close issues only when validation passes (see Section 5). Use
-  `bd close <id> --reason "..."`.
+  `bd close <id> --reason "..."`, or land a commit whose message contains
+  `Closes: firetrail-<id>` and the post-commit hook closes it for you.
 
-**Naming:**
+**Naming and shape:**
 
 - Issues created during the build are prefixed `firetrail-<hash>` (e.g. `firetrail-a3f2dd`).
-- Epics group related work. Tasks roll up to epics via `--parent`.
+- Epics group related work. Children roll up to epics via `bd create --parent <epic-id>`.
+  Do NOT use `bd dep add child epic` with the default `blocks` type — that inverts the
+  relationship and makes the epic block its children.
+- For an existing child, attach to the epic with
+  `bd dep add <epic> <child> --type=parent-child`.
+
+**Auto-close on commit:**
+
+- `.beads/hooks/post-commit` scans HEAD's commit message for trailer-style
+  `Closes: firetrail-<id>` / `Fixes: firetrail-<id>` / `Resolves: firetrail-<id>` lines
+  (colon required) and closes each referenced issue. Multiple ids per trailer are fine.
+- Opt out for one commit with `BD_NO_AUTOCLOSE=1 git commit ...`.
 
 ---
 

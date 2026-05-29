@@ -1,0 +1,63 @@
+#!/usr/bin/env sh
+# Auto-close beads issues referenced by the HEAD commit message.
+#
+# Recognises trailer-style references (case-insensitive) of the form:
+#   Closes: firetrail-abc
+#   Fixes: firetrail-abc, firetrail-xyz
+#   Resolves: firetrail-abc
+#
+# The colon is required to avoid false matches on English prose like
+# "this also closes the dialog after submit". Multiple ids per trailer are
+# allowed and any line starting (after optional whitespace) with one of the
+# three keywords + colon is consumed.
+#
+# For each unique id found, runs `bd close <id> --reason "auto-closed by <sha>"`.
+# Failures (already-closed, unknown id) are swallowed so commits never block.
+#
+# To opt out for a single commit, set BD_NO_AUTOCLOSE=1.
+
+set -e
+
+# Skip when invoked recursively (bd itself can commit during sync) or opted out.
+if [ -n "$BD_NO_AUTOCLOSE" ] || [ -n "$BD_GIT_HOOK_AUTOCLOSE_RUNNING" ]; then
+    exit 0
+fi
+export BD_GIT_HOOK_AUTOCLOSE_RUNNING=1
+
+if ! command -v bd >/dev/null 2>&1; then
+    exit 0
+fi
+
+# Pull message of HEAD (we're in post-commit, so HEAD is the new commit).
+msg=$(git log -1 --format=%B HEAD 2>/dev/null || true)
+[ -z "$msg" ] && exit 0
+
+# Pick only trailer-style lines (Closes:/Fixes:/Resolves: at start of line),
+# then pull every firetrail-<id> out of them.
+ids=$(printf '%s\n' "$msg" \
+    | grep -iE '^[[:space:]]*(close[sd]?|fix(e[sd])?|resolve[sd]?):' \
+    | grep -oiE 'firetrail-[a-z0-9]+' \
+    | tr 'A-Z' 'a-z' \
+    | sort -u)
+
+[ -z "$ids" ] && exit 0
+
+sha=$(git rev-parse --short HEAD 2>/dev/null || echo "HEAD")
+
+for id in $ids; do
+    # Only close issues that are currently open. `bd show` is cheap.
+    status=$(bd show "$id" --json 2>/dev/null \
+        | grep -oE '"status":[[:space:]]*"[a-z_]+"' \
+        | head -1 \
+        | sed -E 's/.*"([a-z_]+)"$/\1/' || true)
+    case "$status" in
+        ""|closed)
+            continue
+            ;;
+    esac
+    if bd close "$id" --reason "auto-closed by commit $sha" >/dev/null 2>&1; then
+        echo "beads: closed $id (referenced in commit $sha)"
+    fi
+done
+
+exit 0

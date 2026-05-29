@@ -19,6 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { CommandPalette } from '@/components/command-palette'
 
 interface ShortcutDef {
   keys: string
@@ -26,6 +27,7 @@ interface ShortcutDef {
 }
 
 const SHORTCUTS: ShortcutDef[] = [
+  { keys: '⌘ K / Ctrl K', label: 'Open command palette' },
   { keys: 'c', label: 'Create ticket' },
   { keys: '/', label: 'Focus search / filter' },
   { keys: 'j / k', label: 'Move list selection up/down' },
@@ -55,7 +57,18 @@ export function useShortcutHandlers(): ShortcutsContextValue {
 export function ShortcutsProvider({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate()
   const [helpOpen, setHelpOpen] = React.useState(false)
+  const [paletteOpen, setPaletteOpen] = React.useState(false)
   const handlersRef = React.useRef<ShortcutsContextValue>({})
+
+  // Cmd+K (mac) / Ctrl+K (win/linux) toggles the command palette. We enable
+  // it on form tags so it fires even when focus is inside an input, and use
+  // `mod` so react-hotkeys-hook normalises the platform modifier — this keeps
+  // it distinct from every existing single-key / chord binding below.
+  useHotkeys(
+    'mod+k',
+    () => setPaletteOpen((v) => !v),
+    { preventDefault: true, enableOnFormTags: true, enableOnContentEditable: true },
+  )
 
   // `c` — opens the ticket create dialog if the current route has registered
   // a handler. Falls back to navigating home (which mounts the board route
@@ -127,6 +140,7 @@ export function ShortcutsProvider({ children }: { children: React.ReactNode }) {
     <ShortcutsContext.Provider value={ctx}>
       {children}
       <ShortcutsHelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
+      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
     </ShortcutsContext.Provider>
   )
 }

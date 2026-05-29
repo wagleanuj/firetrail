@@ -10,9 +10,13 @@ import type { Transition } from 'framer-motion'
 
 export const FADE_DURATION = 0.18
 
-/** Soft ease-out used by route transitions. */
+/**
+ * Route transitions: fade + 4px rise, ~160ms ease-out (§4 of the redesign
+ * spec). The rise distance lives on the motion elements in
+ * `route-transition.tsx`; this carries the timing.
+ */
 export const ROUTE_TRANSITION: Transition = {
-  duration: FADE_DURATION,
+  duration: 0.16,
   ease: [0.16, 1, 0.3, 1],
 }
 

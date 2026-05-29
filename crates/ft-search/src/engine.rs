@@ -479,9 +479,15 @@ impl SearchEngine {
         let Some((kind_s, title, updated_at_s, owning_scope, trust_s)) = row else {
             return Ok(None);
         };
-        let Some(kind_s) = kind_s else { return Ok(None); };
-        let Some(kind) = IndexKind::parse_label(&kind_s) else { return Ok(None) }; // unknown kind label → skip, don't error
-        let Some(updated_at_s) = updated_at_s else { return Ok(None); };
+        let Some(kind_s) = kind_s else {
+            return Ok(None);
+        };
+        let Some(kind) = IndexKind::parse_label(&kind_s) else {
+            return Ok(None);
+        }; // unknown kind label → skip, don't error
+        let Some(updated_at_s) = updated_at_s else {
+            return Ok(None);
+        };
         let updated_at = DateTime::parse_from_rfc3339(&updated_at_s)
             .map(|d| d.with_timezone(&Utc))
             .map_err(|e| SearchError::Integrity(format!("bad updated_at `{updated_at_s}`: {e}")))?;
@@ -506,7 +512,9 @@ impl SearchEngine {
     /// correctly. Not intended for production use.
     #[doc(hidden)]
     pub fn debug_meta_columns(&self) -> Result<Vec<String>, SearchError> {
-        let mut stmt = self.conn.prepare("PRAGMA table_info(records_search_meta)")?;
+        let mut stmt = self
+            .conn
+            .prepare("PRAGMA table_info(records_search_meta)")?;
         let rows = stmt.query_map([], |r| r.get::<_, String>(1))?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }

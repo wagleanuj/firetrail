@@ -96,10 +96,16 @@ impl DocId {
         }
         if let Some((tag, key)) = s.split_once(':') {
             if let Some(kind) = IndexKind::parse_label(tag) {
-                return DocId::Synthetic { kind, key: key.to_string() };
+                return DocId::Synthetic {
+                    kind,
+                    key: key.to_string(),
+                };
             }
         }
-        DocId::Synthetic { kind: IndexKind::Audit, key: s.to_string() }
+        DocId::Synthetic {
+            kind: IndexKind::Audit,
+            key: s.to_string(),
+        }
     }
 
     /// The backing `RecordId`, if this doc is a real record. Synthetic docs
@@ -162,7 +168,10 @@ mod tests {
     fn index_kind_label_roundtrips() {
         assert_eq!(IndexKind::Scope.label(), "scope");
         assert_eq!(IndexKind::Record(RecordKind::Task).label(), "task");
-        assert_eq!(IndexKind::parse_label("identity"), Some(IndexKind::Identity));
+        assert_eq!(
+            IndexKind::parse_label("identity"),
+            Some(IndexKind::Identity)
+        );
         assert_eq!(
             IndexKind::parse_label("epic"),
             Some(IndexKind::Record(RecordKind::Epic))
@@ -192,7 +201,10 @@ mod tests {
     #[test]
     fn docid_audit_key_embeds_recordid() {
         let key = format!("{}#h3", rid().as_str());
-        let d = DocId::Synthetic { kind: IndexKind::Audit, key: key.clone() };
+        let d = DocId::Synthetic {
+            kind: IndexKind::Audit,
+            key: key.clone(),
+        };
         assert_eq!(d.as_storage_str(), format!("audit:{key}"));
         assert_eq!(DocId::parse(&format!("audit:{key}")), d);
     }
@@ -203,7 +215,10 @@ mod tests {
         let d = DocId::parse("scope:org:team");
         assert_eq!(
             d,
-            DocId::Synthetic { kind: IndexKind::Scope, key: "org:team".to_string() }
+            DocId::Synthetic {
+                kind: IndexKind::Scope,
+                key: "org:team".to_string()
+            }
         );
         assert_eq!(d.as_storage_str(), "scope:org:team");
     }

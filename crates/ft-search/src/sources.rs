@@ -24,10 +24,17 @@ pub fn scope_doc(scope: &ft_scope::Scope, updated_at: DateTime<Utc>) -> IndexDoc
         }
     }
     IndexDoc {
-        id: DocId::Synthetic { kind: IndexKind::Scope, key: scope.id.clone() },
+        id: DocId::Synthetic {
+            kind: IndexKind::Scope,
+            key: scope.id.clone(),
+        },
         kind: IndexKind::Scope,
         title: scope.name.clone(),
-        body: body_parts.into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join("\n"),
+        body: body_parts
+            .into_iter()
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n"),
         trust: TrustState::Verified,
         owning_scope: Some(scope.id.clone()),
         updated_at,
@@ -36,7 +43,10 @@ pub fn scope_doc(scope: &ft_scope::Scope, updated_at: DateTime<Utc>) -> IndexDoc
 
 /// Lower a registered identity into a searchable document.
 #[must_use]
-pub fn identity_doc(ident: &ft_identity::RegisteredIdentity, updated_at: DateTime<Utc>) -> IndexDoc {
+pub fn identity_doc(
+    ident: &ft_identity::RegisteredIdentity,
+    updated_at: DateTime<Utc>,
+) -> IndexDoc {
     let mut body_parts: Vec<String> = Vec::new();
     body_parts.push(ident.id.clone());
     body_parts.extend(ident.emails.iter().cloned());
@@ -48,10 +58,21 @@ pub fn identity_doc(ident: &ft_identity::RegisteredIdentity, updated_at: DateTim
         }
     }
     IndexDoc {
-        id: DocId::Synthetic { kind: IndexKind::Identity, key: ident.id.clone() },
+        id: DocId::Synthetic {
+            kind: IndexKind::Identity,
+            key: ident.id.clone(),
+        },
         kind: IndexKind::Identity,
-        title: if ident.name.is_empty() { ident.id.clone() } else { ident.name.clone() },
-        body: body_parts.into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join("\n"),
+        title: if ident.name.is_empty() {
+            ident.id.clone()
+        } else {
+            ident.name.clone()
+        },
+        body: body_parts
+            .into_iter()
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n"),
         trust: TrustState::Verified,
         owning_scope: None,
         updated_at,
@@ -70,7 +91,11 @@ pub fn audit_docs(record: &Record, record_trust: TrustState) -> Vec<IndexDoc> {
         .iter()
         .enumerate()
         .map(|(n, entry)| {
-            let op = entry.ops_summary.first().cloned().unwrap_or_else(|| "history".into());
+            let op = entry
+                .ops_summary
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "history".into());
             let mut body_parts: Vec<String> = Vec::new();
             body_parts.push(entry.primary_actor.as_str().to_string());
             for c in &entry.contributors {
@@ -110,7 +135,13 @@ mod tests {
         };
         let doc = scope_doc(&scope, Utc::now());
         assert_eq!(doc.kind, IndexKind::Scope);
-        assert_eq!(doc.id, DocId::Synthetic { kind: IndexKind::Scope, key: "apps/checkout".into() });
+        assert_eq!(
+            doc.id,
+            DocId::Synthetic {
+                kind: IndexKind::Scope,
+                key: "apps/checkout".into()
+            }
+        );
         assert_eq!(doc.trust, TrustState::Verified);
         assert!(doc.body.contains("apps/checkout/**"));
         assert!(doc.body.contains("checkout"));
@@ -129,7 +160,13 @@ mod tests {
         };
         let doc = identity_doc(&ident, Utc::now());
         assert_eq!(doc.kind, IndexKind::Identity);
-        assert_eq!(doc.id, DocId::Synthetic { kind: IndexKind::Identity, key: "alice".into() });
+        assert_eq!(
+            doc.id,
+            DocId::Synthetic {
+                kind: IndexKind::Identity,
+                key: "alice".into()
+            }
+        );
         assert_eq!(doc.trust, TrustState::Verified);
         assert!(doc.body.contains("alice@example.com"));
     }

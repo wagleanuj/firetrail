@@ -217,8 +217,17 @@ fn audit_record_trust(rec: &ft_core::Record) -> ft_core::TrustState {
     }
 }
 
-/// Send `IndexRecord` requests for synthetic docs so their vectors land. Best
-/// effort: a missing/failed daemon leaves the docs lexical-only.
+/// Send `IndexRecord` requests for synthetic docs so their vectors land.
+///
+/// Best effort, and deliberately **non-spawning**: we only dispatch when a
+/// daemon is *already* running. `index rebuild` must not start a background
+/// embedder, because that daemon would open the same `SQLite` database
+/// concurrently with the rebuild's own connection (corrupting it) and outlive
+/// the command (breaking subsequent index opens). Guaranteed embedding of
+/// freshly-changed config/audit docs is handled incrementally on write
+/// (firetrail-8z0m.5); here we opportunistically embed when a daemon already
+/// exists (e.g. one auto-spawned by an earlier `search`), else stay
+/// lexical-only.
 fn dispatch_synthetic_embeddings(
     ws: &crate::workspace::Workspace,
     docs: &[IndexDoc],
@@ -234,8 +243,12 @@ fn dispatch_synthetic_embeddings(
             return;
         }
     };
-    if let Err(e) = crate::commands::daemon_cmd::ensure_running("index", ws) {
-        warnings.push(format!("synthetic-doc embedding skipped (no daemon): {e}"));
+    if ft_embed::daemon::status(&socket) != ft_embed::daemon::DaemonStatus::Running {
+        warnings.push(
+            "synthetic-doc embedding skipped: no embed daemon running (docs indexed \
+             lexically; start the daemon or re-save to embed)"
+                .to_string(),
+        );
         return;
     }
     for doc in docs {

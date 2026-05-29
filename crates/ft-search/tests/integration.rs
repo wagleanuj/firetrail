@@ -231,7 +231,9 @@ fn delete_removes_from_search() {
         .unwrap();
     assert_eq!(hits.len(), 1);
 
-    fix.engine.delete(&ft_search::DocId::Record(task.envelope.id.clone())).unwrap();
+    fix.engine
+        .delete(&ft_search::DocId::Record(task.envelope.id.clone()))
+        .unwrap();
     let hits = fix
         .engine
         .search(&SearchQuery::new("whimsicality"))
@@ -303,7 +305,10 @@ fn upsert_vector_is_noop_without_extension() {
     fix.ingest(&task);
     // Should be a no-op + warn, not an error.
     fix.engine
-        .upsert_vector(&ft_search::DocId::Record(task.envelope.id.clone()), &vec![0.0; ft_search::EMBEDDING_DIM])
+        .upsert_vector(
+            &ft_search::DocId::Record(task.envelope.id.clone()),
+            &vec![0.0; ft_search::EMBEDDING_DIM],
+        )
         .unwrap();
 }
 
@@ -314,7 +319,10 @@ fn dimension_mismatch_rejects() {
     fix.ingest(&task);
     let err = fix
         .engine
-        .upsert_vector(&ft_search::DocId::Record(task.envelope.id.clone()), &[0.0, 1.0, 2.0])
+        .upsert_vector(
+            &ft_search::DocId::Record(task.envelope.id.clone()),
+            &[0.0, 1.0, 2.0],
+        )
         .expect_err("wrong dimension must error even in lexical-only build");
     assert!(matches!(
         err,
@@ -396,10 +404,16 @@ fn vector_search_ranks_nearest_first() {
 
     // Orthogonal embeddings: `near` on axis 0, `far` on axis 1.
     fix.engine
-        .upsert_vector(&ft_search::DocId::Record(near.envelope.id.clone()), &one_hot(0))
+        .upsert_vector(
+            &ft_search::DocId::Record(near.envelope.id.clone()),
+            &one_hot(0),
+        )
         .unwrap();
     fix.engine
-        .upsert_vector(&ft_search::DocId::Record(far.envelope.id.clone()), &one_hot(1))
+        .upsert_vector(
+            &ft_search::DocId::Record(far.envelope.id.clone()),
+            &one_hot(1),
+        )
         .unwrap();
 
     // Query embedding sits on axis 0 → `near` must be the closest neighbour.
@@ -433,7 +447,10 @@ fn meta_table_has_synthetic_columns() {
 
     let cols = engine2.debug_meta_columns().unwrap();
     for expected in ["id", "trust", "kind", "title", "updated_at", "owning_scope"] {
-        assert!(cols.contains(&expected.to_string()), "missing column {expected}");
+        assert!(
+            cols.contains(&expected.to_string()),
+            "missing column {expected}"
+        );
     }
 }
 
@@ -468,8 +485,15 @@ fn synthetic_doc_resolves_without_records_row() {
     };
     fix.engine.upsert_document(&doc).unwrap();
 
-    let hits = fix.engine.search(&ft_search::SearchQuery::new("payments")).unwrap();
-    assert_eq!(hits.len(), 1, "synthetic scope doc should be searchable with no records row");
+    let hits = fix
+        .engine
+        .search(&ft_search::SearchQuery::new("payments"))
+        .unwrap();
+    assert_eq!(
+        hits.len(),
+        1,
+        "synthetic scope doc should be searchable with no records row"
+    );
     assert_eq!(hits[0].kind, ft_search::IndexKind::Scope);
     assert_eq!(hits[0].trust, ft_core::TrustState::Verified);
     assert_eq!(hits[0].id.as_storage_str(), "scope:apps/checkout");

@@ -140,6 +140,28 @@ Capture *during* the work, not after. The next agent priming this task
 will read what you wrote — make it count. Aim for one finding or one
 decision per non-trivial task; runbooks and gotchas come opportunistically.
 
+**Importing existing markdown docs (post-mortems, ADRs, runbooks).**
+The one-line `incident|decision|runbook create` commands are for
+brand-new records typed at the prompt — they accept a summary string
+but no body. If the user hands you an existing markdown file (an RCA,
+a past post-mortem, a draft ADR, a runbook), do NOT retype it into
+`create`. Use the importer:
+
+```
+firetrail import incidents <dir>     # post-mortems / RCAs
+firetrail import adrs      <dir>     # ADRs / decisions
+firetrail import runbooks  <dir>     # operational runbooks
+```
+
+The importer parses standard sections (summary, root cause, resolution,
+action items, lessons learned for incidents; context/decision/
+consequences for ADRs; steps + applies-to for runbooks), preserves the
+full markdown body, and reports a `parse_confidence` per file. For a
+single file from chat or a paste, drop it into a tempdir first — the
+importer expects a directory. **Memories are immutable**, so a field
+missed at create time cannot be patched in later; the importer is the
+only path that captures structured fields like `root_cause`.
+
 ### Searching and priming context
 
 ```

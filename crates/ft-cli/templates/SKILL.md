@@ -62,6 +62,24 @@ the quick reference.
    firetrail capture   --kind memory --title "..."   # opportunistic
    ```
 
+   Have an existing post-mortem doc, RCA, ADR, or runbook in markdown?
+   Do NOT retype it into `... create "..."` — the one-line `create`
+   commands drop the body. Use the importers instead:
+   ```
+   firetrail import incidents <dir>   # *.md post-mortems / RCAs
+   firetrail import adrs      <dir>   # *.md ADRs / decisions
+   firetrail import runbooks  <dir>   # *.md operational runbooks
+   ```
+   The importers parse title, summary, root cause, resolution, action
+   items, and lessons learned (incidents); context, decision, and
+   consequences (ADRs); steps and applies-to (runbooks). They preserve
+   the full markdown body and report a `parse_confidence` per file.
+
+   Single file from chat / paste / a non-standard location? Drop it
+   into a temp dir and point the importer at it; that's the only path
+   that captures structured fields. Memories are immutable — fields
+   missed at create time cannot be patched in later.
+
 4. Finished work?
    ```
    firetrail close <id>                              # AC must be complete

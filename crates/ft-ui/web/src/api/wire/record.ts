@@ -64,16 +64,25 @@ export interface RecordEnvelopeWire {
 }
 
 /**
- * RecordBody is a serde-tagged union in Rust; serialization uses a single-key
- * outer object like `{ "task": { description, ... } }`. The drawer only reads
- * description (when present); everything else is structural.
+ * RecordBody is an internally-tagged serde union in Rust
+ * (`#[serde(tag = "kind")]`), so the wire shape is a flat object with a
+ * discriminator: `{ "kind": "task", "description": "...", "claim": ... }`.
+ * Fields live directly on `body`, not under an outer key.
  */
-export type RecordBodyWire =
-  | { epic: { description: string } }
-  | { task: { description: string; claim?: ClaimWire | null } }
-  | { subtask: { description: string; claim?: ClaimWire | null } }
-  | { bug: { description: string; claim?: ClaimWire | null } }
-  | Record<string, unknown>
+export type RecordBodyWire = {
+  kind: RecordKindWire
+  description?: string
+  summary?: string
+  details?: string
+  context?: string
+  decision?: string
+  consequences?: string | null
+  body?: string
+  root_cause?: string | null
+  trust?: string
+  risk_class?: string | null
+  claim?: ClaimWire | null
+} & Record<string, unknown>
 
 export interface RecordWire {
   envelope: RecordEnvelopeWire
@@ -108,47 +117,47 @@ export interface CloseOutputWire {
 
 /** Pull the description string out of a RecordBodyWire if it carries one. */
 export function recordDescription(record: RecordWire): string {
-  const body = record.body as Record<string, { description?: string } | undefined>
-  for (const key of ['epic', 'task', 'subtask', 'bug'] as const) {
-    const inner = body[key]
-    if (inner && typeof inner.description === 'string') return inner.description
+  const body = record.body
+  if (
+    (body.kind === 'epic' ||
+      body.kind === 'task' ||
+      body.kind === 'subtask' ||
+      body.kind === 'bug') &&
+    typeof body.description === 'string'
+  ) {
+    return body.description
   }
   return ''
 }
 
 /**
  * Pull the trust + risk-class fields out of a memory body. ft-core stores
- * these inside each memory-kind variant (`incident`, `finding`, …) — the
- * outer envelope does not expose them. Ticket bodies don't carry trust,
- * so we return nulls.
+ * these on each memory-kind variant (`incident`, `finding`, …). Ticket
+ * bodies don't carry trust, so we return nulls.
  */
 export function recordTrust(record: RecordWire): {
   trust: string | null
   riskClass: string | null
 } {
-  const body = record.body as Record<string, { trust?: string; risk_class?: string | null } | undefined>
-  for (const key of [
-    'incident',
-    'finding',
-    'runbook',
-    'decision',
-    'gotcha',
-    'memory',
-  ] as const) {
-    const inner = body[key]
-    if (inner) {
-      return { trust: inner.trust ?? null, riskClass: inner.risk_class ?? null }
-    }
+  const body = record.body
+  switch (body.kind) {
+    case 'incident':
+    case 'finding':
+    case 'runbook':
+    case 'decision':
+    case 'gotcha':
+    case 'memory':
+      return { trust: body.trust ?? null, riskClass: body.risk_class ?? null }
+    default:
+      return { trust: null, riskClass: null }
   }
-  return { trust: null, riskClass: null }
 }
 
 /** Active claim, if the body carries one. */
 export function recordClaim(record: RecordWire): ClaimWire | null {
-  const body = record.body as Record<string, { claim?: ClaimWire | null } | undefined>
-  for (const key of ['task', 'subtask', 'bug'] as const) {
-    const inner = body[key]
-    if (inner && inner.claim) return inner.claim
+  const body = record.body
+  if (body.kind === 'task' || body.kind === 'subtask' || body.kind === 'bug') {
+    return body.claim ?? null
   }
   return null
 }

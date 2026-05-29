@@ -150,41 +150,40 @@ function DetailSkeleton() {
 
 /**
  * Memory records carry their long-form text in a kind-specific body field.
- * `recordDescription()` from the tickets wire only knows about the ticket
- * bodies (epic/task/subtask/bug); memory bodies live under different keys
- * (`memory.body`, `finding.details`, `gotcha.details`, decision's
- * `context+decision+consequences`, etc.). We accept any of those.
+ * RecordBody is internally tagged (`{"kind":"incident","summary":"...",...}`),
+ * so we dispatch on `body.kind` and read fields directly off `body`.
  */
 function readMemoryBody(record: RecordWire): string {
-  // Tickets path already handles task/etc — try that first for incident
-  // (which may not have a description in this shape).
   const tickets = recordDescription(record)
   if (tickets) return tickets
 
-  const body = record.body as Record<string, unknown>
-  // Direct body string fields by kind.
-  const candidates: Array<[string, string]> = [
-    ['memory', 'body'],
-    ['finding', 'details'],
-    ['gotcha', 'details'],
-    ['runbook', 'summary'],
-    ['incident', 'summary'],
-  ]
-  for (const [kind, field] of candidates) {
-    const inner = body[kind] as Record<string, unknown> | undefined
-    const v = inner?.[field]
-    if (typeof v === 'string' && v.trim()) return v
+  const body = record.body
+  switch (body.kind) {
+    case 'memory':
+      return typeof body.body === 'string' ? body.body : ''
+    case 'finding':
+    case 'gotcha':
+      return typeof body.details === 'string' ? body.details : ''
+    case 'runbook':
+      return typeof body.summary === 'string' ? body.summary : ''
+    case 'incident': {
+      const parts: string[] = []
+      if (typeof body.summary === 'string' && body.summary.trim()) parts.push(body.summary)
+      if (typeof body.root_cause === 'string' && body.root_cause.trim()) {
+        parts.push(`## Root cause\n\n${body.root_cause}`)
+      }
+      return parts.join('\n\n')
+    }
+    case 'decision': {
+      const parts: string[] = []
+      if (typeof body.context === 'string' && body.context) parts.push(`## Context\n\n${body.context}`)
+      if (typeof body.decision === 'string' && body.decision) parts.push(`## Decision\n\n${body.decision}`)
+      if (typeof body.consequences === 'string' && body.consequences) {
+        parts.push(`## Consequences\n\n${body.consequences}`)
+      }
+      return parts.join('\n\n')
+    }
+    default:
+      return ''
   }
-  // Decision concatenates context/decision/consequences.
-  const decision = body['decision'] as
-    | { context?: string; decision?: string; consequences?: string | null }
-    | undefined
-  if (decision) {
-    const parts: string[] = []
-    if (decision.context) parts.push(`## Context\n\n${decision.context}`)
-    if (decision.decision) parts.push(`## Decision\n\n${decision.decision}`)
-    if (decision.consequences) parts.push(`## Consequences\n\n${decision.consequences}`)
-    if (parts.length) return parts.join('\n\n')
-  }
-  return ''
 }

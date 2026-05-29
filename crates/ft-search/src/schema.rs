@@ -4,6 +4,8 @@
 //! are additive and idempotent so a fresh checkout of an existing repository
 //! upgrades cleanly on the next `firetrail search` invocation.
 
+use std::collections::HashSet;
+
 use rusqlite::Connection;
 
 use crate::error::SearchError;
@@ -80,7 +82,7 @@ pub fn ensure_fts(conn: &Connection) -> Result<(), SearchError> {
 /// Add any missing `records_search_meta` columns. `ALTER TABLE ADD COLUMN` has
 /// no `IF NOT EXISTS`, so we probe `PRAGMA table_info` first.
 fn migrate_meta_columns(conn: &Connection) -> Result<(), SearchError> {
-    let mut existing = std::collections::HashSet::new();
+    let mut existing = HashSet::new();
     {
         let mut stmt = conn.prepare("PRAGMA table_info(records_search_meta)")?;
         let rows = stmt.query_map([], |r| r.get::<_, String>(1))?;

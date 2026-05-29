@@ -424,7 +424,9 @@ fn meta_table_has_synthetic_columns() {
     let db = tmp.path().join("index.db");
     let engine = ft_search::SearchEngine::open(&db).unwrap();
     engine.ensure_schema().unwrap();
-    // Re-open to prove the migration is idempotent across connections.
+    // Re-open to prove the migration is idempotent across connections
+    // (drop the first handle so this is a clean sequential re-open).
+    drop(engine);
     let engine2 = ft_search::SearchEngine::open(&db).unwrap();
     engine2.ensure_schema().unwrap();
 

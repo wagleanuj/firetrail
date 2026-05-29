@@ -223,6 +223,12 @@ fn index_rebuild_succeeds_and_search_works_after() {
         top_id == id1 || top_id.starts_with(&format!("audit:{id1}")),
         "expected top hit to be {id1} or its audit doc, got {top_id}"
     );
+    // Guard against the audit doc masking a vanished record: the record itself
+    // must still appear somewhere in the results after rebuild.
+    assert!(
+        hits.iter().any(|h| h["id"].as_str() == Some(id1.as_str())),
+        "record {id1} must appear in search results after rebuild"
+    );
 }
 
 #[test]

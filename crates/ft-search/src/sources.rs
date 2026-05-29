@@ -9,7 +9,7 @@ use crate::engine::IndexDoc;
 use crate::kind::{DocId, IndexKind};
 
 /// Lower a scope into a searchable document. CODEOWNERS owner logins (the
-/// "rules" the epic referred to) are folded into the body.
+/// ownership "rules" nested in a scope) are folded into the body.
 #[must_use]
 pub fn scope_doc(scope: &ft_scope::Scope, updated_at: DateTime<Utc>) -> IndexDoc {
     let mut body_parts: Vec<String> = Vec::new();

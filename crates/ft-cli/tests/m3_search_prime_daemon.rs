@@ -215,7 +215,14 @@ fn index_rebuild_succeeds_and_search_works_after() {
     let v = parse_json(&out);
     let hits = v["data"]["hits"].as_array().expect("hits");
     assert!(!hits.is_empty());
-    assert_eq!(hits[0]["id"].as_str().unwrap(), id1);
+    // The top hit must be the payment-webhook record or one of its audit
+    // entries (audit docs for the same record are indexed alongside it and
+    // may rank equally, causing either to appear first).
+    let top_id = hits[0]["id"].as_str().unwrap();
+    assert!(
+        top_id == id1 || top_id.starts_with(&format!("audit:{id1}")),
+        "expected top hit to be {id1} or its audit doc, got {top_id}"
+    );
 }
 
 #[test]

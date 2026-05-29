@@ -479,12 +479,9 @@ impl SearchEngine {
         let Some((kind_s, title, updated_at_s, owning_scope, trust_s)) = row else {
             return Ok(None);
         };
-        let kind_s = kind_s
-            .ok_or_else(|| SearchError::Integrity("missing kind for indexed doc".into()))?;
-        let kind = IndexKind::parse_label(&kind_s)
-            .ok_or_else(|| SearchError::Integrity(format!("unknown kind `{kind_s}`")))?;
-        let updated_at_s = updated_at_s
-            .ok_or_else(|| SearchError::Integrity("missing updated_at".into()))?;
+        let Some(kind_s) = kind_s else { return Ok(None); };
+        let Some(kind) = IndexKind::parse_label(&kind_s) else { return Ok(None) }; // unknown kind label → skip, don't error
+        let Some(updated_at_s) = updated_at_s else { return Ok(None); };
         let updated_at = DateTime::parse_from_rfc3339(&updated_at_s)
             .map(|d| d.with_timezone(&Utc))
             .map_err(|e| SearchError::Integrity(format!("bad updated_at `{updated_at_s}`: {e}")))?;

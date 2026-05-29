@@ -449,3 +449,28 @@ fn now_used_for_recency_is_reasonable() {
     assert!(hits.is_empty());
     let _ = Utc::now(); // silence unused-import lint when refactored.
 }
+
+#[test]
+fn synthetic_doc_resolves_without_records_row() {
+    let fix = Fixture::new();
+    // A scope-kind synthetic doc — note: NO insert_record_row call.
+    let doc = ft_search::IndexDoc {
+        id: ft_search::DocId::Synthetic {
+            kind: ft_search::IndexKind::Scope,
+            key: "apps/checkout".to_string(),
+        },
+        kind: ft_search::IndexKind::Scope,
+        title: "Checkout".to_string(),
+        body: "apps/checkout payments owner".to_string(),
+        trust: ft_core::TrustState::Verified,
+        owning_scope: Some("apps/checkout".to_string()),
+        updated_at: chrono::Utc::now(),
+    };
+    fix.engine.upsert_document(&doc).unwrap();
+
+    let hits = fix.engine.search(&ft_search::SearchQuery::new("payments")).unwrap();
+    assert_eq!(hits.len(), 1, "synthetic scope doc should be searchable with no records row");
+    assert_eq!(hits[0].kind, ft_search::IndexKind::Scope);
+    assert_eq!(hits[0].trust, ft_core::TrustState::Verified);
+    assert_eq!(hits[0].id.as_storage_str(), "scope:apps/checkout");
+}

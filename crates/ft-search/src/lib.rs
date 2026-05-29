@@ -42,7 +42,7 @@ mod query;
 mod ranking;
 mod schema;
 
-pub use engine::SearchEngine;
+pub use engine::{IndexDoc, SearchEngine};
 pub use error::SearchError;
 pub use hit::{HitMode, SearchHit};
 pub use kind::{DocId, IndexKind};

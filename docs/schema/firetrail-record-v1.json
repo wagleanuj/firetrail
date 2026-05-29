@@ -1030,6 +1030,55 @@
             "title"
           ],
           "type": "object"
+        },
+        {
+          "description": "Doc body: file-backed long-form document (pointer to an external `.md`).",
+          "properties": {
+            "content_hash": {
+              "default": "",
+              "description": "BLAKE3 hash of the file content at last index time (drift detection). Empty string when the record has not yet been indexed against the file.",
+              "type": "string"
+            },
+            "doc_type": {
+              "description": "Open tag for taxonomy: conventional values are `design`, `adr`, `runbook`, `reference`. Not an enum — teams may use custom values.",
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "doc"
+              ],
+              "type": "string"
+            },
+            "path": {
+              "description": "Repo-relative path to the `.md` file (git-native, single source of truth).",
+              "type": "string"
+            },
+            "summary": {
+              "default": "",
+              "description": "Short excerpt for list/prime rendering. Derived from file at index time.",
+              "type": "string"
+            },
+            "title": {
+              "description": "Short title derived from the doc (mirrors the envelope title for search).",
+              "type": "string"
+            },
+            "trust": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TrustState"
+                }
+              ],
+              "default": "draft",
+              "description": "Trust state. Declared here; state machine lives in `ft-trust`."
+            }
+          },
+          "required": [
+            "doc_type",
+            "kind",
+            "path",
+            "title"
+          ],
+          "type": "object"
         }
       ]
     },
@@ -1240,6 +1289,13 @@
           "description": "Generic memory note (memory kind, writable from M2).",
           "enum": [
             "memory"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "File-backed documentation pointer (design doc, ADR, runbook, etc.).",
+          "enum": [
+            "doc"
           ],
           "type": "string"
         }

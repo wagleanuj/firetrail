@@ -381,6 +381,49 @@ impl Default for Memory {
     }
 }
 
+/// File-backed documentation pointer.
+///
+/// The `.md` file is the single source of truth for content. This record is a
+/// thin pointer used for indexing, linking, and prime delivery. Full design:
+/// `docs/superpowers/specs/2026-05-29-firetrail-docs-design.md`.
+///
+/// Scope (`owning_scope` / `affected_scopes`) lives on the envelope, not here.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct Doc {
+    /// Repo-relative path to the `.md` file (git-native, single source of truth).
+    pub path: String,
+    /// BLAKE3 hash of the file content at last index time (drift detection).
+    /// Empty string when the record has not yet been indexed against the file.
+    #[serde(default)]
+    pub content_hash: String,
+    /// Short title derived from the doc (mirrors the envelope title for search).
+    pub title: String,
+    /// Short excerpt for list/prime rendering. Derived from file at index time.
+    #[serde(default)]
+    pub summary: String,
+    /// Open tag for taxonomy: conventional values are `design`, `adr`,
+    /// `runbook`, `reference`. Not an enum — teams may use custom values.
+    /// Named `doc_type` to match the doc frontmatter key (single source of truth).
+    #[allow(clippy::struct_field_names)]
+    pub doc_type: String,
+    /// Trust state. Declared here; state machine lives in `ft-trust`.
+    #[serde(default = "default_trust")]
+    pub trust: TrustState,
+}
+
+impl Default for Doc {
+    fn default() -> Self {
+        Self {
+            path: String::new(),
+            content_hash: String::new(),
+            title: String::new(),
+            summary: String::new(),
+            doc_type: String::new(),
+            trust: TrustState::Draft,
+        }
+    }
+}
+
 /// Default `trust` value for newly-deserialized memory bodies that omit the
 /// field (forward-compat with pre-M2 records on disk).
 fn default_trust() -> TrustState {
@@ -417,6 +460,8 @@ pub enum RecordBody {
     Gotcha(Gotcha),
     /// Memory body (memory kind, writable from M2).
     Memory(Memory),
+    /// Doc body: file-backed long-form document (pointer to an external `.md`).
+    Doc(Doc),
 }
 
 impl RecordBody {
@@ -435,6 +480,7 @@ impl RecordBody {
             Self::Decision(_) => RecordKind::Decision,
             Self::Gotcha(_) => RecordKind::Gotcha,
             Self::Memory(_) => RecordKind::Memory,
+            Self::Doc(_) => RecordKind::Doc,
         }
     }
 }

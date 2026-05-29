@@ -42,6 +42,8 @@ pub enum RecordKind {
     Gotcha,
     /// Generic memory note (memory kind, writable from M2).
     Memory,
+    /// File-backed documentation pointer (design doc, ADR, runbook, etc.).
+    Doc,
 }
 
 impl RecordKind {
@@ -59,6 +61,7 @@ impl RecordKind {
             Self::Decision => "DEC",
             Self::Gotcha => "GOTCHA",
             Self::Memory => "MEM",
+            Self::Doc => "DOC",
         }
     }
 
@@ -75,6 +78,7 @@ impl RecordKind {
             "DEC" => Some(Self::Decision),
             "GOTCHA" => Some(Self::Gotcha),
             "MEM" => Some(Self::Memory),
+            "DOC" => Some(Self::Doc),
             _ => None,
         }
     }

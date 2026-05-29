@@ -1016,6 +1016,7 @@ fn kind_to_str(k: RecordKind) -> &'static str {
         RecordKind::Decision => "decision",
         RecordKind::Gotcha => "gotcha",
         RecordKind::Memory => "memory",
+        RecordKind::Doc => "doc",
     }
 }
 
@@ -1031,6 +1032,7 @@ fn kind_from_str(s: &str) -> Result<RecordKind, String> {
         "decision" => RecordKind::Decision,
         "gotcha" => RecordKind::Gotcha,
         "memory" => RecordKind::Memory,
+        "doc" => RecordKind::Doc,
         other => return Err(format!("unknown kind `{other}`")),
     })
 }

@@ -60,6 +60,9 @@ fn memory_trust_and_risk(record: &Record) -> Option<(TrustState, Option<RiskClas
         RecordBody::Decision(b) => (b.trust, b.risk_class),
         RecordBody::Gotcha(b) => (b.trust, b.risk_class),
         RecordBody::Memory(b) => (b.trust, b.risk_class),
+        // Docs carry trust but no risk class, so the high-stakes evidence rule
+        // never fires for them.
+        RecordBody::Doc(b) => (b.trust, None),
         RecordBody::Epic(_) | RecordBody::Task(_) | RecordBody::Subtask(_) | RecordBody::Bug(_) => {
             return None;
         }

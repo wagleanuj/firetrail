@@ -349,6 +349,10 @@ fn body_text(record: &Record) -> String {
             }
         }
         RecordBody::Memory(m) => m.body.clone(),
+        // TODO(firetrail-2mwp.6): deliver summary + path and let the agent read
+        // the full file on demand (protects the token budget). Interim: the
+        // stored summary excerpt.
+        RecordBody::Doc(d) => d.summary.clone(),
     }
 }
 
@@ -363,6 +367,7 @@ pub(crate) fn record_trust(record: &Record) -> TrustState {
         RecordBody::Decision(d) => d.trust,
         RecordBody::Gotcha(g) => g.trust,
         RecordBody::Memory(m) => m.trust,
+        RecordBody::Doc(d) => d.trust,
         RecordBody::Epic(_) | RecordBody::Task(_) | RecordBody::Subtask(_) | RecordBody::Bug(_) => {
             TrustState::Verified
         }

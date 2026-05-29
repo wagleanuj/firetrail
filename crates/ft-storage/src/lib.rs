@@ -76,5 +76,6 @@ pub fn kind_dir(kind: ft_core::RecordKind) -> &'static str {
         RecordKind::Decision => "decision",
         RecordKind::Gotcha => "gotcha",
         RecordKind::Memory => "memory",
+        RecordKind::Doc => "doc",
     }
 }

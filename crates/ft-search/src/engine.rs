@@ -680,6 +680,7 @@ fn trust_for_record(record: &Record) -> TrustState {
         RecordBody::Decision(b) => b.trust,
         RecordBody::Gotcha(b) => b.trust,
         RecordBody::Memory(b) => b.trust,
+        RecordBody::Doc(b) => b.trust,
         RecordBody::Epic(_) | RecordBody::Task(_) | RecordBody::Subtask(_) | RecordBody::Bug(_) => {
             default_trust_for_kind(record.envelope.kind)
         }
@@ -735,7 +736,8 @@ fn default_trust_for_kind(kind: RecordKind) -> TrustState {
         | RecordKind::Runbook
         | RecordKind::Decision
         | RecordKind::Gotcha
-        | RecordKind::Memory => TrustState::Draft,
+        | RecordKind::Memory
+        | RecordKind::Doc => TrustState::Draft,
     }
 }
 
@@ -803,6 +805,9 @@ fn record_to_text(record: &Record) -> (String, String) {
             parts.extend(m.tags.iter().cloned());
             parts.join("\n")
         }
+        // TODO(firetrail-2mwp.4): index the linked .md file contents. Interim:
+        // the stored summary keeps a Doc lexically searchable.
+        RecordBody::Doc(d) => format!("{}\n{}", d.title, d.summary),
     };
     (title, body)
 }

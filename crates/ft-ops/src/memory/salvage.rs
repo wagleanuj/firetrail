@@ -415,5 +415,6 @@ fn kind_label(k: RecordKind) -> &'static str {
         RecordKind::Decision => "decision",
         RecordKind::Gotcha => "gotcha",
         RecordKind::Memory => "memory",
+        RecordKind::Doc => "doc",
     }
 }

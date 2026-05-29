@@ -34,7 +34,8 @@ pub fn find_live_claims_for(
                 | RecordBody::Runbook(_)
                 | RecordBody::Decision(_)
                 | RecordBody::Gotcha(_)
-                | RecordBody::Memory(_) => None,
+                | RecordBody::Memory(_)
+                | RecordBody::Doc(_) => None,
             };
             claim.and_then(|c| {
                 if c.claimed_by.as_str() == identity {

@@ -10,7 +10,7 @@
 //! six variants without needing to inspect or rebuild the enclosing
 //! `RecordBody` value.
 
-use ft_core::{Decision, Finding, Gotcha, Incident, Memory, RecordBody, Runbook};
+use ft_core::{Decision, Doc, Finding, Gotcha, Incident, Memory, RecordBody, Runbook};
 
 use crate::error::TrustError;
 
@@ -33,6 +33,8 @@ pub enum MemoryBody<'a> {
     Gotcha(&'a mut Gotcha),
     /// Mutable view over a generic [`Memory`] body.
     Memory(&'a mut Memory),
+    /// Mutable view over a file-backed [`Doc`] body.
+    Doc(&'a mut Doc),
 }
 
 impl<'a> MemoryBody<'a> {
@@ -52,6 +54,7 @@ impl<'a> MemoryBody<'a> {
             RecordBody::Decision(b) => Ok(Self::Decision(b)),
             RecordBody::Gotcha(b) => Ok(Self::Gotcha(b)),
             RecordBody::Memory(b) => Ok(Self::Memory(b)),
+            RecordBody::Doc(b) => Ok(Self::Doc(b)),
             RecordBody::Epic(_)
             | RecordBody::Task(_)
             | RecordBody::Subtask(_)
@@ -72,6 +75,7 @@ impl<'a> MemoryBody<'a> {
             Self::Decision(b) => b.trust,
             Self::Gotcha(b) => b.trust,
             Self::Memory(b) => b.trust,
+            Self::Doc(b) => b.trust,
         }
     }
 
@@ -85,6 +89,8 @@ impl<'a> MemoryBody<'a> {
             Self::Decision(b) => b.risk_class,
             Self::Gotcha(b) => b.risk_class,
             Self::Memory(b) => b.risk_class,
+            // Docs carry trust but no risk classification.
+            Self::Doc(_) => None,
         }
     }
 }

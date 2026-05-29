@@ -235,6 +235,7 @@ fn set_trust(body: &mut MemoryBody<'_>, to: TrustState) {
         MemoryBody::Decision(b) => b.trust = to,
         MemoryBody::Gotcha(b) => b.trust = to,
         MemoryBody::Memory(b) => b.trust = to,
+        MemoryBody::Doc(b) => b.trust = to,
     }
 }
 
@@ -275,6 +276,13 @@ fn redact_body(body: &mut MemoryBody<'_>) {
             b.body.clear();
             b.tags.clear();
             b.related.clear();
+        }
+        // The doc's prose lives in the external file (not the record); the only
+        // in-record content is the excerpt. Clear it; path/content_hash are
+        // metadata preserved for the broken-link/re-index path.
+        MemoryBody::Doc(b) => {
+            b.title.clear();
+            b.summary.clear();
         }
     }
 }

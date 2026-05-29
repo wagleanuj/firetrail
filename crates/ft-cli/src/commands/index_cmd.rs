@@ -211,6 +211,7 @@ fn audit_record_trust(rec: &ft_core::Record) -> ft_core::TrustState {
         RecordBody::Decision(b) => b.trust,
         RecordBody::Gotcha(b) => b.trust,
         RecordBody::Memory(b) => b.trust,
+        RecordBody::Doc(b) => b.trust,
         RecordBody::Epic(_) | RecordBody::Task(_) | RecordBody::Subtask(_) | RecordBody::Bug(_) => {
             TrustState::Reviewed
         }

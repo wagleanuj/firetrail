@@ -52,6 +52,7 @@ fn insert_record_row(db_path: &std::path::Path, record: &Record) {
         ft_core::RecordKind::Decision => "decision",
         ft_core::RecordKind::Gotcha => "gotcha",
         ft_core::RecordKind::Memory => "memory",
+        ft_core::RecordKind::Doc => "doc",
     };
     conn.execute(
         "INSERT OR REPLACE INTO records(id, kind, title, updated_at, owning_scope) \

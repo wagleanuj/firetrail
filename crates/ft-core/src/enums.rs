@@ -144,6 +144,8 @@ impl RelationKind {
                 | Self::RelatedTo
                 | Self::Duplicates
                 | Self::Supersedes
+                | Self::DocumentedIn
+                | Self::ImplementedBy
         )
     }
 }

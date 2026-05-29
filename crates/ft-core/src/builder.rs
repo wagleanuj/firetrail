@@ -8,8 +8,8 @@ use crate::hash::state_hash;
 use crate::id::{RecordId, RecordKind};
 use crate::identity::Identity;
 use crate::record::{
-    Bug, Decision, Epic, Finding, Gotcha, Incident, Memory, Record, RecordBody, RecordEnvelope,
-    Runbook, Subtask, Task,
+    Bug, Decision, Doc, Epic, Finding, Gotcha, Incident, Memory, Record, RecordBody,
+    RecordEnvelope, Runbook, Subtask, Task,
 };
 
 /// Builder for [`Record`] instances that validates as it constructs.
@@ -222,6 +222,12 @@ impl RecordBuilder {
         self.body(RecordBody::Memory(memory))
     }
 
+    /// Convenience: set the body to a file-backed `Doc`.
+    #[must_use]
+    pub fn doc(self, doc: Doc) -> Self {
+        self.body(RecordBody::Doc(doc))
+    }
+
     /// Finalize: validate, compute `state_hash`, and return the [`Record`].
     ///
     /// # Errors
@@ -289,6 +295,7 @@ fn default_body_for(kind: RecordKind) -> RecordBody {
         RecordKind::Decision => RecordBody::Decision(Decision::default()),
         RecordKind::Gotcha => RecordBody::Gotcha(Gotcha::default()),
         RecordKind::Memory => RecordBody::Memory(Memory::default()),
+        RecordKind::Doc => RecordBody::Doc(Doc::default()),
         // Subtask requires `parent_task`; callers must supply a body explicitly.
         RecordKind::Subtask => {
             // Reached only if the caller forgot to set body; we return an

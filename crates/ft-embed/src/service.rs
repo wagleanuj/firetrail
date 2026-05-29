@@ -235,6 +235,13 @@ pub fn record_text(record: &Record) -> String {
             parts.push(&m.title);
             parts.push(&m.body);
         }
+        // TODO(firetrail-2mwp.4): embed the linked .md file contents, not just
+        // the stored summary. Interim: title (envelope) + summary keeps Docs
+        // searchable until file-backed extraction lands.
+        RecordBody::Doc(d) => {
+            parts.push(&d.title);
+            parts.push(&d.summary);
+        }
     }
     parts
         .into_iter()

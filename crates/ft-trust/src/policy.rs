@@ -74,8 +74,13 @@ impl StalePolicy {
             RecordKind::Gotcha => self.gotcha_days = days,
             RecordKind::Memory => self.memory_days = days,
             RecordKind::Incident => self.incident_days = days,
-            // Non-memory kinds have no trust-age rule.
-            RecordKind::Epic | RecordKind::Task | RecordKind::Subtask | RecordKind::Bug => {}
+            // Non-memory kinds have no trust-age rule. Docs carry trust but their
+            // freshness is content_hash-based, not age-based (firetrail-2mwp).
+            RecordKind::Epic
+            | RecordKind::Task
+            | RecordKind::Subtask
+            | RecordKind::Bug
+            | RecordKind::Doc => {}
         }
         self
     }
@@ -88,7 +93,11 @@ impl StalePolicy {
             RecordKind::Gotcha => self.gotcha_days,
             RecordKind::Memory => self.memory_days,
             RecordKind::Incident => self.incident_days,
-            RecordKind::Epic | RecordKind::Task | RecordKind::Subtask | RecordKind::Bug => None,
+            RecordKind::Epic
+            | RecordKind::Task
+            | RecordKind::Subtask
+            | RecordKind::Bug
+            | RecordKind::Doc => None,
         }
     }
 }
@@ -153,6 +162,7 @@ fn body_trust(body: &RecordBody) -> Option<TrustState> {
         RecordBody::Decision(b) => Some(b.trust),
         RecordBody::Gotcha(b) => Some(b.trust),
         RecordBody::Memory(b) => Some(b.trust),
+        RecordBody::Doc(b) => Some(b.trust),
         RecordBody::Epic(_) | RecordBody::Task(_) | RecordBody::Subtask(_) | RecordBody::Bug(_) => {
             None
         }
@@ -167,6 +177,8 @@ fn body_risk(body: &RecordBody) -> Option<RiskClass> {
         RecordBody::Decision(b) => b.risk_class,
         RecordBody::Gotcha(b) => b.risk_class,
         RecordBody::Memory(b) => b.risk_class,
+        // Docs carry trust but no risk classification.
+        RecordBody::Doc(_) => None,
         RecordBody::Epic(_) | RecordBody::Task(_) | RecordBody::Subtask(_) | RecordBody::Bug(_) => {
             None
         }

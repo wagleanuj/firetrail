@@ -19,6 +19,9 @@ import type { ScopeSummary } from '@/api/types/ScopeSummary'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Badge } from '@/components/ui/badge'
+import { Card } from '@/components/ui/card'
+import { PageHeader } from '@/components/page-header'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
   Table,
@@ -61,39 +64,38 @@ export function ScopeExplorer({ selectedId }: ScopeExplorerProps) {
   }, [list.data, filter])
 
   return (
-    <div className="mx-auto flex h-full max-w-6xl flex-col gap-4 p-6">
-      <header className="space-y-1">
-        <h1 className="font-mono text-lg font-semibold tracking-tight">Scope</h1>
-        <p className="text-sm text-muted-foreground">
-          Read-only view of scopes, CODEOWNERS rules, and alias bindings.
-        </p>
-      </header>
+    <div className="mx-auto flex h-full max-w-6xl flex-col gap-6 px-6 py-6">
+      <Tabs defaultValue="scopes" className="flex flex-1 flex-col gap-6">
+        <PageHeader
+          title="Scope"
+          subtitle="Read-only view of scopes, CODEOWNERS rules, and alias bindings."
+          tabs={
+            <TabsList>
+              <TabsTrigger value="scopes">Scopes</TabsTrigger>
+              <TabsTrigger value="aliases">Aliases</TabsTrigger>
+            </TabsList>
+          }
+        />
 
-      <OwnersResolver />
+        <OwnersResolver />
 
-      <Tabs defaultValue="scopes" className="flex-1">
-        <TabsList>
-          <TabsTrigger value="scopes">Scopes</TabsTrigger>
-          <TabsTrigger value="aliases">Aliases</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="scopes" className="mt-3">
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[18rem_1fr]">
-            <aside className="flex flex-col gap-2">
+        <TabsContent value="scopes" className="mt-0">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[20rem_1fr]">
+            <aside className="flex flex-col gap-2.5">
               <div className="relative">
-                <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
                   placeholder="Filter scopes…"
-                  className="pl-7"
+                  className="pl-8"
                   data-shortcut-target="search"
                 />
               </div>
               {list.isLoading && (
-                <div className="space-y-1.5">
+                <div className="space-y-2.5">
                   {Array.from({ length: 6 }).map((_, i) => (
-                    <Skeleton key={i} className="h-12 w-full" />
+                    <Skeleton key={i} className="h-14 w-full rounded-lg" />
                   ))}
                 </div>
               )}
@@ -104,12 +106,13 @@ export function ScopeExplorer({ selectedId }: ScopeExplorerProps) {
               )}
               <ul
                 data-testid="scope-list"
-                className="flex max-h-[60vh] flex-col gap-1 overflow-y-auto"
+                className="flex max-h-[62vh] flex-col gap-2.5 overflow-y-auto pr-0.5"
               >
                 <AnimatePresence initial={!reduced}>
                 {filtered.map((s, i) => (
                   <motion.li
                     key={s.id}
+                    layout={!reduced}
                     initial={reduced ? false : { opacity: 0, y: 4 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={reduced ? { opacity: 0 } : { opacity: 0, y: -4 }}
@@ -121,24 +124,27 @@ export function ScopeExplorer({ selectedId }: ScopeExplorerProps) {
                         navigate({ to: '/scope/$id', params: { id: s.id } })
                       }
                       className={cn(
-                        'group w-full rounded-md border border-border/70 bg-background/80 px-3 py-2 text-left transition-all',
-                        'hover:-translate-y-0.5 hover:border-primary/40',
+                        'group w-full rounded-lg border border-border bg-card p-3 text-left text-card-foreground shadow-elevation-1 transition-colors',
+                        'hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                         selectedId === s.id &&
-                          'border-primary/60 bg-primary/5 shadow-[0_0_0_1px_hsl(var(--primary)/0.25)]',
+                          'border-primary/40 bg-surface-2 ring-1 ring-primary/25 shadow-glow',
                       )}
                     >
                       <div className="flex items-center gap-2">
-                        <FileCode2 className="h-3.5 w-3.5 text-primary" />
+                        <FileCode2 className="h-3.5 w-3.5 shrink-0 text-primary" />
                         <span className="font-mono text-xs font-semibold">
                           {s.id}
                         </span>
                         {s.hasCodeowners && (
-                          <span className="ml-auto rounded bg-primary/15 px-1.5 py-0.5 font-mono text-[0.6rem] uppercase tracking-wider text-primary">
+                          <Badge
+                            variant="feature"
+                            className="ml-auto rounded px-1.5 py-0 font-mono text-[0.6rem] uppercase tracking-wider"
+                          >
                             owners
-                          </span>
+                          </Badge>
                         )}
                       </div>
-                      <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                      <div className="mt-1 truncate text-xs text-muted-foreground">
                         {s.name}
                       </div>
                     </button>
@@ -171,7 +177,7 @@ export function ScopeExplorer({ selectedId }: ScopeExplorerProps) {
           </div>
         </TabsContent>
 
-        <TabsContent value="aliases" className="mt-3">
+        <TabsContent value="aliases" className="mt-0">
           <AliasesPanel />
         </TabsContent>
       </Tabs>
@@ -182,7 +188,7 @@ export function ScopeExplorer({ selectedId }: ScopeExplorerProps) {
 function EmptyDetail({ scopes }: { scopes: ScopeSummary[] }) {
   if (scopes.length === 0) return null
   return (
-    <div className="rounded-md border border-dashed border-border/60 px-6 py-12 text-center text-sm text-muted-foreground">
+    <div className="rounded-lg border border-dashed border-border px-6 py-12 text-center text-sm text-muted-foreground">
       <ChevronRight className="mx-auto mb-2 h-5 w-5" />
       Select a scope from the list to see its CODEOWNERS rules.
     </div>
@@ -193,10 +199,13 @@ function ScopeDetailPanel({ id }: { id: string }) {
   const { data, isLoading, error } = useScopeShow(id)
   if (isLoading) {
     return (
-      <div className="space-y-3">
-        <Skeleton className="h-6 w-1/3" />
-        <Skeleton className="h-4 w-1/2" />
-        <Skeleton className="h-40 w-full" />
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-7 w-1/3" />
+        </div>
+        <Skeleton className="h-28 w-full rounded-lg" />
+        <Skeleton className="h-40 w-full rounded-lg" />
       </div>
     )
   }
@@ -211,68 +220,72 @@ function ScopeDetailPanel({ id }: { id: string }) {
   const { summary, codeowners } = data.scope
 
   return (
-    <div className="space-y-4">
-      <header className="space-y-1">
-        <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-muted-foreground">
-          <Link to="/scope" className="hover:text-primary">
+    <div className="space-y-5">
+      <header className="space-y-1.5">
+        <div className="flex items-center gap-1.5 font-mono text-xs uppercase tracking-wider text-muted-foreground">
+          <Link to="/scope" className="transition-colors hover:text-primary">
             scope
           </Link>
-          <span>/</span>
-          <span>{summary.id}</span>
+          <span className="text-border">/</span>
+          <span className="text-foreground">{summary.id}</span>
         </div>
-        <h2 className="text-xl font-semibold">{summary.name}</h2>
+        <h2 className="font-display text-xl font-semibold leading-snug tracking-tight">
+          {summary.name}
+        </h2>
       </header>
 
-      <dl className="grid grid-cols-1 gap-3 rounded-md border border-border/70 bg-background/60 p-4 text-sm sm:grid-cols-2">
-        <div>
-          <dt className="font-mono text-[0.625rem] uppercase tracking-wider text-muted-foreground">
-            Applies to
-          </dt>
-          <dd className="mt-1 space-y-0.5">
-            {summary.appliesTo.length === 0 ? (
-              <span className="text-muted-foreground">—</span>
-            ) : (
-              summary.appliesTo.map((g) => (
-                <code
-                  key={g}
-                  className="block break-all rounded bg-muted/60 px-1.5 py-0.5 font-mono text-xs"
-                >
-                  {g}
-                </code>
-              ))
-            )}
-          </dd>
-        </div>
-        <div>
-          <dt className="font-mono text-[0.625rem] uppercase tracking-wider text-muted-foreground">
-            Aliases
-          </dt>
-          <dd className="mt-1 flex flex-wrap gap-1">
-            {summary.aliases.length === 0 ? (
-              <span className="text-muted-foreground">—</span>
-            ) : (
-              summary.aliases.map((a) => (
-                <span
-                  key={a}
-                  className="rounded bg-muted/60 px-1.5 py-0.5 font-mono text-xs"
-                >
-                  {a}
-                </span>
-              ))
-            )}
-          </dd>
-        </div>
-      </dl>
+      <Card className="hover:bg-card">
+        <dl className="grid grid-cols-1 gap-4 p-4 text-sm sm:grid-cols-2">
+          <div>
+            <dt className="font-mono text-[0.625rem] uppercase tracking-wider text-muted-foreground">
+              Applies to
+            </dt>
+            <dd className="mt-1.5 space-y-1">
+              {summary.appliesTo.length === 0 ? (
+                <span className="text-muted-foreground">—</span>
+              ) : (
+                summary.appliesTo.map((g) => (
+                  <code
+                    key={g}
+                    className="block break-all rounded bg-muted px-1.5 py-0.5 font-mono text-xs"
+                  >
+                    {g}
+                  </code>
+                ))
+              )}
+            </dd>
+          </div>
+          <div>
+            <dt className="font-mono text-[0.625rem] uppercase tracking-wider text-muted-foreground">
+              Aliases
+            </dt>
+            <dd className="mt-1.5 flex flex-wrap gap-1.5">
+              {summary.aliases.length === 0 ? (
+                <span className="text-muted-foreground">—</span>
+              ) : (
+                summary.aliases.map((a) => (
+                  <span
+                    key={a}
+                    className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs"
+                  >
+                    {a}
+                  </span>
+                ))
+              )}
+            </dd>
+          </div>
+        </dl>
+      </Card>
 
-      <div className="space-y-2">
+      <div className="space-y-2.5">
         <div className="flex items-center gap-2">
           <Users className="h-4 w-4 text-primary" />
-          <h3 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+          <h3 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
             Code owners
           </h3>
         </div>
         {codeowners.length === 0 ? (
-          <p className="rounded-md border border-dashed border-border/60 px-3 py-4 text-sm text-muted-foreground">
+          <p className="rounded-lg border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
             No CODEOWNERS entries for this scope.
           </p>
         ) : (
@@ -306,7 +319,7 @@ function ScopeDetailPanel({ id }: { id: string }) {
 
 function AliasesPanel() {
   const { data, isLoading, error } = useScopeAliases()
-  if (isLoading) return <Skeleton className="h-40 w-full" />
+  if (isLoading) return <Skeleton className="h-40 w-full rounded-lg" />
   if (error) {
     return (
       <p className="text-sm text-destructive">
@@ -317,7 +330,7 @@ function AliasesPanel() {
   if (!data) return null
   if (data.aliases.length === 0) {
     return (
-      <p className="rounded-md border border-dashed border-border/60 px-3 py-6 text-center text-sm text-muted-foreground">
+      <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
         No aliases configured.
       </p>
     )
@@ -357,13 +370,13 @@ function OwnersResolver() {
   const resolve = useResolveOwners()
   return (
     <form
-      className="flex items-center gap-2 rounded-md border border-border/70 bg-background/60 p-3"
+      className="flex items-center gap-2.5 rounded-lg border border-border bg-card p-3 shadow-elevation-1"
       onSubmit={(e) => {
         e.preventDefault()
         if (path.trim()) resolve.mutate(path.trim())
       }}
     >
-      <span className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+      <span className="shrink-0 font-mono text-xs uppercase tracking-wider text-muted-foreground">
         Resolve path →
       </span>
       <Input

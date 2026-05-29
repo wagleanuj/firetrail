@@ -419,6 +419,22 @@ fn vector_search_ranks_nearest_first() {
 }
 
 #[test]
+fn meta_table_has_synthetic_columns() {
+    let tmp = tempfile::tempdir().unwrap();
+    let db = tmp.path().join("index.db");
+    let engine = ft_search::SearchEngine::open(&db).unwrap();
+    engine.ensure_schema().unwrap();
+    // Re-open to prove the migration is idempotent across connections.
+    let engine2 = ft_search::SearchEngine::open(&db).unwrap();
+    engine2.ensure_schema().unwrap();
+
+    let cols = engine2.debug_meta_columns().unwrap();
+    for expected in ["id", "trust", "kind", "title", "updated_at", "owning_scope"] {
+        assert!(cols.contains(&expected.to_string()), "missing column {expected}");
+    }
+}
+
+#[test]
 fn now_used_for_recency_is_reasonable() {
     // Smoke: just make sure searching against an empty index returns Ok and
     // doesn't panic on the recency math when there are zero hits.

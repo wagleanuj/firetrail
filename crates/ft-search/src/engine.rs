@@ -477,6 +477,17 @@ impl SearchEngine {
         }))
     }
 
+    /// List the column names of `records_search_meta`.
+    ///
+    /// Used by integration tests to verify that schema migrations have run
+    /// correctly. Not intended for production use.
+    #[doc(hidden)]
+    pub fn debug_meta_columns(&self) -> Result<Vec<String>, SearchError> {
+        let mut stmt = self.conn.prepare("PRAGMA table_info(records_search_meta)")?;
+        let rows = stmt.query_map([], |r| r.get::<_, String>(1))?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
     /// Verify the `sqlite-vec` extension is available on `conn`. Returns
     /// `true` when vector operations will function.
     ///

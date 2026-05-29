@@ -347,6 +347,77 @@ fn search_orders_by_descending_score() {
     );
 }
 
+/// Build a 384-d unit vector pointing along `axis` (a one-hot embedding).
+/// Distinct axes give orthogonal vectors, so nearest-neighbour ordering is
+/// unambiguous in these tests.
+#[cfg(feature = "sqlite-vec")]
+fn one_hot(axis: usize) -> Vec<f32> {
+    let mut v = vec![0.0_f32; ft_search::EMBEDDING_DIM];
+    v[axis] = 1.0;
+    v
+}
+
+#[cfg(feature = "sqlite-vec")]
+#[test]
+fn vector_enabled_when_feature_on() {
+    let fix = Fixture::new();
+    assert!(
+        fix.engine.vector_enabled(),
+        "with the sqlite-vec feature compiled in, the extension must load and \
+         vector_enabled() must be true"
+    );
+    // The vec0 virtual table should exist after ensure_schema().
+    let conn = Connection::open(&fix.db_path).unwrap();
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE name = 'records_vec'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(count, 1, "records_vec virtual table should exist");
+}
+
+#[cfg(feature = "sqlite-vec")]
+#[test]
+fn vector_search_ranks_nearest_first() {
+    let fix = Fixture::new();
+
+    let near = make_task()
+        .title("Alpha record")
+        .description("text body for alpha")
+        .build();
+    let far = make_task()
+        .title("Beta record")
+        .description("text body for beta")
+        .build();
+    fix.ingest(&near);
+    fix.ingest(&far);
+
+    // Orthogonal embeddings: `near` on axis 0, `far` on axis 1.
+    fix.engine
+        .upsert_vector(&near.envelope.id, &one_hot(0))
+        .unwrap();
+    fix.engine
+        .upsert_vector(&far.envelope.id, &one_hot(1))
+        .unwrap();
+
+    // Query embedding sits on axis 0 → `near` must be the closest neighbour.
+    let q = SearchQuery {
+        text: String::new(),
+        mode: SearchMode::Vector,
+        embedding: Some(one_hot(0)),
+        ..SearchQuery::default()
+    };
+    let hits = fix.engine.search(&q).unwrap();
+    assert!(!hits.is_empty(), "vector search should return hits");
+    assert_eq!(
+        hits[0].id, near.envelope.id,
+        "the record whose embedding matches the query must rank first"
+    );
+    assert_eq!(hits[0].mode, HitMode::Vector);
+}
+
 #[test]
 fn now_used_for_recency_is_reasonable() {
     // Smoke: just make sure searching against an empty index returns Ok and

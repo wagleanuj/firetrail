@@ -1,0 +1,21 @@
+[package]
+name = "ft-vec"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Isolated sqlite-vec extension loader (the one unsafe FFI shim) for Firetrail search."
+
+# NOTE: this crate intentionally does NOT inherit `[lints] workspace = true`.
+#
+# The workspace sets `unsafe_code = "forbid"`, which cannot be relaxed with a
+# local `#![allow(unsafe_code)]`. `ft-vec` exists solely to perform the single
+# `unsafe` `sqlite3_auto_extension` call required to register the
+# statically-linked sqlite-vec module with SQLite. Isolating that one call in
+# its own crate keeps every other crate in the workspace unsafe-free while
+# still letting `ft-search` use real vector search.
+
+[dependencies]
+rusqlite = { workspace = true }
+sqlite-vec = { workspace = true }

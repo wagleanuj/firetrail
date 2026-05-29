@@ -49,6 +49,11 @@ impl SearchEngine {
         if let Some(parent) = index_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
+        // Register the sqlite-vec auto-extension *before* opening the
+        // connection: `sqlite3_auto_extension` only attaches the `vec0` module
+        // to connections created afterward. Process-global and idempotent.
+        #[cfg(feature = "sqlite-vec")]
+        let _ = ft_vec::register();
         let conn = Connection::open(index_path)?;
         // WAL matches ft-index defaults so the two handles cooperate.
         let _: String = conn.query_row("PRAGMA journal_mode = WAL;", [], |r| r.get(0))?;
@@ -472,23 +477,29 @@ impl SearchEngine {
         }))
     }
 
-    /// Attempt to load the `sqlite-vec` extension. Returns `true` on success.
+    /// Verify the `sqlite-vec` extension is available on `conn`. Returns
+    /// `true` when vector operations will function.
     ///
-    /// In the current build this always returns `false`: `rusqlite`'s
-    /// `load_extension` is marked `unsafe` and `ft-search` runs under the
-    /// workspace-wide `unsafe_code = forbid` lint, so we cannot link the
-    /// extension from this crate. Wiring the extension is a follow-up
-    /// (see crate docs); when added it will live in a sibling crate that
-    /// explicitly opts out of the lint and hands us a pre-loaded
-    /// [`Connection`] via a future `open_with_connection` constructor.
+    /// Registration of the (statically linked) extension happens in
+    /// [`ft_vec::register`], called from [`SearchEngine::open`] before the
+    /// connection is opened — the single `unsafe` `sqlite3_auto_extension`
+    /// call is isolated there so this crate stays under the workspace-wide
+    /// `unsafe_code = forbid` lint. Here we simply confirm the `vec0` module
+    /// resolved on this connection by probing `vec_version()`; on any failure
+    /// we log and fall back to lexical-only mode.
     #[cfg(feature = "sqlite-vec")]
-    fn try_load_vec_extension(_conn: &Connection) -> bool {
-        tracing::warn!(
-            "sqlite-vec feature is enabled but the extension is not wired up \
-             in this build (unsafe FFI gated by workspace lint); operating in \
-             lexical-only mode"
-        );
-        false
+    fn try_load_vec_extension(conn: &Connection) -> bool {
+        match conn.query_row("SELECT vec_version()", [], |r| r.get::<_, String>(0)) {
+            Ok(_) => true,
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "sqlite-vec feature is enabled but the extension did not \
+                     register; operating in lexical-only mode"
+                );
+                false
+            }
+        }
     }
 
     #[cfg(not(feature = "sqlite-vec"))]

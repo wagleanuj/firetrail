@@ -1193,6 +1193,7 @@ dependencies = [
  "ft-index",
  "ft-storage",
  "ft-testkit",
+ "ft-vec",
  "rusqlite",
  "serde",
  "sqlite-vec",
@@ -1273,6 +1274,14 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "ft-vec"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "sqlite-vec",
 ]
 
 [[package]]

@@ -10,6 +10,7 @@ members = [
     "crates/ft-trust",
     "crates/ft-history",
     "crates/ft-search",
+    "crates/ft-vec",
     "crates/ft-prime",
     "crates/ft-pr",
     "crates/ft-import",

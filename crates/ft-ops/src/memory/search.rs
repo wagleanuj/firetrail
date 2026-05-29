@@ -134,8 +134,8 @@ pub struct SearchHitOut {
 impl From<SearchHit> for SearchHitOut {
     fn from(h: SearchHit) -> Self {
         Self {
-            id: h.id.as_str().to_string(),
-            kind: serialize_lower(&h.kind),
+            id: h.id.as_storage_str(),
+            kind: h.kind.label().to_string(),
             title: h.title,
             score: h.score,
             trust: serialize_lower(&h.trust),
@@ -239,7 +239,7 @@ pub fn search(
         query.min_trust = Some(t.to_core_for_search());
     }
     if !input.kinds.is_empty() {
-        query.kind_filter = input.kinds.iter().map(|k| k.to_core()).collect();
+        query.kind_filter = input.kinds.iter().map(|k| k.to_index_kind()).collect();
     }
     if let Some(s) = input.scope {
         query.scope_filter = Some(s);
@@ -256,9 +256,9 @@ pub fn search(
     let hit_views: Vec<SearchHitOut> = hits
         .into_iter()
         .filter_map(|h| {
-            let quarantined = match ctx.storage.read(&h.id) {
-                Ok(rec) => is_quarantined(&rec),
-                Err(_) => false,
+            let quarantined = match h.id.as_record_id() {
+                Some(rid) => ctx.storage.read(rid).is_ok_and(|rec| is_quarantined(&rec)),
+                None => false, // synthetic docs (scope/identity/audit) are never quarantined
             };
             if quarantined && !input.include_quarantine {
                 return None;

@@ -25,7 +25,7 @@ import { useCapabilities } from './use-identity-query'
 
 export function CapabilityMatrix({ identity }: { identity: string }) {
   const { data, isLoading, error } = useCapabilities(identity)
-  if (isLoading) return <Skeleton className="h-48 w-full" />
+  if (isLoading) return <Skeleton className="h-48 w-full rounded-lg" />
   if (error) {
     return (
       <p className="text-sm text-destructive">
@@ -36,13 +36,14 @@ export function CapabilityMatrix({ identity }: { identity: string }) {
   if (!data) return null
   if (data.capabilities.length === 0) {
     return (
-      <p className="rounded-md border border-dashed border-border/60 px-3 py-4 text-sm text-muted-foreground">
+      <p className="rounded-lg border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
         No capabilities resolved for {data.identity}.
       </p>
     )
   }
   return (
     <TooltipProvider delayDuration={150}>
+      <div className="overflow-hidden rounded-lg border border-border bg-card shadow-elevation-1">
       <Table data-testid="capability-matrix">
         <TableHeader>
           <TableRow>
@@ -98,6 +99,7 @@ export function CapabilityMatrix({ identity }: { identity: string }) {
           ))}
         </TableBody>
       </Table>
+      </div>
     </TooltipProvider>
   )
 }

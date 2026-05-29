@@ -10,6 +10,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { Plus, UserX, ShieldCheck, ShieldX, Users } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { LIST_STAGGER, ROUTE_TRANSITION, reducedTransition } from '@/lib/motion'
+import { PageHeader } from '@/components/page-header'
 import { EmptyState } from '@/components/ui/empty-state'
 import type { IdentityKindInput } from '@/api/types/IdentityKindInput'
 import type { IdentityStatusFilter } from '@/api/types/IdentityStatusFilter'
@@ -48,21 +49,19 @@ export function IdentityPanel({ selectedId }: IdentityPanelProps) {
   const transition = reducedTransition(reduced, ROUTE_TRANSITION)
 
   return (
-    <div className="mx-auto flex h-full max-w-6xl flex-col gap-4 p-6">
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="font-mono text-lg font-semibold tracking-tight">Identity</h1>
-          <p className="text-sm text-muted-foreground">
-            Humans, bots, and CI service accounts — plus their effective capabilities.
-          </p>
-        </div>
-        <Button onClick={() => setRegisterOpen(true)} size="sm" className="gap-2">
-          <Plus className="h-4 w-4" />
-          Register
-        </Button>
-      </header>
+    <div className="mx-auto flex h-full max-w-6xl flex-col gap-5 px-6 py-5">
+      <PageHeader
+        title="Identity"
+        subtitle="Humans, bots, and CI service accounts — plus their effective capabilities."
+        actions={
+          <Button onClick={() => setRegisterOpen(true)} size="sm" className="gap-2">
+            <Plus className="h-4 w-4" />
+            Register
+          </Button>
+        }
+      />
 
-      <div className="flex items-end gap-3 rounded-md border border-border/70 bg-background/60 p-3">
+      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-surface-1 p-3 shadow-elevation-1">
         <div className="space-y-1.5">
           <Label className="text-xs">Kind</Label>
           <Select
@@ -103,12 +102,12 @@ export function IdentityPanel({ selectedId }: IdentityPanelProps) {
         </div>
       </div>
 
-      <div className="grid flex-1 grid-cols-1 gap-4 lg:grid-cols-[18rem_1fr]">
-        <aside className="flex flex-col gap-2">
+      <div className="grid flex-1 grid-cols-1 gap-5 lg:grid-cols-[19rem_1fr]">
+        <aside className="flex min-h-0 flex-col gap-2.5">
           {list.isLoading && (
-            <div className="space-y-1.5">
+            <div className="space-y-2.5">
               {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-14 w-full" />
+                <Skeleton key={i} className="h-[3.75rem] w-full rounded-lg" />
               ))}
             </div>
           )}
@@ -117,7 +116,7 @@ export function IdentityPanel({ selectedId }: IdentityPanelProps) {
               Failed to load identities: {(list.error as Error).message}
             </p>
           )}
-          <ul data-testid="identity-list" className="flex flex-col gap-1 overflow-y-auto">
+          <ul data-testid="identity-list" className="flex flex-col gap-2.5 overflow-y-auto">
             <AnimatePresence initial={!reduced}>
               {list.data?.identities.map((idn, i) => (
                 <motion.li
@@ -127,25 +126,33 @@ export function IdentityPanel({ selectedId }: IdentityPanelProps) {
                   exit={reduced ? { opacity: 0 } : { opacity: 0, y: -4 }}
                   transition={{ ...transition, delay: reduced ? 0 : Math.min(i, 12) * LIST_STAGGER }}
                 >
-                <button
-                  type="button"
-                  onClick={() => navigate({ to: '/identity/$id', params: { id: idn.id } })}
-                  className={cn(
-                    'group w-full rounded-md border border-border/70 bg-background/80 px-3 py-2 text-left transition-all',
-                    'hover:-translate-y-0.5 hover:border-primary/40',
-                    selectedId === idn.id &&
-                      'border-primary/60 bg-primary/5 shadow-[0_0_0_1px_hsl(var(--primary)/0.25)]',
-                  )}
-                >
-                  <div className="flex items-center gap-2">
-                    <KindPill kind={idn.kind} />
-                    <span className="font-mono text-xs font-semibold">{idn.id}</span>
-                    <StatusDot status={idn.status} />
-                  </div>
-                  <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                    {idn.emails[0] ?? idn.name}
-                  </div>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate({ to: '/identity/$id', params: { id: idn.id } })}
+                    className={cn(
+                      'group w-full rounded-lg border border-border bg-card p-3 text-left transition-colors',
+                      'hover:bg-surface-2',
+                      selectedId === idn.id &&
+                        'border-primary/40 bg-surface-2 shadow-glow ring-1 ring-primary/25',
+                      idn.status !== 'active' && 'opacity-70',
+                    )}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Avatar name={idn.name} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="truncate text-sm font-medium leading-snug">
+                            {idn.name}
+                          </span>
+                          <KindPill kind={idn.kind} />
+                        </div>
+                        <div className="truncate font-mono text-xs text-muted-foreground">
+                          {idn.id}
+                        </div>
+                      </div>
+                      <StatusDot status={idn.status} />
+                    </div>
+                  </button>
                 </motion.li>
               ))}
             </AnimatePresence>
@@ -173,11 +180,11 @@ export function IdentityPanel({ selectedId }: IdentityPanelProps) {
           </ul>
         </aside>
 
-        <section>
+        <section className="min-w-0">
           {selectedId ? (
             <IdentityDetail id={selectedId} />
           ) : (
-            <div className="rounded-md border border-dashed border-border/60 px-6 py-12 text-center text-sm text-muted-foreground">
+            <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-border bg-surface-1/40 px-6 py-12 text-center text-sm text-muted-foreground">
               Select an identity to inspect their capability matrix.
             </div>
           )}
@@ -195,10 +202,15 @@ function IdentityDetail({ id }: { id: string }) {
 
   if (isLoading) {
     return (
-      <div className="space-y-3">
-        <Skeleton className="h-6 w-1/3" />
-        <Skeleton className="h-4 w-1/2" />
-        <Skeleton className="h-40 w-full" />
+      <div className="space-y-4 rounded-lg border border-border bg-card p-4">
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-10 w-10 rounded-full" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-5 w-1/3" />
+            <Skeleton className="h-3.5 w-1/2" />
+          </div>
+        </div>
+        <Skeleton className="h-48 w-full rounded-lg" />
       </div>
     )
   }
@@ -215,29 +227,34 @@ function IdentityDetail({ id }: { id: string }) {
 
   return (
     <div className="space-y-5">
-      <header className="space-y-2">
+      <header className="space-y-3 rounded-lg border border-border bg-card p-4 shadow-elevation-1">
         <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-muted-foreground">
           <span>identity</span>
-          <span>/</span>
-          <span>{identity.id}</span>
+          <span className="text-border">/</span>
+          <span className="text-foreground/70">{identity.id}</span>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          <Avatar name={identity.name} size="lg" />
+          <h2 className="font-display text-xl font-semibold leading-snug tracking-tight">
+            {identity.name}
+          </h2>
           <KindPill kind={identity.kind} />
-          <h2 className="text-xl font-semibold">{identity.name}</h2>
           <StatusDot status={identity.status} />
         </div>
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          {identity.emails.map((e) => (
-            <span key={e} className="rounded bg-muted/60 px-1.5 py-0.5 font-mono">
-              {e}
-            </span>
-          ))}
-          {identity.machines.map((m) => (
-            <span key={m} className="rounded bg-muted/60 px-1.5 py-0.5 font-mono">
-              {m}
-            </span>
-          ))}
-        </div>
+        {(identity.emails.length > 0 || identity.machines.length > 0) && (
+          <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+            {identity.emails.map((e) => (
+              <span key={e} className="rounded-md bg-muted px-1.5 py-0.5 font-mono">
+                {e}
+              </span>
+            ))}
+            {identity.machines.map((m) => (
+              <span key={m} className="rounded-md bg-muted px-1.5 py-0.5 font-mono">
+                {m}
+              </span>
+            ))}
+          </div>
+        )}
         <div className="pt-1">
           <Button
             size="sm"
@@ -252,8 +269,8 @@ function IdentityDetail({ id }: { id: string }) {
         </div>
       </header>
 
-      <section className="space-y-2">
-        <h3 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+      <section className="space-y-2.5">
+        <h3 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
           Capability matrix
         </h3>
         <CapabilityMatrix identity={identity.id} />
@@ -267,6 +284,24 @@ function IdentityDetail({ id }: { id: string }) {
 
       <OffboardConfirmDialog id={identity.id} open={offboardOpen} onOpenChange={setOffboardOpen} />
     </div>
+  )
+}
+
+/**
+ * Avatar chip matching the board card avatar style: a small colored circle
+ * carrying the identity's leading initial.
+ */
+function Avatar({ name, size = 'sm' }: { name: string; size?: 'sm' | 'lg' }) {
+  const initial = name.trim().charAt(0).toUpperCase() || '?'
+  return (
+    <span
+      className={cn(
+        'flex shrink-0 items-center justify-center rounded-full bg-primary/20 font-mono font-semibold text-primary',
+        size === 'lg' ? 'h-10 w-10 text-base' : 'h-8 w-8 text-sm',
+      )}
+    >
+      {initial}
+    </span>
   )
 }
 
@@ -284,8 +319,8 @@ function StatusDot({ status }: { status: string }) {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 font-mono text-[0.625rem] uppercase tracking-wider',
-        active ? 'text-primary' : 'text-muted-foreground',
+        'inline-flex shrink-0 items-center gap-1 font-mono text-[0.625rem] uppercase tracking-wider',
+        active ? 'text-success' : 'text-muted-foreground',
       )}
     >
       <Icon className="h-3 w-3" />

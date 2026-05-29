@@ -64,12 +64,12 @@ export function CapabilityEditor({ identity }: { identity: string }) {
   const effective = draft ?? initial
   const dirty = Object.keys(effective).some((k) => effective[k] !== initial[k])
 
-  if (isLoading || !data) return <Skeleton className="h-32 w-full" />
+  if (isLoading || !data) return <Skeleton className="h-32 w-full rounded-lg" />
 
   return (
-    <div className="space-y-3 rounded-md border border-border/70 bg-background/60 p-4">
+    <div className="space-y-3 rounded-lg border border-border bg-card p-4 shadow-elevation-1">
       <header className="flex items-center justify-between">
-        <h3 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+        <h3 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
           Edit capability overrides
         </h3>
         <div className="flex items-center gap-2">

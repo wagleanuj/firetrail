@@ -36,3 +36,6 @@ crates/ft-ui/web/tsconfig.tsbuildinfo
 
 # Brainstorming visual companion mockups
 .superpowers/
+
+# Playwright MCP artifacts
+.playwright-mcp/

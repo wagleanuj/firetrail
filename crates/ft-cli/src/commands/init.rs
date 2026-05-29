@@ -243,7 +243,7 @@ fn run_walkthrough(resolved: &mut ResolvedInit, report: &mut InitReport) -> Resu
 
     // 6. Model download.
     let download = prompt::ask_yes_no(
-        "Download the ONNX embedding model now? (~134 MiB; mock embedder works without it)",
+        "Download the ONNX embedding model now? (~33 MiB; the mock embedder works without it)",
         false,
     )
     .map_err(|e| CliError::internal(COMMAND, format!("prompt: {e}")))?;
@@ -673,12 +673,14 @@ fn external_config_yaml(strict_identity: bool, data_repo_url: &str) -> String {
     )
 }
 
-// Seeded `embeddings:` section (firetrail-6n4). Defaults to `mock` so init
-// stays offline-first and host-independent. Operators flip `provider: local`
-// after running `firetrail init --download-model`.
+// Seeded `embeddings:` section. Defaults to `provider: local` (real ONNX
+// `bge-small-en-v1.5` inference) with `fallback: mock`, so a fresh workspace
+// gets real semantic search once the model is on disk and transparently
+// degrades to the deterministic mock embedder when it is not (e.g. offline,
+// before `firetrail init --download-model`).
 const EMBEDDINGS_BLOCK: &str = "embeddings:\n  \
         # provider: local | mock | lexical\n  \
-        provider: mock\n  \
+        provider: local\n  \
         model: bge-small-en-v1.5\n  \
         # fallback: mock | lexical | none\n  \
         fallback: mock\n";

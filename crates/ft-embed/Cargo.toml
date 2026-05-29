@@ -11,11 +11,12 @@ description = "Local ONNX embedding daemon and embedding cache."
 workspace = true
 
 [features]
-# Default keeps CI/build hermetic: no ONNX model download required.
-default = []
+# `onnx` is on by default: real `bge-small-en-v1.5` inference is the intended
+# out-of-the-box experience. This links the `ort` native runtime at build time.
+# Build with `--no-default-features` for a hermetic, ONNX-free build (the
+# `MockEmbedder` fallback still works without a model on disk).
+default = ["onnx"]
 # Enable the real ONNX-backed embedder (`bge-small-en-v1.5`) via `ort`.
-# Disabled by default because it pulls in a native dependency and expects a
-# model file on disk; see crate docs for setup.
 onnx = ["dep:ort", "dep:tokenizers"]
 
 [dependencies]

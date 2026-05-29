@@ -1432,9 +1432,10 @@ pub struct InitArgs {
     pub no_hooks: bool,
 
     /// Download the default ONNX embedding model (`bge-small-en-v1.5`,
-    /// ~134 MiB) into the machine-local model cache. Off by default —
-    /// `firetrail init` is offline-first and the user opts in (ADR-0007,
-    /// ADR-0011).
+    /// int8-quantized, ~33 MiB) into the machine-local model cache. Off by
+    /// default — `firetrail init` is offline-first and the user opts in
+    /// (ADR-0007, ADR-0011); the workspace falls back to the mock embedder
+    /// until the model is present.
     #[arg(long)]
     pub download_model: bool,
 

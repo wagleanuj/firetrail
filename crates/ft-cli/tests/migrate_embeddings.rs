@@ -7,6 +7,15 @@ use common::{fresh_repo, parse_json, run_firetrail};
 #[test]
 fn migrate_embeddings_writes_jsonl_artifact_and_is_resumable() {
     let tr = fresh_repo();
+    // Pin the mock provider: the default is now `provider: local`, which
+    // migrate refuses without a real model_dir (it won't bake mock vectors
+    // into a migration artifact). This test exercises the embed + write loop
+    // + resumability, for which the deterministic mock embedder is enough.
+    let cfg_path = tr.root().join(".firetrail").join("config.yml");
+    let cfg = std::fs::read_to_string(&cfg_path).expect("read config.yml");
+    std::fs::write(&cfg_path, cfg.replace("provider: local", "provider: mock"))
+        .expect("pin mock provider");
+
     // Seed a small corpus.
     for title in ["alpha task", "beta task", "gamma task"] {
         let out = run_firetrail(tr.root(), &["task", "create", title, "--json"]);
@@ -15,8 +24,8 @@ fn migrate_embeddings_writes_jsonl_artifact_and_is_resumable() {
 
     let artifact = tr.root().join("embeddings.jsonl");
 
-    // First run — mock provider is the workspace default, so this exercises
-    // the full embed + write loop without needing ONNX.
+    // First run with the mock provider — exercises the full embed + write
+    // loop without needing ONNX.
     let out = run_firetrail(
         tr.root(),
         &[
@@ -116,7 +125,7 @@ fn migrate_embeddings_refuses_lexical_provider() {
     let cfg = std::fs::read_to_string(&cfg_path).expect("read config.yml");
     std::fs::write(
         &cfg_path,
-        cfg.replace("provider: mock", "provider: lexical"),
+        cfg.replace("provider: local", "provider: lexical"),
     )
     .expect("write lexical config");
 

@@ -11,10 +11,12 @@ description = "Hybrid vector + lexical search with ranking over Firetrail record
 workspace = true
 
 [features]
-default = []
+# `sqlite-vec` is on by default so vector search works out of the box. Build
+# with `--no-default-features` for a lexical-only (FTS5) engine with no vector
+# index. `ft-vec` isolates the one `unsafe` auto-extension call the loader needs.
+default = ["sqlite-vec"]
 # Enables sqlite-vec extension loading for vector search. When disabled, the
-# engine operates in lexical-only fallback mode (M3 minimum requirement).
-# `ft-vec` isolates the one `unsafe` auto-extension call the loader requires.
+# engine operates in lexical-only fallback mode.
 sqlite-vec = ["dep:sqlite-vec", "dep:ft-vec"]
 
 [dependencies]

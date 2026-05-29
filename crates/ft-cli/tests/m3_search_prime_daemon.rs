@@ -399,7 +399,7 @@ fn search_hybrid_with_dead_daemon_reports_lexical_mode() {
     let cfg = std::fs::read_to_string(&cfg_path).expect("read config.yml");
     std::fs::write(
         &cfg_path,
-        cfg.replace("provider: mock", "provider: lexical"),
+        cfg.replace("provider: local", "provider: lexical"),
     )
     .expect("rewrite provider to lexical");
     let _ = create_two_records(tr.root());

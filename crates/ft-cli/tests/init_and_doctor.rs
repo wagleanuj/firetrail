@@ -130,7 +130,7 @@ fn init_writes_embeddings_config_block() {
         "missing embeddings block:\n{cfg}"
     );
     assert!(
-        cfg.contains("provider: mock"),
+        cfg.contains("provider: local"),
         "default provider missing:\n{cfg}"
     );
     assert!(

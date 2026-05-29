@@ -25,9 +25,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { PageHeader } from '@/components/page-header'
 import { cn } from '@/lib/utils'
 import { useMemoryList } from './use-memory-query'
 import { MEMORY_KINDS, TRUST_STATES } from './types'
+import { TrustBadge, trustRailClass } from '@/features/trust/trust-badge'
 
 export interface MemorySearchParams {
   kind?: MemoryKind
@@ -61,10 +63,26 @@ export function MemoryList({ onCreateClick }: MemoryListProps) {
   }
 
   return (
-    <div className="grid h-full grid-cols-1 gap-4 p-4 lg:grid-cols-[14rem_1fr]">
-      {/* Filter sidebar */}
-      <aside className="space-y-4">
-        <h2 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+    <div className="flex h-full flex-col gap-5 px-6 py-5">
+      <PageHeader
+        title="Memory"
+        subtitle={
+          <span className="font-mono text-xs text-muted-foreground">
+            {data ? `${data.rows.length} record${data.rows.length === 1 ? '' : 's'}` : '—'}
+          </span>
+        }
+        actions={
+          <Button onClick={onCreateClick} size="sm" className="gap-2">
+            <Plus className="h-4 w-4" />
+            New memory
+          </Button>
+        }
+      />
+
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 lg:grid-cols-[14rem_1fr]">
+        {/* Filter sidebar */}
+        <aside className="space-y-4">
+        <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
           Filters
         </h2>
 
@@ -121,23 +139,10 @@ export function MemoryList({ onCreateClick }: MemoryListProps) {
           />
           <span>Stale only</span>
         </label>
-      </aside>
+        </aside>
 
-      {/* List */}
-      <section className="flex h-full flex-col gap-3">
-        <header className="flex items-center justify-between">
-          <div className="flex items-baseline gap-3">
-            <h1 className="font-mono text-lg font-semibold tracking-tight">Memory</h1>
-            <span className="font-mono text-xs text-muted-foreground">
-              {data ? `${data.rows.length} records` : '—'}
-            </span>
-          </div>
-          <Button onClick={onCreateClick} size="sm" className="gap-2">
-            <Plus className="h-4 w-4" />
-            New memory
-          </Button>
-        </header>
-
+        {/* List */}
+        <section className="flex min-h-0 flex-col gap-3">
         {isLoading && <ListSkeleton />}
         {error && (
           <div className="text-sm text-destructive">
@@ -176,7 +181,7 @@ export function MemoryList({ onCreateClick }: MemoryListProps) {
         {data && data.rows.length > 0 && (
           <ul
             data-testid="memory-list"
-            className="grid grid-cols-1 gap-2 overflow-y-auto md:grid-cols-2"
+            className="grid grid-cols-1 gap-2.5 overflow-y-auto md:grid-cols-2"
           >
             <AnimatePresence initial={!reduced}>
               {data.rows.map((row, i) => (
@@ -193,7 +198,8 @@ export function MemoryList({ onCreateClick }: MemoryListProps) {
             </AnimatePresence>
           </ul>
         )}
-      </section>
+        </section>
+      </div>
     </div>
   )
 }
@@ -205,24 +211,34 @@ export function MemoryCard({ row }: { row: MemoryRowOut }) {
       params={{ id: row.id }}
       data-testid={`memory-card-${row.id}`}
       className={cn(
-        'block rounded-md border border-border/70 bg-background/80 p-3 text-left shadow-sm transition-all',
-        'hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-[0_0_0_1px_hsl(var(--primary)/0.25)]',
+        'group relative block overflow-hidden rounded-lg border border-border bg-card p-3 pl-4 text-left shadow-elevation-1 transition-colors',
+        'hover:border-primary/40 hover:bg-surface-2',
       )}
     >
-      <div className="mb-1 flex items-center justify-between gap-2">
+      {/* Trust-tone rail — scannable down a column. */}
+      <span
+        aria-hidden
+        className={cn(
+          'absolute inset-y-0 left-0 w-1',
+          trustRailClass(row.trust, row.stale ?? false),
+        )}
+      />
+      <div className="mb-1.5 flex items-center justify-between gap-2">
         <KindBadge kind={row.kind} />
         <span className="font-mono text-[0.65rem] uppercase tracking-wider text-muted-foreground">
           {row.id.slice(0, 14)}
         </span>
       </div>
-      <div className="text-sm leading-snug text-foreground">{row.title}</div>
-      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        {row.trust && <span className="rounded bg-muted px-1.5 py-0.5">{row.trust}</span>}
+      <div className="text-sm font-medium leading-snug text-foreground">{row.title}</div>
+      <div className="mt-2.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        {row.trust && <TrustBadge state={row.trust} emphasizeStale={row.stale ?? false} />}
         {row.riskClass && (
-          <span className="rounded bg-muted px-1.5 py-0.5">{row.riskClass}</span>
+          <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-[0.625rem] uppercase tracking-wider">
+            {row.riskClass}
+          </span>
         )}
         {row.stale && (
-          <span className="inline-flex items-center gap-1 text-amber-400">
+          <span className="inline-flex items-center gap-1 font-mono text-[0.625rem] uppercase tracking-wider text-danger">
             <FileWarning className="h-3 w-3" /> stale
           </span>
         )}
@@ -235,7 +251,7 @@ export function KindBadge({ kind }: { kind: string }) {
   return (
     <span
       className={cn(
-        'rounded-sm bg-primary/15 px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold uppercase tracking-wider text-primary',
+        'rounded-full bg-primary/15 px-2 py-0.5 font-mono text-[0.625rem] font-semibold uppercase tracking-wider text-primary',
       )}
     >
       {kind}
@@ -245,9 +261,9 @@ export function KindBadge({ kind }: { kind: string }) {
 
 function ListSkeleton() {
   return (
-    <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+    <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
       {Array.from({ length: 6 }).map((_, i) => (
-        <Skeleton key={i} className="h-20 w-full" />
+        <Skeleton key={i} className="h-24 w-full rounded-lg" />
       ))}
     </div>
   )

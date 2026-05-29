@@ -19,11 +19,13 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
+import { PageHeader } from '@/components/page-header'
 import { MarkdownEditor } from '@/components/markdown-editor'
 import { recordDescription, recordTrust, type RecordWire } from '@/api/wire/record'
 import { useMemoryQuery } from './use-memory-query'
 import { KindBadge } from './memory-list'
 import { TrustActions } from '@/features/trust/trust-actions'
+import { TrustBadge } from '@/features/trust/trust-badge'
 import { CriteriaEditor } from '@/features/audit/criteria-editor'
 
 interface MemoryDetailProps {
@@ -50,53 +52,64 @@ export function MemoryDetail({ id }: MemoryDetailProps) {
   const { trust, riskClass } = recordTrust(record)
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 p-6">
-      <div className="space-y-2">
-        <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-muted-foreground">
-          <Link to="/memory" className="hover:text-primary">
-            memory
-          </Link>
-          <span>/</span>
-          <span>{env.id.slice(0, 14)}</span>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <KindBadge kind={env.kind} />
-          <h1 className="text-2xl font-semibold leading-tight">{env.title}</h1>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          {env.owner && <span>owner: {env.owner.name}</span>}
-          {env.owner && <span>•</span>}
-          <RelativeTime value={env.updated_at} prefix="updated" />
-          {env.closed_at && (
-            <>
-              <span>•</span>
-              <RelativeTime value={env.closed_at} prefix="closed" />
-            </>
-          )}
-        </div>
+    <div className="mx-auto max-w-3xl space-y-6 px-6 py-5">
+      <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-muted-foreground">
+        <Link to="/memory" className="transition-colors hover:text-primary">
+          memory
+        </Link>
+        <span>/</span>
+        <span>{env.id.slice(0, 14)}</span>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          variant="outline"
-          className="gap-2"
-          onClick={() =>
-            navigate({
-              to: '/memory/search',
-              search: { similarTo: env.id, mode: 'auto' },
-            })
-          }
-        >
-          <Sparkles className="h-3.5 w-3.5" />
-          Find similar
-        </Button>
-      </div>
+      <PageHeader
+        title={env.title}
+        subtitle={
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <KindBadge kind={env.kind} />
+            <TrustBadge state={trust} />
+            {riskClass && (
+              <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-[0.625rem] uppercase tracking-wider">
+                {riskClass}
+              </span>
+            )}
+            <span className="text-muted-foreground/50">·</span>
+            {env.owner && (
+              <>
+                <span>owner: {env.owner.name}</span>
+                <span className="text-muted-foreground/50">·</span>
+              </>
+            )}
+            <RelativeTime value={env.updated_at} prefix="updated" />
+            {env.closed_at && (
+              <>
+                <span className="text-muted-foreground/50">·</span>
+                <RelativeTime value={env.closed_at} prefix="closed" />
+              </>
+            )}
+          </div>
+        }
+        actions={
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-2"
+            onClick={() =>
+              navigate({
+                to: '/memory/search',
+                search: { similarTo: env.id, mode: 'auto' },
+              })
+            }
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            Find similar
+          </Button>
+        }
+      />
 
       <Separator />
 
       {/* Immutability hint */}
-      <div className="flex items-start gap-2 rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+      <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
         <Lock className="mt-0.5 h-3.5 w-3.5 text-primary" />
         <span>
           Memories are immutable. Supersede with a new record if the content
@@ -110,7 +123,7 @@ export function MemoryDetail({ id }: MemoryDetailProps) {
         {body.trim() ? (
           <MarkdownEditor value={body} editable={false} />
         ) : (
-          <p className="rounded-md border border-dashed border-border/60 px-3 py-4 text-sm text-muted-foreground">
+          <p className="rounded-lg border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
             No body text.
           </p>
         )}

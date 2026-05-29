@@ -69,6 +69,7 @@ import {
   validOps,
   type TrustOp,
 } from './state-machine'
+import { TrustBadge } from './trust-badge'
 import { memoryShowKey, useMemoryQuery } from '@/features/memory/use-memory-query'
 
 const ICON: Record<TrustOp, React.ComponentType<{ className?: string }>> = {
@@ -123,21 +124,23 @@ export function TrustActions({ recordId, trustState, riskClass }: TrustActionsPr
 
   if (ops.length === 0) {
     return (
-      <div className="rounded-md border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground">
-        Trust state <code className="font-mono">{trustState ?? '—'}</code> is terminal.
-        No further transitions are valid.
+      <div className="flex items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+        <TrustBadge state={trustState} />
+        <span>
+          Trust state is terminal. No further transitions are valid.
+        </span>
       </div>
     )
   }
 
   return (
-    <div className="space-y-2" data-testid="trust-actions">
-      <div className="flex items-center justify-between">
-        <div className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-          Trust ·{' '}
-          <span className="text-foreground">{trustState ?? 'n/a'}</span>
+    <div className="space-y-2.5" data-testid="trust-actions">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm font-medium uppercase tracking-wide text-muted-foreground">
+          <span className="text-xs">Trust</span>
+          <TrustBadge state={trustState} />
           {isHighStakes(riskClass) && (
-            <span className="ml-2 inline-flex items-center gap-1 text-amber-400">
+            <span className="inline-flex items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 font-mono text-[0.625rem] tracking-wider text-warning">
               <AlertTriangle className="h-3 w-3" />
               high-stakes
             </span>
@@ -264,7 +267,7 @@ function PromoteDialog({
         </DialogHeader>
         <div className="space-y-3">
           {required && (
-            <div className="rounded-md border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-xs text-amber-300">
+            <div className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
               High-stakes risk class — evidence URL is required.
             </div>
           )}
@@ -493,7 +496,7 @@ function MergeDialog({ recordId, onClose }: { recordId: string; onClose: () => v
           <>
             <MergePreview canonicalId={recordId} sourceIds={sources} />
             {reason && (
-              <p className="rounded-md border border-border/60 bg-background/60 px-3 py-2 text-xs">
+              <p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs">
                 <span className="font-mono uppercase tracking-wider text-muted-foreground">
                   Reason:
                 </span>{' '}
@@ -636,8 +639,8 @@ function MergeRow({ id, highlight = false }: { id: string; highlight?: boolean }
   return (
     <div
       className={
-        'flex items-center gap-2 rounded-md border px-3 py-1.5 ' +
-        (highlight ? 'border-primary/40 bg-primary/5' : 'border-border/70 bg-background/60')
+        'flex items-center gap-2 rounded-lg border px-3 py-1.5 ' +
+        (highlight ? 'border-primary/40 bg-primary/5' : 'border-border bg-muted/40')
       }
     >
       <span className="truncate text-sm">{title}</span>

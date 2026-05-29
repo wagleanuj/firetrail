@@ -27,6 +27,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Separator } from '@/components/ui/separator'
+import { PageHeader } from '@/components/page-header'
 import { cn } from '@/lib/utils'
 import { useSalvageApply, useSalvageDryRun } from './use-memory-mutations'
 
@@ -83,47 +84,49 @@ export function SalvageQueue() {
   const isEmpty = hasScanned && entries.length === 0
 
   return (
-    <div className="mx-auto max-w-4xl space-y-4 p-6">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="font-mono text-lg font-semibold tracking-tight">Salvage queue</h1>
-          <p className="text-xs text-muted-foreground">
+    <div className="mx-auto max-w-4xl space-y-4 px-6 py-5">
+      <PageHeader
+        title="Salvage queue"
+        subtitle={
+          <>
             Plan-then-apply. Nothing mutates until you click <em>Accept</em>.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="space-y-1">
-            <Label className="text-xs">Base branch</Label>
-            <Input
-              className="h-8 w-32 text-xs"
-              value={base}
-              onChange={(e) => setBase(e.target.value)}
-            />
+          </>
+        }
+        actions={
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="space-y-1">
+              <Label className="text-xs">Base branch</Label>
+              <Input
+                className="h-8 w-32 text-xs"
+                value={base}
+                onChange={(e) => setBase(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Source branch</Label>
+              <Input
+                className="h-8 w-40 text-xs"
+                value={branch}
+                onChange={(e) => setBranch(e.target.value)}
+                placeholder="(current branch)"
+              />
+            </div>
+            <Button
+              size="sm"
+              onClick={runScan}
+              disabled={dryRun.isPending}
+              className="gap-2"
+            >
+              {dryRun.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCcw className="h-4 w-4" />
+              )}
+              Run salvage scan
+            </Button>
           </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Source branch</Label>
-            <Input
-              className="h-8 w-40 text-xs"
-              value={branch}
-              onChange={(e) => setBranch(e.target.value)}
-              placeholder="(current branch)"
-            />
-          </div>
-          <Button
-            size="sm"
-            onClick={runScan}
-            disabled={dryRun.isPending}
-            className="gap-2"
-          >
-            {dryRun.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCcw className="h-4 w-4" />
-            )}
-            Run salvage scan
-          </Button>
-        </div>
-      </header>
+        }
+      />
 
       {dryRun.error ? (
         <div className="text-sm text-destructive">
@@ -132,7 +135,7 @@ export function SalvageQueue() {
       ) : null}
 
       {!hasScanned && !dryRun.isPending && (
-        <div className="rounded-md border border-dashed border-border/60 px-4 py-8 text-center text-sm text-muted-foreground">
+        <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
           Click <em>Run salvage scan</em> to compute candidates. The scan is
           read-only.
         </div>
@@ -179,13 +182,15 @@ export function SalvageQueue() {
             </div>
           </div>
 
-          <ul data-testid="salvage-entries" className="space-y-2">
+          <ul data-testid="salvage-entries" className="space-y-2.5">
             {filtered.map((entry) => (
               <li
                 key={entry.id}
                 className={cn(
-                  'flex items-start gap-3 rounded-md border border-border/70 bg-background/80 p-3',
-                  selected.has(entry.id) && 'border-primary/60 bg-primary/5',
+                  'flex items-start gap-3 rounded-lg border border-border bg-card p-3 shadow-elevation-1 transition-colors',
+                  selected.has(entry.id)
+                    ? 'border-primary/50 bg-primary/5 ring-1 ring-primary/25'
+                    : 'hover:bg-surface-2',
                 )}
               >
                 <Input
@@ -197,7 +202,7 @@ export function SalvageQueue() {
                 />
                 <div className="flex-1 space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-sm bg-primary/15 px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold uppercase tracking-wider text-primary">
+                    <span className="rounded-full bg-primary/15 px-2 py-0.5 font-mono text-[0.625rem] font-semibold uppercase tracking-wider text-primary">
                       {entry.kind}
                     </span>
                     <span className="font-mono text-xs text-muted-foreground">
@@ -205,9 +210,9 @@ export function SalvageQueue() {
                     </span>
                     <span
                       className={cn(
-                        'rounded px-1.5 py-0.5 text-[0.625rem] font-mono uppercase tracking-wider',
+                        'rounded-full px-2 py-0.5 font-mono text-[0.625rem] uppercase tracking-wider',
                         entry.action === 'salvaged'
-                          ? 'bg-primary/20 text-primary'
+                          ? 'bg-success/15 text-success'
                           : 'bg-muted text-muted-foreground',
                       )}
                     >

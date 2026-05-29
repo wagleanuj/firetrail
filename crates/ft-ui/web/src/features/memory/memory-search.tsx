@@ -25,9 +25,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { PageHeader } from '@/components/page-header'
 import { cn } from '@/lib/utils'
 import { useMemorySearch, useMemorySimilar } from './use-memory-query'
 import { KindBadge } from './memory-list'
+import { TrustBadge } from '@/features/trust/trust-badge'
 import { MEMORY_KINDS, SEARCH_MODES, TRUST_STATES } from './types'
 
 export interface SearchRouteParams {
@@ -105,39 +107,41 @@ export function MemorySearch() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-4 p-6">
-      <header className="space-y-2">
-        <h1 className="font-mono text-lg font-semibold tracking-tight">Search memory</h1>
-        {search.similarTo ? (
-          <div className="flex items-center justify-between gap-3 rounded-md border border-primary/40 bg-primary/5 px-3 py-2 text-sm">
-            <span>
-              Similar to{' '}
-              <Link
-                to="/memory/$id"
-                params={{ id: search.similarTo }}
-                className="font-mono text-primary hover:underline"
-              >
-                {search.similarTo.slice(0, 14)}
-              </Link>
-            </span>
-            <Button size="sm" variant="ghost" onClick={clearSimilar}>
-              Clear
-            </Button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2">
-            <SearchIcon className="h-4 w-4 text-muted-foreground" />
-            <Input
-              autoFocus
-              value={draftQuery}
-              onChange={(e) => setDraftQuery(e.target.value)}
-              placeholder="What are you looking for?"
-              className="flex-1"
-              data-shortcut-target="search"
-            />
-          </div>
-        )}
-      </header>
+    <div className="mx-auto max-w-4xl space-y-4 px-6 py-5">
+      <PageHeader
+        title="Search memory"
+        subtitle={
+          search.similarTo ? (
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2 text-sm">
+              <span>
+                Similar to{' '}
+                <Link
+                  to="/memory/$id"
+                  params={{ id: search.similarTo }}
+                  className="font-mono text-primary hover:underline"
+                >
+                  {search.similarTo.slice(0, 14)}
+                </Link>
+              </span>
+              <Button size="sm" variant="ghost" onClick={clearSimilar}>
+                Clear
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 rounded-lg border border-input bg-card px-3">
+              <SearchIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <Input
+                autoFocus
+                value={draftQuery}
+                onChange={(e) => setDraftQuery(e.target.value)}
+                placeholder="What are you looking for?"
+                className="flex-1 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
+                data-shortcut-target="search"
+              />
+            </div>
+          )
+        }
+      />
 
       {/* Mode + filters (only when in regular search mode). */}
       {!search.similarTo && (
@@ -220,7 +224,7 @@ export function MemorySearch() {
         <div
           role="alert"
           data-testid="search-warnings"
-          className="flex items-start gap-2 rounded-md border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-sm text-amber-300"
+          className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning"
         >
           <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
           <div className="space-y-1">
@@ -249,42 +253,44 @@ export function MemorySearch() {
         </div>
       )}
       {data && data.hits.length === 0 && (
-        <p className="rounded-md border border-dashed border-border/60 px-3 py-6 text-center text-sm text-muted-foreground">
+        <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
           No matches.
         </p>
       )}
       {data && data.hits.length > 0 && (
-        <ul data-testid="search-results" className="space-y-2">
+        <ul data-testid="search-results" className="space-y-2.5">
           {data.hits.map((hit) => (
             <li key={hit.id}>
               <Link
                 to="/memory/$id"
                 params={{ id: hit.id }}
                 className={cn(
-                  'block rounded-md border border-border/70 bg-background/80 p-3 transition-all',
-                  'hover:-translate-y-0.5 hover:border-primary/40',
+                  'block rounded-lg border border-border bg-card p-3 shadow-elevation-1 transition-colors',
+                  'hover:border-primary/40 hover:bg-surface-2',
                 )}
               >
-                <div className="mb-1 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
+                <div className="mb-1.5 flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <KindBadge kind={hit.kind} />
                     <span className="font-mono text-[0.65rem] uppercase tracking-wider text-muted-foreground">
                       {hit.id.slice(0, 14)}
                     </span>
                     {hit.quarantine && (
-                      <span className="rounded bg-amber-400/15 px-1.5 py-0.5 text-[0.625rem] text-amber-300">
+                      <span className="rounded-full bg-warning/15 px-2 py-0.5 font-mono text-[0.625rem] uppercase tracking-wider text-warning">
                         quarantined
                       </span>
                     )}
                   </div>
                   <div className="flex items-center gap-2 font-mono text-[0.65rem] text-muted-foreground">
-                    <span className="rounded bg-muted px-1.5 py-0.5">{hit.mode}</span>
-                    <span>{hit.score.toFixed(3)}</span>
+                    <span className="rounded-full bg-muted px-2 py-0.5 uppercase tracking-wider">
+                      {hit.mode}
+                    </span>
+                    <span className="tabular-nums">{hit.score.toFixed(3)}</span>
                   </div>
                 </div>
-                <div className="text-sm">{hit.title}</div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  trust: {hit.trust}
+                <div className="text-sm font-medium leading-snug">{hit.title}</div>
+                <div className="mt-2">
+                  <TrustBadge state={hit.trust} />
                 </div>
               </Link>
             </li>
@@ -306,7 +312,7 @@ function ModeSegmented({
     <div
       role="radiogroup"
       aria-label="Search mode"
-      className="inline-flex rounded-md border border-border/60 bg-card/60 p-1"
+      className="inline-flex rounded-lg border border-border bg-surface-2 p-1"
     >
       {SEARCH_MODES.map((m) => (
         <button
@@ -316,7 +322,7 @@ function ModeSegmented({
           aria-checked={m === value}
           onClick={() => onChange(m)}
           className={cn(
-            'rounded px-3 py-1 text-xs font-mono uppercase tracking-wider transition-colors',
+            'rounded-md px-3 py-1 font-mono text-xs uppercase tracking-wider transition-colors',
             m === value
               ? 'bg-primary text-primary-foreground'
               : 'text-muted-foreground hover:text-foreground',

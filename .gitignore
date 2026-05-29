@@ -33,3 +33,6 @@ crates/ft-ui/web/tsconfig.tsbuildinfo
 # Note: crates/ft-ui/web/src/routeTree.gen.ts IS committed — it's regenerated
 # by the TanStack Router vite plugin but checked in so fresh clones typecheck
 # without a build step.
+
+# Brainstorming visual companion mockups
+.superpowers/

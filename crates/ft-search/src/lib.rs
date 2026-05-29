@@ -37,6 +37,7 @@
 mod engine;
 mod error;
 mod hit;
+mod kind;
 mod query;
 mod ranking;
 mod schema;
@@ -44,6 +45,7 @@ mod schema;
 pub use engine::SearchEngine;
 pub use error::SearchError;
 pub use hit::{HitMode, SearchHit};
+pub use kind::{DocId, IndexKind};
 pub use query::{SearchMode, SearchQuery};
 pub use ranking::{ALPHA, BETA, DELTA, GAMMA, trust_weight};
 

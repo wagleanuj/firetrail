@@ -143,7 +143,7 @@ impl SearchEngine {
     /// load, this is a no-op and a `warn`-level message is emitted.
     ///
     /// Errors when `embedding.len() != crate::EMBEDDING_DIM`.
-    pub fn upsert_vector(&self, id: &RecordId, embedding: &[f32]) -> Result<(), SearchError> {
+    pub fn upsert_vector(&self, id: &DocId, embedding: &[f32]) -> Result<(), SearchError> {
         if embedding.len() != crate::EMBEDDING_DIM {
             return Err(SearchError::DimensionMismatch {
                 expected: crate::EMBEDDING_DIM,
@@ -152,7 +152,7 @@ impl SearchEngine {
         }
         if !self.vec_loaded {
             tracing::warn!(
-                record = %id,
+                record = %id.as_storage_str(),
                 "upsert_vector called but sqlite-vec is not loaded; skipping (lexical-only mode)"
             );
             return Ok(());
@@ -161,8 +161,8 @@ impl SearchEngine {
     }
 
     /// Remove all search index entries (lexical + vector + meta) for `id`.
-    pub fn delete(&self, id: &RecordId) -> Result<(), SearchError> {
-        let id_str = id.as_str();
+    pub fn delete(&self, id: &DocId) -> Result<(), SearchError> {
+        let id_str = id.as_storage_str();
         self.conn
             .execute("DELETE FROM records_fts WHERE id = ?1", params![id_str])?;
         self.conn.execute(
@@ -401,8 +401,8 @@ impl SearchEngine {
     }
 
     #[cfg(feature = "sqlite-vec")]
-    fn upsert_vector_inner(&self, id: &RecordId, embedding: &[f32]) -> Result<(), SearchError> {
-        let id_str = id.as_str();
+    fn upsert_vector_inner(&self, id: &DocId, embedding: &[f32]) -> Result<(), SearchError> {
+        let id_str = id.as_storage_str();
         let bytes = encode_f32_slice(embedding);
         self.conn
             .execute("DELETE FROM records_vec WHERE id_str = ?1", params![id_str])?;
@@ -415,7 +415,7 @@ impl SearchEngine {
 
     #[cfg(not(feature = "sqlite-vec"))]
     #[allow(clippy::unused_self, clippy::unnecessary_wraps)]
-    fn upsert_vector_inner(&self, _id: &RecordId, _embedding: &[f32]) -> Result<(), SearchError> {
+    fn upsert_vector_inner(&self, _id: &DocId, _embedding: &[f32]) -> Result<(), SearchError> {
         Ok(())
     }
 

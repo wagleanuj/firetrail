@@ -231,7 +231,7 @@ fn delete_removes_from_search() {
         .unwrap();
     assert_eq!(hits.len(), 1);
 
-    fix.engine.delete(&task.envelope.id).unwrap();
+    fix.engine.delete(&ft_search::DocId::Record(task.envelope.id.clone())).unwrap();
     let hits = fix
         .engine
         .search(&SearchQuery::new("whimsicality"))
@@ -303,7 +303,7 @@ fn upsert_vector_is_noop_without_extension() {
     fix.ingest(&task);
     // Should be a no-op + warn, not an error.
     fix.engine
-        .upsert_vector(&task.envelope.id, &vec![0.0; ft_search::EMBEDDING_DIM])
+        .upsert_vector(&ft_search::DocId::Record(task.envelope.id.clone()), &vec![0.0; ft_search::EMBEDDING_DIM])
         .unwrap();
 }
 
@@ -314,7 +314,7 @@ fn dimension_mismatch_rejects() {
     fix.ingest(&task);
     let err = fix
         .engine
-        .upsert_vector(&task.envelope.id, &[0.0, 1.0, 2.0])
+        .upsert_vector(&ft_search::DocId::Record(task.envelope.id.clone()), &[0.0, 1.0, 2.0])
         .expect_err("wrong dimension must error even in lexical-only build");
     assert!(matches!(
         err,
@@ -396,10 +396,10 @@ fn vector_search_ranks_nearest_first() {
 
     // Orthogonal embeddings: `near` on axis 0, `far` on axis 1.
     fix.engine
-        .upsert_vector(&near.envelope.id, &one_hot(0))
+        .upsert_vector(&ft_search::DocId::Record(near.envelope.id.clone()), &one_hot(0))
         .unwrap();
     fix.engine
-        .upsert_vector(&far.envelope.id, &one_hot(1))
+        .upsert_vector(&ft_search::DocId::Record(far.envelope.id.clone()), &one_hot(1))
         .unwrap();
 
     // Query embedding sits on axis 0 → `near` must be the closest neighbour.

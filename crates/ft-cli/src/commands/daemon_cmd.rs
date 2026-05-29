@@ -20,7 +20,6 @@ use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use ft_core::RecordId;
 use ft_embed::daemon::{self, DaemonStatus, RecordIndexer, ServeOptions};
 use ft_embed::{EmbedService, Embedder, EmbeddingCache, EmbeddingsConfig, build_embedder};
 use ft_search::SearchEngine;
@@ -276,7 +275,7 @@ impl SearchEngineIndexer {
 
 impl RecordIndexer for SearchEngineIndexer {
     fn upsert_vector(&self, record_id: &str, embedding: &[f32]) -> Result<(), String> {
-        let id = RecordId::from_string(record_id).map_err(|e| e.to_string())?;
+        let id = ft_search::DocId::parse(record_id);
         let guard = self.engine.lock().map_err(|e| e.to_string())?;
         guard
             .upsert_vector(&id, embedding)

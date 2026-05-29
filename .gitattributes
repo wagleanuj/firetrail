@@ -1,0 +1,4 @@
+# ONNX model weights are large binaries — store them via Git LFS so clones
+# fetch pointers and the bytes come from LFS storage. The bundled embedding
+# model (bge-small-en-v1.5, int8-quantized) lives under crates/ft-embed/models.
+*.onnx filter=lfs diff=lfs merge=lfs -text

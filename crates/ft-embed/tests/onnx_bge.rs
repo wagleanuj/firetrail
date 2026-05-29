@@ -4,10 +4,11 @@
 //! feature). It runs when both of the following are true:
 //!
 //! - `cargo test --features onnx -- --ignored` is invoked, AND
-//! - `$FIRETRAIL_BGE_MODEL_DIR` points at a directory containing both
-//!   `model.onnx` and `tokenizer.json` (download via
-//!   `firetrail init --download-model` once that flag ships, or fetch
-//!   manually with `huggingface-cli download BAAI/bge-small-en-v1.5`).
+//! - a model directory containing both `model.onnx` and `tokenizer.json`
+//!   is resolvable. By default this is the in-repo bundle at
+//!   `crates/ft-embed/models/bge-small-en-v1.5/` (committed via Git LFS —
+//!   run `git lfs pull` if it is still a pointer). `$FIRETRAIL_BGE_MODEL_DIR`
+//!   overrides the location.
 //!
 //! Assertions: the model produces a 384-dim L2-normalised vector;
 //! deterministically (two calls yield equal vectors); and semantically
@@ -21,17 +22,23 @@ use std::path::PathBuf;
 
 use ft_embed::{Embedder, OnnxEmbedder, cosine};
 
-fn model_dir() -> Option<PathBuf> {
-    std::env::var_os("FIRETRAIL_BGE_MODEL_DIR").map(PathBuf::from)
+/// Resolve the model directory: `$FIRETRAIL_BGE_MODEL_DIR` if set, else the
+/// in-repo LFS bundle next to this crate.
+fn model_dir() -> PathBuf {
+    if let Some(over) = std::env::var_os("FIRETRAIL_BGE_MODEL_DIR") {
+        return PathBuf::from(over);
+    }
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("models")
+        .join("bge-small-en-v1.5")
 }
 
 #[test]
-#[ignore = "requires FIRETRAIL_BGE_MODEL_DIR + ~134 MiB model on disk"]
+#[ignore = "requires the onnx feature + the LFS-bundled model on disk (git lfs pull)"]
 fn onnx_bge_small_round_trips() {
-    let Some(dir) = model_dir() else {
-        panic!("FIRETRAIL_BGE_MODEL_DIR not set");
-    };
-    let emb = OnnxEmbedder::load_bge_small(&dir).expect("load model");
+    let dir = model_dir();
+    let emb = OnnxEmbedder::load_bge_small(&dir)
+        .unwrap_or_else(|e| panic!("load model from {}: {e}", dir.display()));
 
     // 1. Dimensionality + normalisation.
     let v = emb.embed("hello world").expect("embed");

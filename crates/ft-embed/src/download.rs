@@ -34,33 +34,34 @@ pub struct Artifact {
 
 /// Artifacts that make up the default `bge-small-en-v1.5` model.
 ///
-/// The URLs and SHA-256 digests below correspond to the canonical files
-/// shipped by `BAAI/bge-small-en-v1.5` on Hugging Face. The digests are
-/// pinned here so a tampered mirror cannot silently swap weights —
-/// [`download_artifacts`] refuses to write a file whose hash doesn't
-/// match.
+/// We ship the **int8-quantized** ONNX export from the `Xenova` mirror
+/// (~32 MiB, vs ~127 MiB for the fp32 graph in `BAAI/bge-small-en-v1.5`).
+/// The quantized weights are saved on disk as `model.onnx` — the loader in
+/// [`crate::onnx`] always looks for that filename. The same artifact is
+/// bundled in-repo under `crates/ft-embed/models/bge-small-en-v1.5/` via
+/// Git LFS; this download path is the fallback for workspaces that are not
+/// the firetrail repo itself.
 ///
-/// **Operator note.** If you want to upgrade the model you must also
-/// update these digests. Run `sha256sum model.onnx tokenizer.json` over
-/// the newly-downloaded files and paste the values here. See ADR-0007
+/// The SHA-256 digests are pinned (verified against the bundled files) so a
+/// tampered mirror cannot silently swap weights — [`download_artifacts`]
+/// refuses to write a file whose hash doesn't match.
+///
+/// **Operator note.** To upgrade the model, update these digests: run
+/// `shasum -a 256 model.onnx tokenizer.json` over the newly-downloaded files
+/// and paste the values here (and re-bundle via LFS). See ADR-0007
 /// "Model upgrades".
 pub const BGE_SMALL_EN_V15_ARTIFACTS: &[Artifact] = &[
     Artifact {
         filename: "model.onnx",
-        url: "https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/onnx/model.onnx",
-        // Digest left empty by default; operators must paste in the value
-        // produced by the first successful download. We deliberately do
-        // NOT ship a hard-coded hash because the upstream file is rebuilt
-        // periodically and the wrong value would lock the tool to a
-        // historical artifact. See `verify_or_record` for the workflow.
-        sha256: "",
-        size_bytes: 133_000_000,
+        url: "https://huggingface.co/Xenova/bge-small-en-v1.5/resolve/main/onnx/model_quantized.onnx",
+        sha256: "6c9c6101a956d62dfb5e7190c538226c0c5bb9cb27b651234b6df063ee7dbfe4",
+        size_bytes: 34_014_426,
     },
     Artifact {
         filename: "tokenizer.json",
-        url: "https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/tokenizer.json",
-        sha256: "",
-        size_bytes: 700_000,
+        url: "https://huggingface.co/Xenova/bge-small-en-v1.5/resolve/main/tokenizer.json",
+        sha256: "d241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66",
+        size_bytes: 711_396,
     },
 ];
 

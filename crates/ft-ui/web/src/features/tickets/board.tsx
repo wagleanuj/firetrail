@@ -24,7 +24,9 @@ import { EmptyState as SharedEmptyState } from '@/components/ui/empty-state'
 import type { BoardCard } from '@/api/types/BoardCard'
 import type { BoardOutput } from '@/api/types/BoardOutput'
 import { Button } from '@/components/ui/button'
+import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { PageHeader } from '@/components/page-header'
 import { cn } from '@/lib/utils'
 import { useBoardQuery } from './use-board-query'
 import { columnForStatus, useMoveCard } from './use-ticket-mutations'
@@ -84,29 +86,32 @@ export function Board({ onCreateClick, ready = false, onReadyChange }: BoardProp
       onDragCancel={() => setActiveDrag(null)}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex h-full flex-col gap-4 p-4">
-        <div className="flex items-center justify-between">
-          <h1 className="font-mono text-lg font-semibold tracking-tight">Board</h1>
-          <div className="flex items-center gap-2">
-            {onReadyChange && (
-              <Button
-                size="sm"
-                variant={ready ? 'default' : 'outline'}
-                onClick={() => onReadyChange(!ready)}
-                aria-pressed={ready}
-                data-testid="ready-toggle"
-                className="gap-2"
-              >
-                {ready ? 'Unblocked only' : 'Show all'}
+      <div className="flex h-full flex-col gap-5 px-6 py-5">
+        <PageHeader
+          title="Board"
+          subtitle={`${totalCards} ${totalCards === 1 ? 'ticket' : 'tickets'}`}
+          actions={
+            <>
+              {onReadyChange && (
+                <Button
+                  size="sm"
+                  variant={ready ? 'default' : 'outline'}
+                  onClick={() => onReadyChange(!ready)}
+                  aria-pressed={ready}
+                  data-testid="ready-toggle"
+                  className="gap-2"
+                >
+                  {ready ? 'Unblocked only' : 'Show all'}
+                </Button>
+              )}
+              <Button onClick={onCreateClick} size="sm" className="gap-2">
+                <Plus className="h-4 w-4" />
+                New ticket
               </Button>
-            )}
-            <Button onClick={onCreateClick} size="sm" className="gap-2">
-              <Plus className="h-4 w-4" />
-              New ticket
-            </Button>
-          </div>
-        </div>
-        <div className="grid flex-1 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            </>
+          }
+        />
+        <div className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           {COLUMNS.map(({ key, label }) => (
             <DroppableColumn
               key={key}
@@ -136,19 +141,19 @@ function DroppableColumn({ column, label, cards, activeDrag }: DroppableColumnPr
       ref={setNodeRef}
       data-testid={`column-${column}`}
       className={cn(
-        'flex flex-col gap-2 rounded-lg border border-border/50 bg-card/40 p-2 transition-colors',
+        'flex flex-col gap-2.5 rounded-xl border border-border/60 bg-surface-1/50 p-2.5 transition-colors',
         isOver && 'border-primary/60 bg-primary/5',
       )}
     >
-      <div className="flex items-center justify-between px-2 py-1">
-        <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+      <div className="flex items-center justify-between px-1.5 pb-0.5 pt-1">
+        <span className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
           {label}
         </span>
         <span className="rounded-full bg-primary/15 px-2 py-0.5 font-mono text-[0.625rem] font-semibold text-primary">
           {cards.length}
         </span>
       </div>
-      <div className="flex flex-1 flex-col gap-2 overflow-y-auto">
+      <div className="flex flex-1 flex-col gap-2.5 overflow-y-auto">
         <AnimatePresence initial={false}>
           {cards.map((card) => (
             <DraggableCard
@@ -180,6 +185,8 @@ function DraggableCard({ card, column, dragging }: DraggableCardProps) {
   const style = transform
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
     : undefined
+  const active = column === 'in_progress'
+  const work = workType(card.short_id)
   return (
     <motion.div
       ref={setNodeRef}
@@ -193,38 +200,70 @@ function DraggableCard({ card, column, dragging }: DraggableCardProps) {
       {...attributes}
       data-testid={`card-${card.id}`}
       className={cn(
-        'group cursor-grab rounded-md border border-border/70 bg-background/80 p-3 text-left shadow-sm',
-        'hover:border-primary/40 hover:shadow-[0_0_0_1px_hsl(var(--primary)/0.25)] focus-within:ring-2 focus-within:ring-ring',
+        'group flex cursor-grab flex-col gap-2.5 rounded-lg border border-border bg-card p-3 text-left text-card-foreground shadow-elevation-1 transition-colors',
+        'hover:bg-surface-2 hover:border-primary/40 focus-within:ring-2 focus-within:ring-ring',
+        active && 'ring-1 ring-primary/25 shadow-glow',
         dragging && 'opacity-40',
       )}
     >
-      <div className="mb-1 flex items-center justify-between gap-2">
-        <Link
-          to="/tickets/$id"
-          params={{ id: card.id }}
-          className="truncate font-mono text-[0.65rem] uppercase tracking-wider text-muted-foreground hover:text-primary"
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          {card.short_id}
-        </Link>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          {work && (
+            <Badge variant={work.variant} className="px-1.5 py-0 text-[0.625rem] capitalize">
+              {work.label}
+            </Badge>
+          )}
+          <Link
+            to="/tickets/$id"
+            params={{ id: card.id }}
+            className="truncate text-xs font-mono text-muted-foreground hover:text-primary"
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            {card.short_id}
+          </Link>
+        </div>
         <PriorityBadge priority={card.priority} />
       </div>
       <Link
         to="/tickets/$id"
         params={{ id: card.id }}
-        className="block text-sm leading-snug text-foreground hover:text-primary"
+        className="block text-sm font-medium leading-snug text-foreground hover:text-primary"
         onPointerDown={(e) => e.stopPropagation()}
       >
         {card.title}
       </Link>
       {card.owner && (
-        <div className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Avatar name={card.owner} />
           <span className="truncate">{card.owner}</span>
         </div>
       )}
     </motion.div>
   )
+}
+
+/**
+ * Derives the type-of-work pill from a card's short id, whose prefix encodes
+ * the record kind (e.g. `task:aaaa`, `bug:…`, `epic:…`, `subtask:…`). Purely
+ * presentational — no data is fetched or transformed here. Subtasks share the
+ * `task` accent so the four design tokens stay legible.
+ */
+function workType(shortId: string): { variant: BadgeProps['variant']; label: string } | null {
+  const tag = shortId.split(':', 1)[0]?.toLowerCase()
+  switch (tag) {
+    case 'feature':
+      return { variant: 'feature', label: 'Feature' }
+    case 'bug':
+      return { variant: 'bug', label: 'Bug' }
+    case 'epic':
+      return { variant: 'epic', label: 'Epic' }
+    case 'task':
+      return { variant: 'task', label: 'Task' }
+    case 'subtask':
+      return { variant: 'task', label: 'Subtask' }
+    default:
+      return null
+  }
 }
 
 export function PriorityBadge({ priority }: { priority: string }) {
@@ -257,14 +296,26 @@ function Avatar({ name }: { name: string }) {
 
 function BoardSkeleton() {
   return (
-    <div className="grid h-full grid-cols-1 gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
-      {COLUMNS.map((c) => (
-        <div key={c.key} className="rounded-lg border border-border/50 bg-card/40 p-2">
-          <Skeleton className="mb-3 h-4 w-24" />
-          <Skeleton className="mb-2 h-16 w-full" />
-          <Skeleton className="mb-2 h-16 w-full" />
-        </div>
-      ))}
+    <div className="flex h-full flex-col gap-5 px-6 py-5">
+      <div className="flex items-center justify-between">
+        <Skeleton className="h-7 w-28" />
+        <Skeleton className="h-8 w-32" />
+      </div>
+      <div className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {COLUMNS.map((c) => (
+          <div
+            key={c.key}
+            className="flex flex-col gap-2.5 rounded-xl border border-border/60 bg-surface-1/50 p-2.5"
+          >
+            <div className="flex items-center justify-between px-1.5 pb-0.5 pt-1">
+              <Skeleton className="h-4 w-20" />
+              <Skeleton className="h-4 w-6 rounded-full" />
+            </div>
+            <Skeleton className="h-[4.5rem] w-full rounded-lg" />
+            <Skeleton className="h-[4.5rem] w-full rounded-lg" />
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

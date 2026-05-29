@@ -13,6 +13,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Loader2, Pencil, Link2, Plus, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import {
   Dialog,
@@ -101,11 +102,9 @@ function DetailBody({ record, relations }: { record: RecordWire; relations: Rela
     <div className="flex flex-col gap-6">
       {/* Header */}
       <div className="space-y-2">
-        <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-muted-foreground">
-          <span>{env.id.slice(0, 14)}</span>
-          <span>•</span>
-          <span>{env.kind}</span>
-          <span>•</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <WorkTypeBadge kind={env.kind} />
+          <span className="text-xs font-mono text-muted-foreground">{env.id.slice(0, 14)}</span>
           <StatusPill status={env.status} />
         </div>
         <InlineTitle id={env.id} initial={env.title} pending={update.isPending} />
@@ -239,6 +238,29 @@ function canClaim(kind: string): boolean {
   return kind === 'task' || kind === 'subtask' || kind === 'bug'
 }
 
+/**
+ * Type-of-work pill for the detail header. Maps the record `kind` onto the
+ * shared Badge `feature|bug|task|epic` variants (subtask reuses the task
+ * accent). Presentational only.
+ */
+function WorkTypeBadge({ kind }: { kind: string }) {
+  const variant: BadgeProps['variant'] =
+    kind === 'feature'
+      ? 'feature'
+      : kind === 'bug'
+        ? 'bug'
+        : kind === 'epic'
+          ? 'epic'
+          : kind === 'task' || kind === 'subtask'
+            ? 'task'
+            : 'secondary'
+  return (
+    <Badge variant={variant} className="capitalize">
+      {kind}
+    </Badge>
+  )
+}
+
 function StatusPill({ status }: { status: string }) {
   const tone =
     status === 'in_progress' || status === 'review'
@@ -261,7 +283,7 @@ function InlineTitle({ id, initial, pending }: { id: string; initial: string; pe
   if (!editing) {
     return (
       <h1
-        className="group flex cursor-text items-center gap-2 text-xl font-semibold leading-tight"
+        className="group flex cursor-text items-center gap-2 font-display text-xl font-semibold leading-snug tracking-tight"
         onClick={() => {
           setDraft(initial)
           setEditing(true)

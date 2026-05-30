@@ -1,3 +1,11 @@
+---
+doc_type: design
+status: reviewed
+links:
+  - firetrail-2mwp
+scope: ft-core
+---
+
 # Firetrail Docs — file-backed design/architecture docs linked to work
 
 **Date:** 2026-05-29

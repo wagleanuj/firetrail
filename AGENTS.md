@@ -103,6 +103,7 @@ requirements.md                Original brief. Historical reference only.
 docs/
 ├── ARCHITECTURE.md            How the system fits together (entry point — read first)
 ├── ROADMAP.md                 Milestones, gates, success criteria per milestone
+├── DOCS.md                    Convention for linking docs to work (frontmatter, doc_type)
 ├── BUILD_PLAN.md              Phased implementation plan
 ├── decisions/                 ADRs — why we chose what we chose
 │   ├── 0001-rust-over-go.md

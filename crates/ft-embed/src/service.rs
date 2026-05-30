@@ -189,6 +189,33 @@ pub fn content_hash(text: &str) -> String {
     hex::encode(blake3::hash(text.as_bytes()).as_bytes())
 }
 
+/// Freshness of a file-backed [`ft_core::Doc`] relative to the file on disk.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DocFreshness {
+    /// The file's current content hash matches the record's `content_hash`.
+    Fresh,
+    /// The file exists but changed since the record was last indexed.
+    Stale,
+    /// The linked file is missing or unreadable (a broken link).
+    Missing,
+}
+
+/// Compare a `Doc`'s stored `content_hash` against the linked file's current
+/// hash. `doc.path` is resolved against the workspace `root`.
+///
+/// This is the drift signal the lazy-refresh path uses: [`DocFreshness::Stale`]
+/// means re-index, [`DocFreshness::Missing`] means render a broken link. The
+/// hash is computed over the raw file contents, so writers must hash the same
+/// (see `firetrail doc add/index`).
+#[must_use]
+pub fn doc_freshness(root: &std::path::Path, doc: &ft_core::Doc) -> DocFreshness {
+    match std::fs::read_to_string(root.join(&doc.path)) {
+        Ok(content) if content_hash(&content) == doc.content_hash => DocFreshness::Fresh,
+        Ok(_) => DocFreshness::Stale,
+        Err(_) => DocFreshness::Missing,
+    }
+}
+
 /// Extract the embeddable text from a [`Record`]: title + the body's prose
 /// fields, separated by `"\n\n"`.
 ///
@@ -470,5 +497,27 @@ mod tests {
         let text = record_text_with_root(dir.path(), &rec);
         assert_eq!(text, record_text(&rec));
         assert!(text.contains("short excerpt"));
+    }
+
+    #[test]
+    fn doc_freshness_detects_fresh_stale_and_missing() {
+        use ft_core::Doc;
+        let dir = tempdir().unwrap();
+        std::fs::write(dir.path().join("d.md"), "original").unwrap();
+        let mut doc = Doc {
+            path: "d.md".into(),
+            content_hash: content_hash("original"),
+            title: "d".into(),
+            summary: String::new(),
+            doc_type: "design".into(),
+            trust: ft_core::TrustState::Draft,
+        };
+        assert_eq!(doc_freshness(dir.path(), &doc), DocFreshness::Fresh);
+
+        std::fs::write(dir.path().join("d.md"), "edited out of band").unwrap();
+        assert_eq!(doc_freshness(dir.path(), &doc), DocFreshness::Stale);
+
+        doc.path = "gone.md".into();
+        assert_eq!(doc_freshness(dir.path(), &doc), DocFreshness::Missing);
     }
 }

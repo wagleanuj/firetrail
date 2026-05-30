@@ -533,6 +533,42 @@ fn relations_returns_both_directions() {
 }
 
 #[test]
+fn relations_surfaces_documented_in_edge_to_a_doc() {
+    use ft_core::{Doc, RecordBuilder, RecordKind, RelationKind, TrustState};
+    let (_d, mut idx, storage) = fresh_index();
+    let by = make_identity_named("alice");
+    let task = make_task().title("implement docs").build();
+    let doc = RecordBuilder::new(RecordKind::Doc, "Docs design", by.clone())
+        .doc(Doc {
+            path: "docs/x.md".into(),
+            content_hash: String::new(),
+            title: "Docs design".into(),
+            summary: "spec".into(),
+            doc_type: "design".into(),
+            trust: TrustState::Reviewed,
+        })
+        .build()
+        .unwrap();
+    storage.insert(task.clone());
+    storage.insert(doc.clone());
+    // task --documented-in--> doc
+    storage.add_relation(Relation {
+        from: task.envelope.id.clone(),
+        to: doc.envelope.id.clone(),
+        kind: RelationKind::DocumentedIn,
+        created_at: Utc::now(),
+        created_by: by,
+    });
+    idx.rebuild_from(&storage).unwrap();
+
+    let rels = idx.relations(&task.envelope.id).unwrap();
+    assert!(
+        rels.iter().any(|e| e.to == doc.envelope.id),
+        "index.relations(task) must surface the linked Doc: {rels:?}"
+    );
+}
+
+#[test]
 fn list_order_by_title() {
     let (_d, mut idx, storage) = fresh_index();
     storage.insert(make_task().title("zzz").build());

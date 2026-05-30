@@ -24,6 +24,7 @@ use ft_ops::audit::{
     ReviewInput as AuditReviewInput, ReviewOutput as AuditReviewOutput, VerifyInput, VerifyOutput,
     VerifyResult,
 };
+use ft_ops::docs::{DocFreshnessView, DocView};
 use ft_ops::events::SalvageDecision;
 use ft_ops::identity_ops::{
     CapabilitiesInput, CapabilitiesOutput, CapabilityRow, IdentityKindInput, IdentityListOutput,
@@ -153,6 +154,9 @@ fn export_into(dir: &Path) -> Result<()> {
     TicketStatusFilter::export_all_to(dir).context("export TicketStatusFilter")?;
     ShowInput::export_all_to(dir).context("export ShowInput")?;
     UpdateInput::export_all_to(dir).context("export UpdateInput")?;
+    // Docs panel (firetrail-2mwp.8).
+    DocView::export_all_to(dir).context("export DocView")?;
+    DocFreshnessView::export_all_to(dir).context("export DocFreshnessView")?;
     // Memory ops Inputs/Outputs (W2-A).
     SalvageDecision::export_all_to(dir).context("export SalvageDecision")?;
     SeverityInput::export_all_to(dir).context("export SeverityInput")?;

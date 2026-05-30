@@ -216,6 +216,75 @@ pub fn doc_freshness(root: &std::path::Path, doc: &ft_core::Doc) -> DocFreshness
     }
 }
 
+/// Re-derive a [`ft_core::Doc`] record's `content_hash` + `summary` from file
+/// `content`.
+///
+/// Returns `true` when either field changed (the caller must persist the
+/// record). A non-doc record returns `false`. This is the single source of
+/// truth for doc-content derivation shared by `firetrail doc add/index` and the
+/// ft-ui edit-through path, so the two can never compute a hash differently.
+#[must_use]
+pub fn apply_doc_content(record: &mut Record, content: &str) -> bool {
+    let RecordBody::Doc(doc) = &mut record.body else {
+        return false;
+    };
+    let new_hash = content_hash(content);
+    let (_title, summary) = parse_doc_meta(content);
+    if new_hash == doc.content_hash && summary == doc.summary {
+        return false;
+    }
+    doc.content_hash = new_hash;
+    doc.summary = summary;
+    true
+}
+
+/// Extract `(title, summary)` from doc markdown: skips a leading YAML
+/// frontmatter block, takes the first `# H1` as the title and the first prose
+/// paragraph as the summary (capped at 280 chars so the record stays a thin
+/// pointer at the file).
+#[must_use]
+pub fn parse_doc_meta(text: &str) -> (Option<String>, String) {
+    let body = strip_frontmatter(text);
+    let mut title = None;
+    let mut summary = String::new();
+    for line in body.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if let Some(h1) = line.strip_prefix("# ") {
+            if title.is_none() {
+                title = Some(h1.trim().to_string());
+            }
+            continue;
+        }
+        if line.starts_with('#') {
+            continue;
+        }
+        summary = line.to_string();
+        break;
+    }
+    if summary.len() > 280 {
+        summary.truncate(277);
+        summary.push_str("...");
+    }
+    (title, summary)
+}
+
+/// Drop a leading `---\n … \n---` YAML frontmatter block if present.
+fn strip_frontmatter(text: &str) -> &str {
+    let t = text
+        .strip_prefix("---\n")
+        .or_else(|| text.strip_prefix("---\r\n"));
+    if let Some(rest) = t {
+        if let Some(end) = rest.find("\n---") {
+            let after = &rest[end + 4..];
+            return after.trim_start_matches(['\r', '\n']);
+        }
+    }
+    text
+}
+
 /// Extract the embeddable text from a [`Record`]: title + the body's prose
 /// fields, separated by `"\n\n"`.
 ///
@@ -519,5 +588,60 @@ mod tests {
 
         doc.path = "gone.md".into();
         assert_eq!(doc_freshness(dir.path(), &doc), DocFreshness::Missing);
+    }
+
+    #[test]
+    fn parse_doc_meta_skips_frontmatter_and_heading() {
+        let md = "---\ndoc_type: design\nlinks:\n  - x\n---\n# The Title\n\nThe first prose paragraph.\nmore.\n";
+        let (title, summary) = super::parse_doc_meta(md);
+        assert_eq!(title.as_deref(), Some("The Title"));
+        assert_eq!(summary, "The first prose paragraph.");
+    }
+
+    #[test]
+    fn parse_doc_meta_no_frontmatter_no_heading() {
+        let (title, summary) = super::parse_doc_meta("just a body line\nsecond");
+        assert_eq!(title, None);
+        assert_eq!(summary, "just a body line");
+    }
+
+    #[test]
+    fn parse_doc_meta_summary_is_capped() {
+        let long = format!("# T\n\n{}", "x".repeat(400));
+        let (_t, summary) = super::parse_doc_meta(&long);
+        assert!(summary.len() <= 280);
+        assert!(summary.ends_with("..."));
+    }
+
+    #[test]
+    fn apply_doc_content_updates_hash_and_summary_only_on_change() {
+        use ft_core::{Doc, RecordBuilder, RecordKind};
+        let mut record = RecordBuilder::new(
+            RecordKind::Doc,
+            "d",
+            ft_core::Identity::new("a@b.test").unwrap(),
+        )
+        .doc(Doc {
+            path: "d.md".into(),
+            content_hash: content_hash("# T\n\nold body\n"),
+            title: "d".into(),
+            summary: "old body".into(),
+            doc_type: "design".into(),
+            trust: ft_core::TrustState::Draft,
+        })
+        .build()
+        .unwrap();
+
+        // Identical content → no change.
+        assert!(!super::apply_doc_content(&mut record, "# T\n\nold body\n"));
+
+        // New content → hash + summary update.
+        assert!(super::apply_doc_content(&mut record, "# T\n\nnew body\n"));
+        if let ft_core::RecordBody::Doc(doc) = &record.body {
+            assert_eq!(doc.summary, "new body");
+            assert_eq!(doc.content_hash, content_hash("# T\n\nnew body\n"));
+        } else {
+            panic!("expected Doc body");
+        }
     }
 }

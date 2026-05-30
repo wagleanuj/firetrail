@@ -18,6 +18,7 @@ use crate::server::AppState;
 use crate::sse::events_handler;
 
 pub mod audit;
+pub mod docs;
 pub mod identity;
 pub mod memory;
 pub mod scope;
@@ -31,6 +32,7 @@ pub fn build(state: Arc<AppState>) -> Router {
         .route("/heartbeat", post(heartbeat_handler))
         .route("/events", get(events_handler))
         .nest("/tickets", tickets::router())
+        .nest("/docs", docs::router())
         .nest("/memory", memory::router())
         .nest("/scope", scope::router())
         .nest("/identity", identity::router())

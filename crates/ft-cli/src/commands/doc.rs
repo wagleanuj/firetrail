@@ -10,6 +10,7 @@ use std::path::Path;
 
 use chrono::Utc;
 use ft_core::{Doc, RecordBody, RecordBuilder, RecordId, RecordKind, Relation, RelationKind};
+use ft_embed::{apply_doc_content, parse_doc_meta};
 use ft_storage::{Storage as _, StorageFilter};
 use serde::Serialize;
 
@@ -162,24 +163,17 @@ pub fn index(args: &DocIndexArgs, global: &GlobalOpts) -> Result<CommandOutcome,
             warnings.push(format!("{id} is not a doc record — skipped"));
             continue;
         };
-        match std::fs::read_to_string(root.join(&doc.path)) {
+        let doc_path = doc.path.clone();
+        match std::fs::read_to_string(root.join(&doc_path)) {
             Ok(content) => {
-                let new_hash = ft_embed::content_hash(&content);
-                if new_hash == doc.content_hash {
-                    continue; // already fresh
-                }
-                let (_t, summary) = parse_doc_meta(&content);
                 let mut updated = record.clone();
-                if let RecordBody::Doc(d) = &mut updated.body {
-                    d.content_hash = new_hash;
-                    d.summary = summary;
+                if apply_doc_content(&mut updated, &content) {
+                    ctx.save_record(&mut updated)?;
+                    refreshed.push(id.as_str().to_string());
                 }
-                ctx.save_record(&mut updated)?;
-                refreshed.push(id.as_str().to_string());
             }
             Err(_) => warnings.push(format!(
-                "doc {id} points at a missing file ({}) — broken link",
-                doc.path
+                "doc {id} points at a missing file ({doc_path}) — broken link"
             )),
         }
     }
@@ -215,82 +209,4 @@ fn file_stem(path: &str) -> String {
     Path::new(path)
         .file_stem()
         .map_or_else(|| path.to_string(), |s| s.to_string_lossy().into_owned())
-}
-
-/// Extract `(title, summary)` from markdown: skips YAML frontmatter, takes the
-/// first `# H1` as the title and the first prose paragraph as the summary
-/// (capped so the record stays a thin pointer).
-fn parse_doc_meta(text: &str) -> (Option<String>, String) {
-    let body = strip_frontmatter(text);
-    let mut title = None;
-    let mut summary = String::new();
-    for line in body.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        if let Some(h1) = line.strip_prefix("# ") {
-            if title.is_none() {
-                title = Some(h1.trim().to_string());
-            }
-            continue;
-        }
-        if line.starts_with('#') {
-            continue;
-        }
-        summary = line.to_string();
-        break;
-    }
-    if summary.len() > 280 {
-        summary.truncate(277);
-        summary.push_str("...");
-    }
-    (title, summary)
-}
-
-/// Drop a leading `---\n … \n---` YAML frontmatter block if present.
-fn strip_frontmatter(text: &str) -> &str {
-    let t = text
-        .strip_prefix("---\n")
-        .or_else(|| text.strip_prefix("---\r\n"));
-    if let Some(rest) = t {
-        if let Some(end) = rest.find("\n---") {
-            let after = &rest[end + 4..];
-            return after.trim_start_matches(['\r', '\n']);
-        }
-    }
-    text
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{parse_doc_meta, strip_frontmatter};
-
-    #[test]
-    fn parses_title_and_summary_skipping_frontmatter_and_heading() {
-        let md = "---\ndoc_type: design\nlinks:\n  - x\n---\n# The Title\n\nThe first prose paragraph.\nmore.\n";
-        let (title, summary) = parse_doc_meta(md);
-        assert_eq!(title.as_deref(), Some("The Title"));
-        assert_eq!(summary, "The first prose paragraph.");
-    }
-
-    #[test]
-    fn no_frontmatter_no_heading() {
-        let (title, summary) = parse_doc_meta("just a body line\nsecond");
-        assert_eq!(title, None);
-        assert_eq!(summary, "just a body line");
-    }
-
-    #[test]
-    fn strip_frontmatter_leaves_body_when_absent() {
-        assert_eq!(strip_frontmatter("# H\nbody"), "# H\nbody");
-    }
-
-    #[test]
-    fn summary_is_capped() {
-        let long = format!("# T\n\n{}", "x".repeat(400));
-        let (_t, summary) = parse_doc_meta(&long);
-        assert!(summary.len() <= 280);
-        assert!(summary.ends_with("..."));
-    }
 }

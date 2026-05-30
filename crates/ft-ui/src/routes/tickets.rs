@@ -80,6 +80,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/", get(list_handler).post(create_handler))
         .route("/board", get(board_handler))
         .route("/:id", get(show_handler).patch(update_handler))
+        .route("/:id/docs", get(docs_handler))
         .route("/:id/claim", post(claim_handler))
         .route("/:id/unclaim", post(unclaim_handler))
         .route("/:id/close", post(close_handler))
@@ -97,7 +98,7 @@ pub fn router() -> Router<Arc<AppState>> {
 /// (`FIRETRAIL_AUTHOR` → workspace config → git config). Returns a
 /// permission-denied error if the resolver cannot produce an identity,
 /// mirroring CLI behaviour.
-fn resolve_identity(ws: &Workspace) -> Result<Identity, AppError> {
+pub(crate) fn resolve_identity(ws: &Workspace) -> Result<Identity, AppError> {
     let resolver = DefaultResolver::new(&ws.root, false);
     let core = resolver.resolve().map_err(|e| {
         AppError::Forbidden(format!(
@@ -151,6 +152,18 @@ pub async fn show_handler(
 ) -> Result<impl IntoResponse, AppError> {
     let identity = resolve_identity(&state.workspace)?;
     let out = tickets::show(&state.workspace, &identity, ShowInput { id }, &state.events)?;
+    Ok((StatusCode::OK, Json(out)))
+}
+
+/// `GET /api/tickets/:id/docs` — the ticket's `DocumentedIn` docs, each
+/// rendered (raw markdown) with a `content_hash`-driven freshness badge.
+#[tracing::instrument(skip_all)]
+pub async fn docs_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<impl IntoResponse, AppError> {
+    let identity = resolve_identity(&state.workspace)?;
+    let out = ft_ops::docs::docs_for_ticket(&state.workspace, &identity, id, &state.events)?;
     Ok((StatusCode::OK, Json(out)))
 }
 

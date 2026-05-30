@@ -59,6 +59,7 @@ import {
   useUpdateTicket,
 } from './use-ticket-mutations'
 import { DescriptionEditor } from './description-editor'
+import { DocsPanel } from './docs-panel'
 import { PriorityBadge } from './board'
 
 const RELATION_KINDS: TicketRelationKind[] = [
@@ -227,6 +228,9 @@ function DetailBody({ record, relations }: { record: RecordWire; relations: Rela
           View full audit review →
         </Link>
       </div>
+
+      {/* Docs */}
+      <DocsPanel ticketId={env.id} />
 
       {/* Relations */}
       <RelationsPanel id={env.id} relations={relations} />

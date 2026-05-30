@@ -27,14 +27,20 @@ pub fn search(args: &SearchArgs, global: &GlobalOpts) -> Result<CommandOutcome, 
     // for M3 — real ONNX is a follow-up.
     let embedding = if want_embedding {
         match args.embedder {
-            EmbedderArg::Mock => {
-                let embedder = MockEmbedder::new(0, ft_search::EMBEDDING_DIM);
-                match embedder.embed(&args.query) {
-                    Ok(v) => Some(v),
-                    Err(e) => {
-                        warnings.push(format!("mock embedder failed: {e}"));
-                        None
-                    }
+            EmbedderArg::Mock => mock_embedding(&args.query, &mut warnings),
+            // Daemon-first, mock fallback — matches the ops/UI layer. Only
+            // uses a daemon that is ALREADY running (never auto-spawns); when
+            // none is reachable it degrades to deterministic mock vectors
+            // rather than all the way to lexical.
+            EmbedderArg::Auto => {
+                let from_daemon = ctx.ws.daemon_socket_path().ok().and_then(|socket| {
+                    (daemon::status(&socket) == daemon::DaemonStatus::Running)
+                        .then(|| daemon::send_embed(&socket, &args.query).ok())
+                        .flatten()
+                });
+                match from_daemon {
+                    Some(v) => Some(v),
+                    None => mock_embedding(&args.query, &mut warnings),
                 }
             }
             EmbedderArg::Daemon => match ctx.ws.daemon_socket_path() {
@@ -146,6 +152,20 @@ pub fn similar(args: &SimilarArgs, global: &GlobalOpts) -> Result<CommandOutcome
         hits: hits.into_iter().map(SearchHitView::from).collect(),
         warnings,
     }))
+}
+
+/// Embed `query` with the deterministic in-process mock embedder, pushing a
+/// warning (and returning `None`) on the unlikely failure. Shared by the
+/// `mock` and `auto` (daemon-unavailable) embedder paths.
+fn mock_embedding(query: &str, warnings: &mut Vec<String>) -> Option<Vec<f32>> {
+    let embedder = MockEmbedder::new(0, ft_search::EMBEDDING_DIM);
+    match embedder.embed(query) {
+        Ok(v) => Some(v),
+        Err(e) => {
+            warnings.push(format!("mock embedder failed: {e}"));
+            None
+        }
+    }
 }
 
 /// Pick the actual search mode given what we can supply at run time.

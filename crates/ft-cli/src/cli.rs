@@ -540,9 +540,14 @@ impl SearchModeArg {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 #[clap(rename_all = "lower")]
 pub enum EmbedderArg {
-    /// Use the deterministic in-process `MockEmbedder` (M3 default).
+    /// Default: use a running daemon's real embeddings if one is already
+    /// listening, otherwise fall back to the deterministic mock embedder.
+    /// Mirrors the ops layer (daemon-first, mock fallback) and never
+    /// auto-spawns — use `daemon` to force-start one.
+    Auto,
+    /// Use the deterministic in-process `MockEmbedder`.
     Mock,
-    /// Forward embed requests to the running daemon.
+    /// Forward embed requests to the daemon, auto-spawning one if needed.
     Daemon,
 }
 
@@ -671,9 +676,11 @@ pub struct SearchArgs {
     pub limit: usize,
     /// Which embedder to use for hybrid/vector mode at the CLI layer.
     ///
-    /// M3 limitation: ONNX is not wired up. Default is `mock` (deterministic).
-    /// Use `daemon` to forward embed requests to a running embedding daemon.
-    #[arg(long, value_enum, default_value_t = EmbedderArg::Mock)]
+    /// Default `auto`: use a running daemon's real embeddings when one is
+    /// already listening, else fall back to the deterministic mock embedder
+    /// (matches the ops/UI layer). `mock` forces deterministic vectors;
+    /// `daemon` forces the daemon path, auto-spawning one if needed.
+    #[arg(long, value_enum, default_value_t = EmbedderArg::Auto)]
     pub embedder: EmbedderArg,
     /// Include quarantined (imported but not yet promoted) records in
     /// results. Off by default — quarantined records are excluded so agents

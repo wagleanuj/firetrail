@@ -36,7 +36,7 @@ msg=$(git log -1 --format=%B HEAD 2>/dev/null || true)
 # then pull every firetrail-<id> out of them.
 ids=$(printf '%s\n' "$msg" \
     | grep -iE '^[[:space:]]*(close[sd]?|fix(e[sd])?|resolve[sd]?):' \
-    | grep -oiE 'firetrail-[a-z0-9]+' \
+    | grep -oiE 'firetrail-[a-z0-9]+(\.[a-z0-9]+)*' \
     | tr 'A-Z' 'a-z' \
     | sort -u)
 
@@ -59,5 +59,14 @@ for id in $ids; do
         echo "beads: closed $id (referenced in commit $sha)"
     fi
 done
+
+# --- BEGIN FIRETRAIL DOC-INDEX WARMER (firetrail-2mwp.9) ---
+# Keep the search index warm when a commit changes doc .md files. Best-effort;
+# the warmer script never blocks a commit. Lives in scripts/ so it stays
+# maintainable (and survives if this beads-managed hook is ever regenerated).
+hook_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+warmer="$hook_dir/../../scripts/hooks/doc-index-warmer.sh"
+[ -x "$warmer" ] && "$warmer" || true
+# --- END FIRETRAIL DOC-INDEX WARMER ---
 
 exit 0

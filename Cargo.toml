@@ -15,6 +15,7 @@ members = [
     "crates/ft-pr",
     "crates/ft-import",
     "crates/ft-ops",
+    "crates/ft-workspace",
     "crates/ft-git",
     "crates/ft-cli",
     "crates/ft-testkit",

@@ -4,6 +4,7 @@
 //! exit codes, and no user-facing formatting concerns. Adapters in ft-cli and
 //! ft-ui translate it into their respective transports.
 
+use ft_workspace::WorkspaceError;
 use thiserror::Error;
 
 /// Errors returned by every op in this crate.
@@ -76,6 +77,26 @@ impl OpsError {
         Self::Validation {
             field: field.into(),
             reason: reason.into(),
+        }
+    }
+}
+
+/// Map a workspace-resolution error onto the transport-agnostic [`OpsError`].
+///
+/// The variant shapes line up one-to-one, so this is a lossless rename: a
+/// missing root becomes [`OpsError::NotFound`], a broken invariant becomes
+/// [`OpsError::Validation`], and an internal failure stays internal.
+impl From<WorkspaceError> for OpsError {
+    fn from(err: WorkspaceError) -> Self {
+        match err {
+            WorkspaceError::NotFound { entity, path } => OpsError::NotFound {
+                kind: entity,
+                id: path,
+            },
+            WorkspaceError::Validation { field, reason } => {
+                OpsError::Validation { field, reason }
+            }
+            WorkspaceError::Internal(e) => OpsError::Internal(e),
         }
     }
 }

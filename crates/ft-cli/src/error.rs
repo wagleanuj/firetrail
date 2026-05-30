@@ -153,3 +153,30 @@ impl CliError {
         }
     }
 }
+
+/// Adapt a workspace-resolution failure into a CLI error.
+///
+/// All variants are framed under the `"workspace"` command. In practice only
+/// the `?`-propagated `runtime_dir`/`daemon_socket_path` paths reach here, and
+/// they produce [`WorkspaceError::Internal`] — preserving the previous
+/// `CliError::Internal { command: "workspace", .. }` behaviour and exit code 5.
+/// Discovery helpers (`locate` / `require_initialised`) still build their own
+/// command-specific `CliError`s in `crate::workspace`, so their messages are
+/// unchanged.
+impl From<ft_workspace::WorkspaceError> for CliError {
+    fn from(err: ft_workspace::WorkspaceError) -> Self {
+        use ft_workspace::WorkspaceError as WE;
+        match err {
+            WE::NotFound { entity, path } => CliError::NotFound {
+                command: "workspace".to_string(),
+                what: format!("{entity}: {path}"),
+            },
+            WE::Validation { reason, .. } => CliError::UserError {
+                command: "workspace".to_string(),
+                message: reason,
+                details: serde_json::Value::Null,
+            },
+            WE::Internal(e) => CliError::internal("workspace", e),
+        }
+    }
+}

@@ -1,0 +1,23 @@
+[package]
+name = "ft-workspace"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Workspace path resolution shared by ft-cli, ft-ops, and ft-ui."
+
+[lints]
+workspace = true
+
+[dependencies]
+# ft-embed owns the machine-local repo-cache layout (ADR-0007). Both ft-cli and
+# ft-ops already depend on ft-embed, so re-using `ft_embed::repo_cache_dir` here
+# adds no new coupling at the consumer level while avoiding duplication of the
+# repo-hash cache-dir derivation. See `runtime_dir` for the rationale comment.
+ft-embed = { path = "../ft-embed", version = "0.1.0" }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

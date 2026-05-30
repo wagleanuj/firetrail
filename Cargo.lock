@@ -977,6 +977,7 @@ dependencies = [
  "ft-testkit",
  "ft-trust",
  "ft-ui",
+ "ft-workspace",
  "hex",
  "humantime",
  "insta",
@@ -1127,6 +1128,7 @@ dependencies = [
  "ft-storage",
  "ft-testkit",
  "ft-trust",
+ "ft-workspace",
  "humantime",
  "regex",
  "serde",
@@ -1285,6 +1287,16 @@ version = "0.1.0"
 dependencies = [
  "rusqlite",
  "sqlite-vec",
+]
+
+[[package]]
+name = "ft-workspace"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ft-embed",
+ "tempfile",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

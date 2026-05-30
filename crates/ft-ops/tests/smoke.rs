@@ -2,6 +2,7 @@
 
 use std::fs;
 
+use ft_ops::workspace::WorkspaceError;
 use ft_ops::{Event, EventBus, OpsError, Workspace};
 
 #[test]
@@ -12,7 +13,7 @@ fn workspace_open_requires_marker() {
     // Without the marker, opening must fail.
     let err = Workspace::open(root).expect_err("expected open to fail without marker");
     assert!(
-        matches!(err, OpsError::Validation { .. }),
+        matches!(err, WorkspaceError::Validation { .. }),
         "expected Validation error, got {err:?}"
     );
 

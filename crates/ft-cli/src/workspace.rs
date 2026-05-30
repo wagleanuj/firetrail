@@ -1,4 +1,10 @@
-//! Workspace path discovery.
+//! Workspace path discovery for the CLI.
+//!
+//! The [`Workspace`] handle (struct + path accessors) now lives in the shared
+//! `ft-workspace` crate (extracted in firetrail-jyc); this module re-exports it
+//! and keeps the CLI-flavoured discovery helpers ([`locate`],
+//! [`require_initialised`]) that translate workspace-resolution failures into
+//! [`CliError`] with the exact command-framed messages the CLI surfaces.
 //!
 //! A *workspace* is a git repository that contains a `.firetrail/` directory.
 //! Commands either accept `--workspace <path>` or discover the workspace by
@@ -8,74 +14,7 @@ use std::path::{Path, PathBuf};
 
 use crate::error::CliError;
 
-/// Resolved workspace paths.
-#[derive(Debug, Clone)]
-pub struct Workspace {
-    /// Absolute repo root (the directory that contains `.git/`).
-    pub root: PathBuf,
-}
-
-impl Workspace {
-    /// Absolute path to `.firetrail/`.
-    #[must_use]
-    pub fn firetrail_dir(&self) -> PathBuf {
-        self.root.join(".firetrail")
-    }
-
-    /// Absolute path to `.firetrail/config.yml`.
-    #[must_use]
-    pub fn config_path(&self) -> PathBuf {
-        self.firetrail_dir().join("config.yml")
-    }
-
-    /// Absolute path to `.firetrail/identity.yml`.
-    #[must_use]
-    pub fn identity_path(&self) -> PathBuf {
-        self.firetrail_dir().join("identity.yml")
-    }
-
-    /// Absolute path to `.firetrail/index.db`.
-    #[must_use]
-    pub fn index_db_path(&self) -> PathBuf {
-        self.firetrail_dir().join("index.db")
-    }
-
-    /// Machine-local runtime directory for this repo (ADR-0007). Lives under
-    /// `$FIRETRAIL_CACHE_HOME/firetrail/<repo-hash>/` or
-    /// `~/.cache/firetrail/<repo-hash>/`, shared with the embedding cache.
-    ///
-    /// This is **not** workspace-local: it sidesteps the macOS `SUN_LEN`
-    /// limit (~104 chars) that long temp paths under
-    /// `/private/var/folders/...` would otherwise blow past when binding the
-    /// Unix domain socket (firetrail-tij).
-    pub fn runtime_dir(&self) -> Result<PathBuf, CliError> {
-        ft_embed::repo_cache_dir(&self.root).map_err(|e| {
-            CliError::internal(
-                "workspace",
-                format!("resolve machine-local runtime dir: {e}"),
-            )
-        })
-    }
-
-    /// Default embedding daemon socket path. Lives under
-    /// [`Self::runtime_dir`] to keep the path short on macOS.
-    pub fn daemon_socket_path(&self) -> Result<PathBuf, CliError> {
-        Ok(self.runtime_dir()?.join("embedd.sock"))
-    }
-
-    /// Absolute path to `.firetrail/cache/`.
-    #[must_use]
-    pub fn cache_dir(&self) -> PathBuf {
-        self.firetrail_dir().join("cache")
-    }
-
-    /// Whether the workspace has been initialised (the marker is
-    /// `.firetrail/config.yml`).
-    #[must_use]
-    pub fn is_initialised(&self) -> bool {
-        self.config_path().exists()
-    }
-}
+pub use ft_workspace::Workspace;
 
 /// Locate the workspace root. If `override_path` is set, it is used directly
 /// (no discovery). Otherwise we walk up from the current directory looking
@@ -89,7 +28,7 @@ pub fn locate(command: &str, override_path: Option<&Path>) -> Result<Workspace, 
         std::env::current_dir().map_err(|e| CliError::internal(command, e))?
     };
 
-    let root = find_git_root(&start).ok_or_else(|| CliError::UserError {
+    let root = ft_workspace::find_git_root(&start).ok_or_else(|| CliError::UserError {
         command: command.to_string(),
         message: format!(
             "not inside a git repository (searched upwards from {})",
@@ -123,15 +62,4 @@ fn canonicalize(command: &str, p: &Path) -> Result<PathBuf, CliError> {
         message: format!("workspace path {} unusable: {e}", p.display()),
         details: serde_json::json!({ "path": p.display().to_string() }),
     })
-}
-
-fn find_git_root(start: &Path) -> Option<PathBuf> {
-    let mut cur: Option<&Path> = Some(start);
-    while let Some(dir) = cur {
-        if dir.join(".git").exists() {
-            return Some(dir.to_path_buf());
-        }
-        cur = dir.parent();
-    }
-    None
 }

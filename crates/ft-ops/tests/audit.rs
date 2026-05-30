@@ -6,7 +6,9 @@ use ft_ops::audit::{
 };
 use ft_ops::memory::{self, CreateMemoryInput};
 use ft_ops::tickets::{self, CreateEpicInput, CreateTaskInput};
-use ft_ops::trust::{self, ReviewInput as TrustReviewInput};
+use ft_ops::trust::{
+    self, PromoteInput as TrustPromoteInput, ReviewInput as TrustReviewInput,
+};
 use ft_ops::{EventBus, Identity, Workspace};
 use ft_testkit::TestRepo;
 
@@ -408,4 +410,78 @@ fn trust_review_promotes_draft_to_reviewed() {
         }
         other => panic!("expected TrustTransitioned, got {other:?}"),
     }
+}
+
+#[test]
+fn trust_promote_records_structured_transition_in_history() {
+    use ft_core::Transition;
+
+    let (_tr, ws) = fixture();
+    let id = alice();
+    let reviewer = Identity::new("bob@firetrail.test", "Bob");
+    let bus = EventBus::default();
+    // Low-stakes memory (no risk class) so promotion to Verified is permitted
+    // without ADR-0013 evidence enforcement at the state-machine layer.
+    let created = memory::create_memory(
+        &ws,
+        &id,
+        CreateMemoryInput {
+            title: "promote me".into(),
+            body: "body".into(),
+            tags: vec![],
+            risk_class: None,
+            scope: None,
+            request_id: None,
+        },
+        &bus,
+    )
+    .unwrap();
+    let mid = created.record.envelope.id.as_str().to_string();
+
+    // Draft -> Reviewed.
+    trust::review(
+        &ws,
+        &reviewer,
+        TrustReviewInput {
+            id: mid.clone(),
+            reason: Some("reviewed".into()),
+            evidence_url: None,
+            request_id: None,
+        },
+        &bus,
+    )
+    .unwrap();
+
+    // Reviewed -> Verified, with a single piece of evidence. A distinct
+    // identity promotes (four-eyes: the reviewer cannot also promote).
+    let promoter = Identity::new("carol@firetrail.test", "Carol");
+    let out = trust::promote(
+        &ws,
+        &promoter,
+        TrustPromoteInput {
+            id: mid.clone(),
+            reason: Some("verified".into()),
+            evidence_url: Some("https://example.com/proof".into()),
+            evidence_type: None,
+            request_id: None,
+        },
+        &bus,
+    )
+    .unwrap();
+
+    let tail = out
+        .record
+        .envelope
+        .history
+        .last()
+        .expect("history must have a tail after promote");
+    assert_eq!(
+        tail.transition,
+        Some(Transition::Trust {
+            from: ft_core::TrustState::Reviewed,
+            to: ft_core::TrustState::Verified,
+            evidence_count: 1,
+        }),
+        "promote must record a structured Trust transition with applied from/to and evidence count"
+    );
 }

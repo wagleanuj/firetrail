@@ -329,6 +329,11 @@ fn apply_and_persist(
         ops_summary,
         ops_count: 1,
         kind: HistoryEntryKind::TrustTransition,
+        transition: Some(ft_core::Transition::Trust {
+            from: applied.from,
+            to: applied.to,
+            evidence_count: u32::try_from(applied.evidence.len()).unwrap_or(u32::MAX),
+        }),
     };
     let _ = command; // ctx already carries the command name for error framing
     ctx.save_record_with_history(record, draft)?;
@@ -403,6 +408,7 @@ pub fn runbook_step_add(
         ops_summary: vec![format!("added step: {}", args.description)],
         ops_count: 1,
         kind: HistoryEntryKind::Update,
+        transition: None,
     };
     let _ = CMD; // ctx already carries the command name for error framing
     ctx.save_record_with_history(&mut record, draft)?;

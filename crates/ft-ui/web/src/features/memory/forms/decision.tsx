@@ -3,8 +3,15 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { Input } from '@/components/ui/input'
 import { ScopeCombobox } from '@/components/ui/autocomplete'
 import { MarkdownEditor } from '@/components/markdown-editor'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useCreateMemory } from '../use-memory-mutations'
-import { decisionSchema, type DecisionValues } from '../schemas'
+import { decisionSchema, DECISION_STATUSES, type DecisionValues } from '../schemas'
 import { Field, FormShell, RiskClassSelect } from './shared'
 
 const FORM_ID = 'create-memory-decision'
@@ -13,7 +20,14 @@ export function DecisionForm({ onDone }: { onDone: () => void }) {
   const mutate = useCreateMemory()
   const form = useForm<DecisionValues>({
     resolver: zodResolver(decisionSchema) as never,
-    defaultValues: { title: '', context: '', decision: '', consequences: '', scope: '' },
+    defaultValues: {
+      title: '',
+      context: '',
+      decision: '',
+      consequences: '',
+      scope: '',
+      alternatives: '',
+    },
   })
 
   const onSubmit: SubmitHandler<DecisionValues> = async (v) => {
@@ -26,6 +40,8 @@ export function DecisionForm({ onDone }: { onDone: () => void }) {
       consequences: parsed.consequences || null,
       riskClass: parsed.riskClass ?? null,
       scope: parsed.scope || null,
+      alternatives: parsed.alternatives,
+      status: parsed.status ?? null,
     })
     onDone()
   }
@@ -57,7 +73,32 @@ export function DecisionForm({ onDone }: { onDone: () => void }) {
             placeholder="Trade-offs / fallout"
           />
         </Field>
+        <Field label="Alternatives considered (comma-separated)">
+          <Input
+            {...form.register('alternatives')}
+            placeholder="Option B, Option C"
+          />
+        </Field>
         <div className="grid grid-cols-2 gap-3">
+          <Field label="Status">
+            <Select
+              value={form.watch('status')}
+              onValueChange={(v) =>
+                form.setValue('status', (v as (typeof DECISION_STATUSES)[number]) || undefined)
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="proposed" />
+              </SelectTrigger>
+              <SelectContent>
+                {DECISION_STATUSES.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {s}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
           <Field label="Risk class">
             <RiskClassSelect
               value={form.watch('riskClass')}
@@ -66,13 +107,13 @@ export function DecisionForm({ onDone }: { onDone: () => void }) {
               }
             />
           </Field>
-          <Field label="Scope">
-            <ScopeCombobox
-              value={form.watch('scope') ?? ''}
-              onValueChange={(v) => form.setValue('scope', v)}
-            />
-          </Field>
         </div>
+        <Field label="Scope">
+          <ScopeCombobox
+            value={form.watch('scope') ?? ''}
+            onValueChange={(v) => form.setValue('scope', v)}
+          />
+        </Field>
       </FormShell>
     </form>
   )

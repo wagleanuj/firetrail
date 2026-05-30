@@ -25,10 +25,6 @@ pub enum CoreError {
     #[error("invalid record: {0}")]
     InvalidRecord(String),
 
-    /// Attempt to build a memory-kind body that is not yet writable at M1.
-    #[error("record kind `{0}` is declared but not writable until M2")]
-    NotYetWritable(&'static str),
-
     /// Provided prefix did not uniquely resolve in the candidate set.
     #[error("ambiguous record id prefix: {0}")]
     AmbiguousPrefix(String),

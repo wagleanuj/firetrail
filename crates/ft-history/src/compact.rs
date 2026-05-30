@@ -189,6 +189,10 @@ fn merge_into(dst: &mut HistoryEntry, src: HistoryEntry) {
     }
     // Sum ops_count.
     dst.ops_count = dst.ops_count.saturating_add(src.ops_count);
+    // Keep dst's transition. Trust transitions aren't squashable, so we never
+    // expect to merge two transition-bearing entries; preserving dst's payload
+    // (the run's first entry) is the safe default.
+    let _ = &src.transition;
     // Adopt the new to_hash (it will be overwritten by relink_chain).
     dst.to_hash = src.to_hash;
 }
@@ -284,6 +288,7 @@ mod tests {
             ops_summary: vec![summary.to_string()],
             ops_count: 1,
             kind,
+            transition: None,
         }
     }
 
@@ -296,6 +301,7 @@ mod tests {
             ops_summary: vec![summary.to_string()],
             ops_count: 1,
             kind,
+            transition: None,
         }
     }
 

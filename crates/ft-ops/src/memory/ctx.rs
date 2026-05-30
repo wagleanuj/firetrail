@@ -197,6 +197,7 @@ impl<'a> MemoryCtx<'a> {
             ops_summary: vec![summary],
             ops_count: 1,
             kind,
+            transition: None,
         };
         append_history(record, draft)
             .map_err(|e| OpsError::Internal(anyhow::anyhow!("history append: {e}")))?;

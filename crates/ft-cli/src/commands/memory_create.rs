@@ -179,8 +179,11 @@ pub fn decision(
         context: args.context.clone(),
         decision: args.decision.clone(),
         consequences: args.consequences.clone().unwrap_or_default(),
-        alternatives_considered: Vec::new(),
-        status: ft_core::DecisionStatus::default(),
+        alternatives_considered: args.alternatives.clone(),
+        status: args.status.map_or_else(
+            ft_core::DecisionStatus::default,
+            super::super::cli::DecisionStatusArg::to_core,
+        ),
         superseded_by: None,
         risk_class: args
             .risk_class
@@ -386,6 +389,7 @@ pub(crate) fn write_with_create(
         ops_summary: vec![summary.to_string()],
         ops_count: 1,
         kind: HistoryEntryKind::Create,
+        transition: None,
     };
     ctx.save_record_with_history(record, draft)?;
     Ok(())

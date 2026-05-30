@@ -238,6 +238,48 @@ pub fn apply_doc_content(record: &mut Record, content: &str) -> bool {
     true
 }
 
+/// Refresh a [`ft_core::Doc`] record's `doc_type` (body) and `owning_scope`
+/// (envelope) from the file's §5 frontmatter, in place.
+///
+/// Returns `true` when either field changed (the caller must persist). A
+/// non-doc record returns `false`. Frontmatter keys are applied only when
+/// **present**: an absent `doc_type:`/`scope:` leaves the existing value
+/// untouched (the file is the source of truth, but silence is not an erasure).
+///
+/// This is the re-index counterpart to [`apply_doc_content`] (which refreshes
+/// hash + summary) under the approved Option C: re-indexing refreshes
+/// `doc_type` + `owning_scope` but **never touches `trust`** — frontmatter
+/// `status:` is consumed only at `doc add`, and the trust ladder stays the sole
+/// authority afterwards. Callers run both `apply_doc_content` and
+/// `apply_doc_frontmatter` and persist if either reports a change.
+#[must_use]
+pub fn apply_doc_frontmatter(record: &mut Record, content: &str) -> bool {
+    let RecordBody::Doc(_) = &record.body else {
+        return false;
+    };
+    let fm = parse_frontmatter(content);
+    let mut changed = false;
+
+    // `owning_scope` lives on the envelope.
+    if let Some(scope) = fm.scope {
+        if record.envelope.owning_scope.as_deref() != Some(scope.as_str()) {
+            record.envelope.owning_scope = Some(scope);
+            changed = true;
+        }
+    }
+
+    // `doc_type` lives on the Doc body. Re-borrow as Doc — confirmed above.
+    if let (Some(doc_type), RecordBody::Doc(doc)) = (fm.doc_type, &mut record.body) {
+        if doc.doc_type != doc_type {
+            doc.doc_type = doc_type;
+            changed = true;
+        }
+    }
+
+    // Note: `trust` is deliberately NOT touched here. See doc comment.
+    changed
+}
+
 /// Extract `(title, summary)` from doc markdown: skips a leading YAML
 /// frontmatter block, takes the first `# H1` as the title and the first prose
 /// paragraph as the summary (capped at 280 chars so the record stays a thin
@@ -815,6 +857,72 @@ mod tests {
             let md = format!("---\nstatus: {raw}\n---\n");
             assert_eq!(super::parse_frontmatter(&md).status, Some(want), "status {raw}");
         }
+    }
+
+    #[test]
+    fn apply_doc_frontmatter_refreshes_doc_type_and_scope_not_trust() {
+        use ft_core::{Doc, RecordBuilder, RecordKind, TrustState};
+        let mut record = RecordBuilder::new(
+            RecordKind::Doc,
+            "d",
+            ft_core::Identity::new("a@b.test").unwrap(),
+        )
+        .owning_scope("old-scope")
+        .doc(Doc {
+            path: "d.md".into(),
+            content_hash: String::new(),
+            title: "d".into(),
+            summary: String::new(),
+            doc_type: "design".into(),
+            trust: TrustState::Reviewed,
+        })
+        .build()
+        .unwrap();
+
+        // Frontmatter changes doc_type + scope, and declares a (lower) status.
+        let content = "---\ndoc_type: adr\nscope: ft-embed\nstatus: draft\n---\n# T\n\nBody.\n";
+        assert!(super::apply_doc_frontmatter(&mut record, content));
+        assert_eq!(record.envelope.owning_scope.as_deref(), Some("ft-embed"));
+        let ft_core::RecordBody::Doc(doc) = &record.body else {
+            panic!("expected Doc body");
+        };
+        assert_eq!(doc.doc_type, "adr", "doc_type refreshed from frontmatter");
+        assert_eq!(
+            doc.trust,
+            TrustState::Reviewed,
+            "trust must NOT be touched on re-index — status: draft is ignored here"
+        );
+
+        // Re-applying the same frontmatter is a no-op.
+        assert!(
+            !super::apply_doc_frontmatter(&mut record, content),
+            "no change → false"
+        );
+
+        // Frontmatter absent → nothing changes, returns false.
+        assert!(!super::apply_doc_frontmatter(&mut record, "# T\n\nNo frontmatter.\n"));
+        let ft_core::RecordBody::Doc(doc) = &record.body else {
+            panic!("expected Doc body");
+        };
+        assert_eq!(doc.doc_type, "adr", "absent frontmatter leaves doc_type");
+        assert_eq!(record.envelope.owning_scope.as_deref(), Some("ft-embed"));
+    }
+
+    #[test]
+    fn apply_doc_frontmatter_returns_false_for_non_doc() {
+        use ft_core::{RecordBuilder, RecordKind, Task};
+        let mut record = RecordBuilder::new(
+            RecordKind::Task,
+            "t",
+            ft_core::Identity::new("a@b.test").unwrap(),
+        )
+        .task(Task::default())
+        .build()
+        .unwrap();
+        assert!(!super::apply_doc_frontmatter(
+            &mut record,
+            "---\ndoc_type: adr\n---\n"
+        ));
     }
 
     #[test]

@@ -258,6 +258,7 @@ impl WorkCtx {
             ops_summary: vec![summary],
             ops_count: 1,
             kind,
+            transition: None,
         };
         append_history(record, draft)
             .map_err(|e| CliError::internal(&self.command, format!("history append: {e}")))?;

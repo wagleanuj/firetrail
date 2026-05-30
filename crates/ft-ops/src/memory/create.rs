@@ -85,6 +85,37 @@ impl RiskClassInput {
     }
 }
 
+/// Lifecycle-status selector for [`create_decision`].
+///
+/// Mirrors [`ft_core::DecisionStatus`]; kept separate so the wire surface
+/// stays decoupled from the core enum (same pattern as [`SeverityInput`] /
+/// [`RiskClassInput`]).
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts-rs", ts(export))]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DecisionStatusInput {
+    /// Drafted and under discussion.
+    Proposed,
+    /// Accepted and current.
+    Accepted,
+    /// Replaced by a successor decision.
+    Superseded,
+    /// No longer applicable but kept for audit.
+    Deprecated,
+}
+
+impl DecisionStatusInput {
+    fn to_core(self) -> DecisionStatus {
+        match self {
+            Self::Proposed => DecisionStatus::Proposed,
+            Self::Accepted => DecisionStatus::Accepted,
+            Self::Superseded => DecisionStatus::Superseded,
+            Self::Deprecated => DecisionStatus::Deprecated,
+        }
+    }
+}
+
 /// Memory-kind selector for [`capture`] and `memory list --kind`.
 #[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts-rs", ts(export))]
@@ -388,6 +419,12 @@ pub struct CreateDecisionInput {
     /// Consequences.
     #[serde(default)]
     pub consequences: Option<String>,
+    /// Alternative options the team weighed.
+    #[serde(default)]
+    pub alternatives: Vec<String>,
+    /// Content lifecycle status. Defaults to [`DecisionStatus::default`] when omitted.
+    #[serde(default)]
+    pub status: Option<DecisionStatusInput>,
     /// Risk classification.
     #[serde(default)]
     pub risk_class: Option<RiskClassInput>,
@@ -413,8 +450,10 @@ pub fn create_decision(
         context: input.context,
         decision: input.decision,
         consequences: input.consequences.unwrap_or_default(),
-        alternatives_considered: Vec::new(),
-        status: DecisionStatus::default(),
+        alternatives_considered: input.alternatives,
+        status: input
+            .status
+            .map_or_else(DecisionStatus::default, DecisionStatusInput::to_core),
         superseded_by: None,
         risk_class: input.risk_class.map(RiskClassInput::to_core),
         trust: TrustState::Draft,

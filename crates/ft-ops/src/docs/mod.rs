@@ -23,7 +23,7 @@ use std::path::Path;
 
 use chrono::Utc;
 use ft_core::{Doc, RecordBody, RecordBuilder, RecordId, RecordKind, Relation, RelationKind};
-use ft_embed::{apply_doc_content, parse_doc_meta, parse_frontmatter};
+use ft_embed::{apply_doc_content, apply_doc_frontmatter, parse_doc_meta, parse_frontmatter};
 use serde::{Deserialize, Serialize};
 
 use crate::error::OpsError;
@@ -219,9 +219,52 @@ pub fn edit(
         OpsError::Internal(anyhow::anyhow!("write doc file {}: {e}", abs.display()))
     })?;
 
-    // Re-derive hash + summary from the new content; persist only on change.
-    if apply_doc_content(&mut record, &input.content) {
+    // Re-derive hash + summary AND refresh §5 frontmatter (`doc_type` body +
+    // `owning_scope` envelope) from the new content; persist if either changed.
+    // Per approved Option C, `trust` is deliberately NOT refreshed on re-index —
+    // frontmatter `status:` is consumed only at `doc add`; the trust ladder
+    // stays the sole authority afterwards.
+    let content_changed = apply_doc_content(&mut record, &input.content);
+    let fm_changed = apply_doc_frontmatter(&mut record, &input.content);
+    if content_changed || fm_changed {
         ctx.save_record(&mut record)?;
+    }
+
+    // Additively reconcile `links:` → DocumentedIn edges (same rule as `add`):
+    // create edges that don't already exist, never remove ones that do (they
+    // may have come from an explicit `doc link`). Idempotent.
+    let doc_id = record.envelope.id.clone();
+    let existing = load_relations(ws)?;
+    let mut seen: HashSet<RecordId> = existing
+        .iter()
+        .filter(|r| r.kind == RelationKind::DocumentedIn && r.to == doc_id)
+        .map(|r| r.from.clone())
+        .collect();
+    let fm = parse_frontmatter(&input.content);
+    let mut linked_any = false;
+    for raw in &fm.links {
+        let Ok(work_id) = ctx.resolve_id(raw) else {
+            continue;
+        };
+        if work_id == doc_id || !seen.insert(work_id.clone()) {
+            continue;
+        }
+        append_relation(
+            ws,
+            &Relation {
+                from: work_id,
+                to: doc_id.clone(),
+                kind: RelationKind::DocumentedIn,
+                created_at: Utc::now(),
+                created_by: ctx.actor.clone(),
+            },
+        )?;
+        linked_any = true;
+    }
+    if linked_any {
+        ctx.index
+            .refresh(&ctx.storage, &[], &[])
+            .map_err(|e| OpsError::Internal(anyhow::anyhow!("index refresh: {e}")))?;
     }
 
     let RecordBody::Doc(doc) = &record.body else {

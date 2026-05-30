@@ -51,7 +51,7 @@ pub use id::{
     resolve_prefix,
 };
 pub use identity::Identity;
-pub use label::{HistoryEntry, Label};
+pub use label::{HistoryEntry, Label, Transition};
 pub use record::{
     Bug, Decision, Doc, Epic, Finding, Gotcha, Incident, Memory, Record, RecordBody,
     RecordEnvelope, Runbook, RunbookStep, Subtask, Task,

@@ -190,6 +190,7 @@ mod tests {
             ops_count: 2,
             from_hash: "aaaa".into(),
             to_hash: "bbbb".into(),
+            transition: None,
         });
 
         let docs = audit_docs(&record, TrustState::Verified);

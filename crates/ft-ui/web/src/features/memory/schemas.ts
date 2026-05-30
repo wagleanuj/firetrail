@@ -47,6 +47,13 @@ export const runbookSchema = z.object({
   scope: z.string().optional().default(''),
 })
 
+export const DECISION_STATUSES = [
+  'proposed',
+  'accepted',
+  'superseded',
+  'deprecated',
+] as const
+
 export const decisionSchema = z.object({
   title: z.string().min(1, 'Title is required'),
   context: z.string().min(1, 'Context is required'),
@@ -54,6 +61,8 @@ export const decisionSchema = z.object({
   consequences: z.string().optional().default(''),
   riskClass: z.enum(RISK_CLASSES).optional(),
   scope: z.string().optional().default(''),
+  alternatives: commaList,
+  status: z.enum(DECISION_STATUSES).optional(),
 })
 
 export const gotchaSchema = z.object({

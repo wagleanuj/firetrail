@@ -47,9 +47,9 @@ pub mod views;
 
 pub use create::{
     CaptureInput, CreateDecisionInput, CreateFindingInput, CreateGotchaInput, CreateIncidentInput,
-    CreateMemoryInput, CreateRunbookInput, CreatedMemory, MemoryKind, RiskClassInput,
-    SeverityInput, capture, create_decision, create_finding, create_gotcha, create_incident,
-    create_memory, create_runbook,
+    CreateMemoryInput, CreateRunbookInput, CreatedMemory, DecisionStatusInput, MemoryKind,
+    RiskClassInput, SeverityInput, capture, create_decision, create_finding, create_gotcha,
+    create_incident, create_memory, create_runbook,
 };
 pub use salvage::{SalvageEntry, SalvageEntryAction, SalvageInput, SalvageOutput, salvage};
 pub use search::{

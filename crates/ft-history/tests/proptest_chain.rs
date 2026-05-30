@@ -54,6 +54,7 @@ proptest! {
             ops_summary: vec!["genesis".to_string()],
             ops_count: 1,
             kind: HistoryEntryKind::Create,
+            transition: None,
         };
         append_history(&mut r, genesis).unwrap();
 
@@ -70,6 +71,7 @@ proptest! {
                 ops_summary: vec![format!("op-{i}")],
                 ops_count: 1,
                 kind: op.kind,
+                transition: None,
             };
             append_history(&mut r, d).unwrap();
         }
@@ -88,6 +90,7 @@ proptest! {
             ops_summary: vec!["genesis".to_string()],
             ops_count: 1,
             kind: HistoryEntryKind::Create,
+            transition: None,
         };
         append_history(&mut r, genesis).unwrap();
 
@@ -103,6 +106,7 @@ proptest! {
                 ops_summary: vec![format!("op-{i}")],
                 ops_count: 1,
                 kind: op.kind,
+                transition: None,
             };
             append_history(&mut r, d).unwrap();
         }

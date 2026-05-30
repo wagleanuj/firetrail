@@ -6,7 +6,9 @@
 //! with the body mutation.
 
 use chrono::Utc;
-use ft_core::{Evidence, EvidenceKind, Identity as CoreIdentity, Record, RecordId, TrustState};
+use ft_core::{
+    Evidence, EvidenceKind, Identity as CoreIdentity, Record, RecordId, Transition, TrustState,
+};
 use ft_history::{HistoryDraft, HistoryEntryKind};
 use ft_trust::{MemoryBody, TrustTransition, apply_transition, validate_transition};
 use serde::{Deserialize, Serialize};
@@ -557,6 +559,11 @@ fn apply_and_persist(
         ops_summary,
         ops_count: 1,
         kind: HistoryEntryKind::TrustTransition,
+        transition: Some(Transition::Trust {
+            from: applied.from,
+            to: applied.to,
+            evidence_count: u32::try_from(applied.evidence.len()).unwrap_or(u32::MAX),
+        }),
     };
     ctx.save_record_with_history(record, draft)?;
     Ok(())

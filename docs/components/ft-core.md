@@ -52,19 +52,20 @@ impl Identity {
 ### Record kinds
 
 ```rust
-/// Every record type Firetrail supports. M1 implements all listed; M2 adds memory
-/// kinds (finding, runbook, decision, gotcha, memory).
+/// Every record type Firetrail supports. The ticket kinds (epic/task/subtask/bug)
+/// landed in M1; the memory kinds (incident/finding/runbook/decision/gotcha/memory)
+/// are authorable as of M2.
 pub enum RecordKind {
     Epic,
     Task,
     Subtask,
     Bug,
-    Incident,    // declared in M1 schema; not yet writeable until M2
-    Finding,     // same
-    Runbook,     // same
-    Decision,    // same
-    Gotcha,      // same
-    Memory,      // same
+    Incident,
+    Finding,
+    Runbook,
+    Decision,
+    Gotcha,
+    Memory,
 }
 ```
 
@@ -118,7 +119,7 @@ pub enum RecordBody {
     Task(Task),
     Subtask(Subtask),
     Bug(Bug),
-    // Memory-kind variants declared but write-disabled at M1.
+    // Memory-kind variants — authorable via `RecordBuilder` as of M2.
     Incident(Incident),
     Finding(Finding),
     Runbook(Runbook),
@@ -128,7 +129,7 @@ pub enum RecordBody {
 }
 ```
 
-### Type-specific bodies (M1 writable)
+### Ticket bodies (M1)
 
 ```rust
 pub struct Epic {
@@ -162,21 +163,86 @@ pub struct Bug {
 }
 ```
 
-### Memory-kind bodies (declared at M1, writable from M2)
+### Memory-kind bodies (M2)
 
-Stubs that round-trip cleanly but cannot be created via `RecordBuilder` at M1.
+Finalized as of M2: these bodies round-trip cleanly **and** are authorable via
+`RecordBuilder` (`.incident(..)`, `.finding(..)`, `.runbook(..)`, `.decision(..)`,
+`.gotcha(..)`, `.memory(..)`). The `ft-ops` create surface
+(`create_incident`, `create_finding`, `create_runbook`, `create_decision`,
+`create_gotcha`, `create_memory`, plus the polymorphic `capture`) and the
+matching `firetrail <kind> create` CLI commands write them. All optional fields
+carry `#[serde(default)]`, so older payloads that omit them deserialize without
+loss. Memory records are immutable once written, so every authorable field must
+be supplied at create time.
 
 ```rust
-pub struct Incident   { /* M2 fields */ }
-pub struct Finding    { /* M2 fields */ }
-pub struct Runbook    { /* M2 fields */ }
-pub struct Decision   { /* M2 fields */ }
-pub struct Gotcha     { /* M2 fields */ }
-pub struct Memory     { /* M2 fields */ }
-```
+pub struct Incident {
+    pub summary: String,
+    pub severity: Severity,                 // defaults to Sev3
+    pub started_at: DateTime<Utc>,
+    pub resolved_at: Option<DateTime<Utc>>,
+    pub services_affected: Vec<String>,
+    pub root_cause: Option<String>,
+    pub findings: Vec<RecordId>,
+    pub runbooks_invoked: Vec<RecordId>,
+    pub risk_class: Option<RiskClass>,
+    pub trust: TrustState,
+}
 
-Document the fields at M2-spec time; M1 ships placeholder structs to lock the schema
-version.
+pub struct Finding {
+    pub summary: String,
+    pub details: String,
+    pub incident: Option<RecordId>,
+    pub risk_class: Option<RiskClass>,
+    pub affected_paths: Vec<String>,
+    pub superseded_by: Option<RecordId>,
+    pub trust: TrustState,
+}
+
+pub struct RunbookStep {
+    pub description: String,
+    pub command: Option<String>,
+    pub expected_outcome: String,
+}
+
+pub struct Runbook {
+    pub title: String,
+    pub summary: String,
+    pub steps: Vec<RunbookStep>,
+    pub applies_to: Vec<String>,
+    pub risk_class: Option<RiskClass>,
+    pub trust: TrustState,
+}
+
+pub struct Decision {
+    pub title: String,
+    pub context: String,
+    pub decision: String,
+    pub consequences: String,
+    pub alternatives_considered: Vec<String>,
+    pub status: DecisionStatus,             // proposed | accepted | superseded | deprecated
+    pub superseded_by: Option<RecordId>,
+    pub risk_class: Option<RiskClass>,
+    pub trust: TrustState,
+}
+
+pub struct Gotcha {
+    pub summary: String,
+    pub details: String,
+    pub affected_paths: Vec<String>,
+    pub risk_class: Option<RiskClass>,
+    pub trust: TrustState,
+}
+
+pub struct Memory {
+    pub title: String,
+    pub body: String,
+    pub tags: Vec<String>,
+    pub related: Vec<RecordId>,
+    pub risk_class: Option<RiskClass>,
+    pub trust: TrustState,
+}
+```
 
 ### Status
 

@@ -4,7 +4,8 @@
 
 use chrono::{Duration, Utc};
 use ft_core::{
-    AcStatus, Finding, Memory, Record, RecordBody, RiskClass, Status, TrustState, state_hash,
+    AcStatus, Finding, Memory, Record, RecordBody, RiskClass, Status, Transition, TrustState,
+    state_hash,
 };
 use ft_git::Repo;
 use ft_history::{HistoryDraft, HistoryEntryKind, append_history};
@@ -29,6 +30,18 @@ fn draft(kind: HistoryEntryKind, summary: &str) -> HistoryDraft {
         ops_summary: vec![summary.to_string()],
         ops_count: 1,
         kind,
+        transition: None,
+    }
+}
+
+fn draft_with_transition(
+    kind: HistoryEntryKind,
+    summary: &str,
+    transition: Transition,
+) -> HistoryDraft {
+    HistoryDraft {
+        transition: Some(transition),
+        ..draft(kind, summary)
     }
 }
 
@@ -235,6 +248,102 @@ fn evidence_required_high_stakes_to_verified_with_evidence_is_clean() {
             .iter()
             .all(|f| f.rule != RuleId::EvidenceRequired),
         "got: {:?}",
+        report.findings
+    );
+}
+
+#[test]
+fn evidence_required_clears_via_structured_transition() {
+    // The tail entry carries a structured Transition::Trust with
+    // evidence_count > 0 but NO `evidence:` substring marker in ops_summary,
+    // proving the structured path (not the legacy fallback) is what clears it.
+    let tr = TestRepo::new().unwrap();
+    let (storage, repo) = open(&tr);
+
+    let mut r = make_finding_record("hs-finding-struct", RiskClass::Security, TrustState::Draft);
+    append_history(&mut r, draft(HistoryEntryKind::Create, "born")).unwrap();
+    write_commit(&tr, &storage, &r, "create finding");
+    let base = Repo::open(tr.root()).unwrap().head().unwrap().commit_sha;
+
+    if let RecordBody::Finding(b) = &mut r.body {
+        b.trust = TrustState::Verified;
+    }
+    r.envelope.updated_at = Utc::now();
+    append_history(
+        &mut r,
+        draft_with_transition(
+            HistoryEntryKind::TrustTransition,
+            "Draft→Verified",
+            Transition::Trust {
+                from: TrustState::Draft,
+                to: TrustState::Verified,
+                evidence_count: 1,
+            },
+        ),
+    )
+    .unwrap();
+    // Sanity: no legacy marker present, so only the structured path can clear.
+    assert!(
+        !r.envelope
+            .history
+            .last()
+            .unwrap()
+            .ops_summary
+            .iter()
+            .any(|s| s.to_ascii_lowercase().contains("evidence:")),
+        "test fixture must not carry the legacy evidence: marker"
+    );
+    let head = write_commit(&tr, &storage, &r, "promote via structured transition");
+
+    let report = validate_pr(&storage, &repo, &base, &head, &opts()).unwrap();
+    assert!(
+        report
+            .findings
+            .iter()
+            .all(|f| f.rule != RuleId::EvidenceRequired),
+        "structured transition with evidence_count>0 must clear the rule; got: {:?}",
+        report.findings
+    );
+}
+
+#[test]
+fn evidence_required_fires_via_structured_transition_zero_evidence() {
+    // Structured transition into Verified with evidence_count == 0 must fire,
+    // even if (here) there is no legacy marker either.
+    let tr = TestRepo::new().unwrap();
+    let (storage, repo) = open(&tr);
+
+    let mut r = make_finding_record("hs-finding-struct0", RiskClass::Security, TrustState::Draft);
+    append_history(&mut r, draft(HistoryEntryKind::Create, "born")).unwrap();
+    write_commit(&tr, &storage, &r, "create finding");
+    let base = Repo::open(tr.root()).unwrap().head().unwrap().commit_sha;
+
+    if let RecordBody::Finding(b) = &mut r.body {
+        b.trust = TrustState::Verified;
+    }
+    r.envelope.updated_at = Utc::now();
+    append_history(
+        &mut r,
+        draft_with_transition(
+            HistoryEntryKind::TrustTransition,
+            "Draft→Verified",
+            Transition::Trust {
+                from: TrustState::Draft,
+                to: TrustState::Verified,
+                evidence_count: 0,
+            },
+        ),
+    )
+    .unwrap();
+    let head = write_commit(&tr, &storage, &r, "promote no evidence (structured)");
+
+    let report = validate_pr(&storage, &repo, &base, &head, &opts()).unwrap();
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|f| f.rule == RuleId::EvidenceRequired && f.severity == Severity::Error),
+        "structured transition with evidence_count==0 must fire; got: {:?}",
         report.findings
     );
 }

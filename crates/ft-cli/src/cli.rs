@@ -876,6 +876,33 @@ impl RiskClassArg {
     }
 }
 
+/// Decision lifecycle-status selector for `decision create`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[clap(rename_all = "snake_case")]
+pub enum DecisionStatusArg {
+    /// Drafted and under discussion.
+    Proposed,
+    /// Accepted and current.
+    Accepted,
+    /// Replaced by a successor decision.
+    Superseded,
+    /// No longer applicable but kept for audit.
+    Deprecated,
+}
+
+impl DecisionStatusArg {
+    /// Convert to `ft_core::DecisionStatus`.
+    #[must_use]
+    pub fn to_core(self) -> ft_core::DecisionStatus {
+        match self {
+            Self::Proposed => ft_core::DecisionStatus::Proposed,
+            Self::Accepted => ft_core::DecisionStatus::Accepted,
+            Self::Superseded => ft_core::DecisionStatus::Superseded,
+            Self::Deprecated => ft_core::DecisionStatus::Deprecated,
+        }
+    }
+}
+
 /// Trust-state filter selector.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 #[clap(rename_all = "snake_case")]
@@ -1206,6 +1233,12 @@ pub struct CreateDecisionArgs {
     /// Consequences of the decision.
     #[arg(long)]
     pub consequences: Option<String>,
+    /// Alternative option the team weighed. Repeatable.
+    #[arg(long = "alternative")]
+    pub alternatives: Vec<String>,
+    /// Content lifecycle status (defaults to `proposed`).
+    #[arg(long, value_enum)]
+    pub status: Option<DecisionStatusArg>,
     /// Risk classification.
     #[arg(long, value_enum)]
     pub risk_class: Option<RiskClassArg>,

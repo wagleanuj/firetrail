@@ -15,6 +15,7 @@ fn draft(summary: &str) -> HistoryDraft {
         ops_summary: vec![summary.to_string()],
         ops_count: 1,
         kind: HistoryEntryKind::Update,
+        transition: None,
     }
 }
 

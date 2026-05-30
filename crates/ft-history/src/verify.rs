@@ -136,6 +136,7 @@ mod tests {
             ops_summary: vec![summary.to_string()],
             ops_count: 1,
             kind,
+            transition: None,
         }
     }
 

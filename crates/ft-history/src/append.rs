@@ -19,7 +19,7 @@
 //! 5. Sets `prev_state_hash` to the entry's `from_hash`.
 
 use chrono::{DateTime, Utc};
-use ft_core::{HistoryEntry, Identity, Record, state_hash};
+use ft_core::{HistoryEntry, Identity, Record, Transition, state_hash};
 
 use crate::HistoryEntryKind;
 use crate::error::HistoryError;
@@ -51,6 +51,11 @@ pub struct HistoryDraft {
     pub ops_count: u32,
     /// Coarse semantic classification (see [`HistoryEntryKind`]).
     pub kind: HistoryEntryKind,
+    /// Structured, machine-readable transition payload (e.g. a trust-state
+    /// change). Most drafts leave this `None`; trust-transition producers set
+    /// it so consumers like `ft-pr` can read the transition without parsing
+    /// `ops_summary`.
+    pub transition: Option<Transition>,
 }
 
 impl HistoryDraft {
@@ -91,6 +96,7 @@ impl HistoryDraft {
             ops_count: self.ops_count,
             from_hash,
             to_hash,
+            transition: self.transition,
         }
     }
 }
@@ -207,6 +213,7 @@ mod tests {
             ops_summary: vec![summary.to_string()],
             ops_count: 1,
             kind,
+            transition: None,
         }
     }
 

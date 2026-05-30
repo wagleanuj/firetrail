@@ -11,13 +11,13 @@ use std::path::Path;
 
 use chrono::Utc;
 use ft_core::{Doc, RecordBody, RecordBuilder, RecordId, RecordKind, Relation, RelationKind};
-use ft_embed::{apply_doc_content, parse_doc_meta, parse_frontmatter};
+use ft_embed::{apply_doc_content, apply_doc_frontmatter, parse_doc_meta, parse_frontmatter};
 use ft_storage::{Storage as _, StorageFilter};
 use serde::Serialize;
 
 use crate::cli::{DocAddArgs, DocIndexArgs, DocLinkArgs, GlobalOpts};
 use crate::commands::CommandOutcome;
-use crate::context::{WorkCtx, append_relation};
+use crate::context::{WorkCtx, append_relation, load_relations};
 use crate::error::CliError;
 
 const ADD: &str = "doc add";
@@ -196,6 +196,7 @@ pub fn index(args: &DocIndexArgs, global: &GlobalOpts) -> Result<CommandOutcome,
     let root = ctx.ws.root.clone();
     let mut refreshed = Vec::new();
     let mut warnings = ctx.warnings.clone();
+    let mut linked_any = false;
     for id in targets {
         let record = ctx.read_record(&id)?;
         let RecordBody::Doc(doc) = &record.body else {
@@ -205,16 +206,58 @@ pub fn index(args: &DocIndexArgs, global: &GlobalOpts) -> Result<CommandOutcome,
         let doc_path = doc.path.clone();
         match std::fs::read_to_string(root.join(&doc_path)) {
             Ok(content) => {
+                // Refresh hash + summary AND §5 frontmatter (`doc_type` body +
+                // `owning_scope` envelope); persist if either changed. Per the
+                // approved Option C, `trust` is NOT refreshed on re-index —
+                // frontmatter `status:` is consumed only at `doc add`.
                 let mut updated = record.clone();
-                if apply_doc_content(&mut updated, &content) {
+                let content_changed = apply_doc_content(&mut updated, &content);
+                let fm_changed = apply_doc_frontmatter(&mut updated, &content);
+                if content_changed || fm_changed {
                     ctx.save_record(&mut updated)?;
                     refreshed.push(id.as_str().to_string());
+                }
+
+                // Additively reconcile `links:` → DocumentedIn edges (same rule
+                // as `doc add`): create missing edges, never remove existing
+                // ones (they may have come from explicit `doc link`).
+                let existing = load_relations(&ctx.ws)?;
+                let mut seen: HashSet<RecordId> = existing
+                    .iter()
+                    .filter(|r| r.kind == RelationKind::DocumentedIn && r.to == id)
+                    .map(|r| r.from.clone())
+                    .collect();
+                let fm = parse_frontmatter(&content);
+                let created_by = ctx.actor()?;
+                for raw in &fm.links {
+                    let Ok(work_id) = ctx.resolve_id(raw) else {
+                        continue;
+                    };
+                    if work_id == id || !seen.insert(work_id.clone()) {
+                        continue;
+                    }
+                    append_relation(
+                        &ctx.ws,
+                        &Relation {
+                            from: work_id,
+                            to: id.clone(),
+                            kind: RelationKind::DocumentedIn,
+                            created_at: Utc::now(),
+                            created_by: created_by.clone(),
+                        },
+                    )?;
+                    linked_any = true;
                 }
             }
             Err(_) => warnings.push(format!(
                 "doc {id} points at a missing file ({doc_path}) — broken link"
             )),
         }
+    }
+    if linked_any {
+        ctx.index
+            .refresh(&ctx.storage, &[], &[])
+            .map_err(|e| CliError::internal(INDEX, format!("index refresh: {e}")))?;
     }
 
     Ok(CommandOutcome::Doc(DocOutcome {

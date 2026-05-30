@@ -159,6 +159,7 @@ pub fn promote_record(storage: &dyn Storage, id: &RecordId) -> Result<(), Import
         ops_count: 1,
         from_hash,
         to_hash: String::new(),
+        transition: None,
     };
     record.envelope.history.push(entry);
 

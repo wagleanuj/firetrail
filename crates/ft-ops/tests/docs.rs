@@ -300,6 +300,197 @@ fn add_skips_unresolvable_links_and_falls_back_to_input() {
     assert_eq!(doc.trust, TrustState::Draft, "no status → Draft default");
 }
 
+// ─── re-index frontmatter refresh (firetrail-izwm, approved Option C) ────────
+
+/// (a) Trust is NEVER refreshed on re-index. An out-of-band edit that changes
+/// frontmatter `status:` and a subsequent re-index (via `docs::edit`) must
+/// leave the record's trust untouched — the trust ladder stays the sole
+/// authority; frontmatter `status:` is consumed only at `doc add`.
+#[test]
+fn reindex_never_touches_trust_even_when_status_changes() {
+    let (tr, ws) = fixture();
+    let id = alice();
+    let bus = bus();
+
+    // Seed via `add` with frontmatter `status: reviewed` → trust = Reviewed.
+    std::fs::write(
+        tr.root().join("d.md"),
+        "---\nstatus: reviewed\n---\n# D\n\nProse.\n",
+    )
+    .unwrap();
+    let added = docs::add(
+        &ws,
+        &id,
+        AddDocInput {
+            file: "d.md".into(),
+            doc_type: "design".into(),
+            title: None,
+            scope: None,
+        },
+        &bus,
+    )
+    .expect("doc add");
+
+    // Re-index with NEW content whose frontmatter demotes status to draft.
+    docs::edit(
+        &ws,
+        &id,
+        EditDocInput {
+            id: added.id.clone(),
+            content: "---\nstatus: draft\n---\n# D\n\nProse changed.\n".into(),
+        },
+        &bus,
+    )
+    .expect("doc edit / re-index");
+
+    let shown = tickets::show(&ws, &id, ShowInput { id: added.id }, &bus).expect("show");
+    let RecordBody::Doc(doc) = &shown.record.body else {
+        panic!("expected a Doc record");
+    };
+    assert_eq!(
+        doc.trust,
+        TrustState::Reviewed,
+        "re-index must NOT demote trust from frontmatter status:"
+    );
+}
+
+/// (b) A new `links:` entry added out of band is reconciled on re-index: the
+/// new `DocumentedIn` edge is created and any pre-existing edge remains.
+#[test]
+fn reindex_adds_new_link_edge_and_keeps_existing() {
+    let (tr, ws) = fixture();
+    let id = alice();
+    let bus = bus();
+
+    let task_a = tickets::create_task(&ws, &id, task_defaults("task a"), &bus).unwrap();
+    let task_a_id = task_a.record.envelope.id.as_str().to_string();
+    let other_task = tickets::create_task(&ws, &id, task_defaults("task b"), &bus).unwrap();
+    let other_id = other_task.record.envelope.id.as_str().to_string();
+
+    // Seed a doc already linked (via frontmatter) to task A.
+    let body = format!("---\nlinks:\n  - {task_a_id}\n---\n# D\n\nProse.\n");
+    std::fs::write(tr.root().join("d.md"), &body).unwrap();
+    let added = docs::add(
+        &ws,
+        &id,
+        AddDocInput {
+            file: "d.md".into(),
+            doc_type: "design".into(),
+            title: None,
+            scope: None,
+        },
+        &bus,
+    )
+    .expect("doc add");
+
+    // Out-of-band edit ADDS task B to links: (keeps A). Re-index via edit.
+    let new_body =
+        format!("---\nlinks:\n  - {task_a_id}\n  - {other_id}\n---\n# D\n\nProse changed.\n");
+    docs::edit(
+        &ws,
+        &id,
+        EditDocInput {
+            id: added.id.clone(),
+            content: new_body,
+        },
+        &bus,
+    )
+    .expect("doc edit / re-index");
+
+    // Both tickets now reach the same doc via DocumentedIn.
+    let a_views = docs::docs_for_ticket(&ws, &id, task_a_id, &bus).expect("docs A");
+    assert_eq!(a_views.len(), 1, "pre-existing edge to A remains");
+    assert_eq!(a_views[0].id, added.id);
+    let b_views = docs::docs_for_ticket(&ws, &id, other_id, &bus).expect("docs B");
+    assert_eq!(b_views.len(), 1, "new edge to B was created on re-index");
+    assert_eq!(b_views[0].id, added.id);
+}
+
+/// (c) `doc_type` (body) and `scope` (envelope) ARE refreshed from frontmatter
+/// on re-index.
+#[test]
+fn reindex_refreshes_doc_type_and_scope() {
+    let (tr, ws) = fixture();
+    let id = alice();
+    let bus = bus();
+
+    std::fs::write(
+        tr.root().join("d.md"),
+        "---\ndoc_type: design\nscope: ft-ops\n---\n# D\n\nProse.\n",
+    )
+    .unwrap();
+    let added = docs::add(
+        &ws,
+        &id,
+        AddDocInput {
+            file: "d.md".into(),
+            doc_type: "design".into(),
+            title: None,
+            scope: None,
+        },
+        &bus,
+    )
+    .expect("doc add");
+
+    docs::edit(
+        &ws,
+        &id,
+        EditDocInput {
+            id: added.id.clone(),
+            content: "---\ndoc_type: adr\nscope: ft-embed\n---\n# D\n\nProse changed.\n".into(),
+        },
+        &bus,
+    )
+    .expect("doc edit / re-index");
+
+    let shown = tickets::show(&ws, &id, ShowInput { id: added.id }, &bus).expect("show");
+    assert_eq!(
+        shown.record.envelope.owning_scope.as_deref(),
+        Some("ft-embed"),
+        "scope refreshed on re-index"
+    );
+    let RecordBody::Doc(doc) = &shown.record.body else {
+        panic!("expected a Doc record");
+    };
+    assert_eq!(doc.doc_type, "adr", "doc_type refreshed on re-index");
+}
+
+/// (d) An edge created via explicit `doc link` is NOT removed when re-indexing
+/// a doc whose frontmatter omits that work item (re-index is additive only).
+#[test]
+fn reindex_does_not_remove_explicit_link_edge() {
+    let (tr, ws) = fixture();
+    let id = alice();
+    let bus = bus();
+
+    // Seed a doc with NO frontmatter links, then link it explicitly.
+    let (task_id, doc_id) = seed_linked_doc(&tr, &ws, "d.md", "# D\n\nProse.\n");
+
+    // Sanity: the explicit link is reachable.
+    let before = docs::docs_for_ticket(&ws, &id, task_id.clone(), &bus).expect("docs before");
+    assert_eq!(before.len(), 1);
+
+    // Re-index with content whose frontmatter omits the work item entirely.
+    docs::edit(
+        &ws,
+        &id,
+        EditDocInput {
+            id: doc_id.clone(),
+            content: "---\ndoc_type: adr\n---\n# D\n\nNo links here.\n".into(),
+        },
+        &bus,
+    )
+    .expect("doc edit / re-index");
+
+    let after = docs::docs_for_ticket(&ws, &id, task_id, &bus).expect("docs after");
+    assert_eq!(
+        after.len(),
+        1,
+        "explicit doc-link edge must survive a re-index that omits it"
+    );
+    assert_eq!(after[0].id, doc_id);
+}
+
 #[test]
 fn edit_rejects_non_doc_record() {
     let (_tr, ws) = fixture();

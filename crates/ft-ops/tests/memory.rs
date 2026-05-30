@@ -7,8 +7,8 @@
 
 use ft_ops::memory::{
     self, CaptureInput, CreateDecisionInput, CreateFindingInput, CreateGotchaInput,
-    CreateIncidentInput, CreateMemoryInput, CreateRunbookInput, ListInput, MemoryKind, SearchInput,
-    SearchMode, ShowInput, SimilarInput,
+    CreateIncidentInput, CreateMemoryInput, CreateRunbookInput, DecisionStatusInput, ListInput,
+    MemoryKind, SearchInput, SearchMode, ShowInput, SimilarInput,
 };
 use ft_ops::{EventBus, Identity, Workspace};
 use ft_testkit::TestRepo;
@@ -125,6 +125,8 @@ fn create_each_kind_lists_back() {
             context: "background".into(),
             decision: "decided".into(),
             consequences: None,
+            alternatives: vec![],
+            status: None,
             risk_class: None,
             scope: None,
             request_id: None,
@@ -295,6 +297,70 @@ fn create_incident_without_postmortem_fields_still_works() {
     assert_eq!(body.resolved_at, None);
     assert!(body.findings.is_empty());
     assert!(body.runbooks_invoked.is_empty());
+}
+
+#[test]
+fn create_decision_persists_alternatives_and_status() {
+    use ft_core::record::RecordBody;
+    use ft_core::DecisionStatus;
+
+    let (_tr, ws) = fixture();
+    let id = alice();
+    let bus = bus();
+
+    let out = memory::create_decision(
+        &ws,
+        &id,
+        CreateDecisionInput {
+            title: "use onnx".into(),
+            context: "need local embeddings".into(),
+            decision: "adopt onnx runtime".into(),
+            consequences: None,
+            alternatives: vec!["candle".into(), "remote API".into()],
+            status: Some(DecisionStatusInput::Accepted),
+            risk_class: None,
+            scope: None,
+            request_id: None,
+        },
+        &bus,
+    )
+    .expect("create_decision with alternatives + status");
+
+    let RecordBody::Decision(body) = out.record.body else {
+        panic!("expected decision body");
+    };
+    assert_eq!(
+        body.alternatives_considered,
+        vec!["candle".to_string(), "remote API".to_string()]
+    );
+    assert_eq!(body.status, DecisionStatus::Accepted);
+}
+
+#[test]
+fn create_decision_without_alternatives_or_status_still_works() {
+    use ft_core::record::RecordBody;
+    use ft_core::DecisionStatus;
+
+    let (_tr, ws) = fixture();
+    let id = alice();
+    let bus = bus();
+
+    // Backward-compat: JSON payload that omits the new fields deserializes and
+    // creates a decision with empty alternatives + the default status.
+    let input: CreateDecisionInput = serde_json::from_value(serde_json::json!({
+        "title": "minimal decision",
+        "context": "",
+        "decision": "go with the default",
+    }))
+    .expect("deserialize minimal decision input");
+
+    let out = memory::create_decision(&ws, &id, input, &bus).expect("create_decision minimal");
+
+    let RecordBody::Decision(body) = out.record.body else {
+        panic!("expected decision body");
+    };
+    assert!(body.alternatives_considered.is_empty());
+    assert_eq!(body.status, DecisionStatus::default());
 }
 
 #[test]

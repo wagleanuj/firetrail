@@ -2,10 +2,10 @@
 
 use ft_ops::audit::{
     self, CriteriaAddInput, CriteriaListInput, CriteriaToggleInput, GraphDirectionInput,
-    GraphInput, LintInput, ReviewInput, VerifyInput,
+    GraphInput, LintInput, MAX_GRAPH_NODES, ReviewInput, VerifyInput,
 };
 use ft_ops::memory::{self, CreateMemoryInput};
-use ft_ops::tickets::{self, CreateTaskInput};
+use ft_ops::tickets::{self, CreateEpicInput, CreateTaskInput};
 use ft_ops::trust::{self, ReviewInput as TrustReviewInput};
 use ft_ops::{EventBus, Identity, Workspace};
 use ft_testkit::TestRepo;
@@ -214,6 +214,149 @@ fn graph_returns_root_only_when_no_relations() {
     assert!(out.reason.is_some());
     // root node is present.
     assert!(out.nodes.iter().any(|n| n.id == mid));
+}
+
+#[test]
+fn graph_small_workspace_is_not_truncated() {
+    let (_tr, ws) = fixture();
+    let id = alice();
+    let bus = EventBus::default();
+
+    let epic = tickets::create_epic(
+        &ws,
+        &id,
+        CreateEpicInput {
+            title: "hub".into(),
+            description: None,
+            priority: None,
+            scope: None,
+            labels: vec![],
+            request_id: None,
+        },
+        &bus,
+    )
+    .unwrap();
+    let epic_id = epic.record.envelope.id.as_str().to_string();
+
+    // A handful of children — well under the cap.
+    for i in 0..5 {
+        tickets::create_task(
+            &ws,
+            &id,
+            CreateTaskInput {
+                title: format!("child {i}"),
+                description: None,
+                epic: Some(epic_id.clone()),
+                priority: None,
+                owner: None,
+                scope: None,
+                labels: vec![],
+                request_id: None,
+            },
+            &bus,
+        )
+        .unwrap();
+    }
+
+    let out = audit::graph(
+        &ws,
+        &id,
+        GraphInput {
+            id: epic_id.clone(),
+            direction: GraphDirectionInput::Both,
+            depth: 2,
+            request_id: None,
+        },
+        &bus,
+    )
+    .unwrap();
+
+    assert!(!out.truncated, "small graph must not be truncated");
+    // root epic + 5 children.
+    assert_eq!(out.nodes.len(), 6);
+    assert!(out.nodes.len() <= MAX_GRAPH_NODES);
+}
+
+#[test]
+fn graph_dense_workspace_is_capped_and_truncated() {
+    let (_tr, ws) = fixture();
+    let id = alice();
+    let bus = EventBus::default();
+
+    let epic = tickets::create_epic(
+        &ws,
+        &id,
+        CreateEpicInput {
+            title: "dense hub".into(),
+            description: None,
+            priority: None,
+            scope: None,
+            labels: vec![],
+            request_id: None,
+        },
+        &bus,
+    )
+    .unwrap();
+    let epic_id = epic.record.envelope.id.as_str().to_string();
+
+    // Enough children that root + children exceeds MAX_GRAPH_NODES.
+    let children = MAX_GRAPH_NODES + 25;
+    for i in 0..children {
+        tickets::create_task(
+            &ws,
+            &id,
+            CreateTaskInput {
+                title: format!("child {i}"),
+                description: None,
+                epic: Some(epic_id.clone()),
+                priority: None,
+                owner: None,
+                scope: None,
+                labels: vec![],
+                request_id: None,
+            },
+            &bus,
+        )
+        .unwrap();
+    }
+
+    let out = audit::graph(
+        &ws,
+        &id,
+        GraphInput {
+            id: epic_id.clone(),
+            direction: GraphDirectionInput::Both,
+            depth: 5,
+            request_id: None,
+        },
+        &bus,
+    )
+    .unwrap();
+
+    assert!(out.truncated, "dense graph must be truncated");
+    assert!(
+        out.nodes.len() <= MAX_GRAPH_NODES,
+        "node count {} must not exceed cap {}",
+        out.nodes.len(),
+        MAX_GRAPH_NODES
+    );
+    assert_eq!(out.nodes.len(), MAX_GRAPH_NODES);
+
+    // Edge integrity: every edge endpoint must be a node we actually returned.
+    let node_ids: std::collections::HashSet<&str> =
+        out.nodes.iter().map(|n| n.id.as_str()).collect();
+    for e in &out.edges {
+        assert!(
+            node_ids.contains(e.from.as_str()),
+            "edge `from` {} not in returned nodes",
+            e.from
+        );
+        assert!(
+            node_ids.contains(e.to.as_str()),
+            "edge `to` {} not in returned nodes",
+            e.to
+        );
+    }
 }
 
 #[test]

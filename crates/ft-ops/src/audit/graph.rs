@@ -16,6 +16,15 @@ use crate::events::EventBus;
 use crate::identity::Identity;
 use crate::workspace::Workspace;
 
+/// Hard cap on the number of distinct nodes [`graph`] will return.
+///
+/// The route layer caps the requested `depth`, but a dense workspace walked
+/// from a hub can still fan out to hundreds of nodes within a few hops. This
+/// cap bounds the response size regardless of depth. When the cap is hit the
+/// walk stops admitting new nodes, edges referencing dropped nodes are
+/// discarded, and [`GraphOutput::truncated`] is set to `true`.
+pub const MAX_GRAPH_NODES: usize = 500;
+
 /// Walk direction selector.
 #[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts-rs", ts(export))]
@@ -112,6 +121,10 @@ pub struct GraphOutput {
     pub nodes: Vec<GraphNode>,
     /// All edges discovered during the walk.
     pub edges: Vec<GraphEdge>,
+    /// `true` when the node count hit [`MAX_GRAPH_NODES`] and the result was
+    /// truncated. Edges pointing at dropped nodes are omitted, so the returned
+    /// `nodes`/`edges` remain internally consistent.
+    pub truncated: bool,
     /// Self-describing reason when the walk found no edges.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
@@ -148,25 +161,49 @@ pub fn graph(
         .dependency_walk(&root, direction, depth)
         .map_err(|e| OpsError::Internal(anyhow::anyhow!("dependency walk: {e}")))?;
 
+    // Build the node set in the walk's discovery order, enforcing
+    // `MAX_GRAPH_NODES`. Once the cap is reached we stop admitting new nodes
+    // and drop any edge whose endpoints are not both admitted, so the returned
+    // graph stays internally consistent.
     let mut node_ids: HashSet<String> = HashSet::new();
     node_ids.insert(root.as_str().to_string());
+    let mut truncated = false;
 
-    let out_edges: Vec<GraphEdge> = edges
-        .iter()
-        .map(|e| {
-            node_ids.insert(e.from.as_str().to_string());
-            node_ids.insert(e.to.as_str().to_string());
-            GraphEdge {
-                from: e.from.as_str().to_string(),
-                to: e.to.as_str().to_string(),
-                kind: serde_json::to_value(e.kind)
-                    .ok()
-                    .and_then(|v| v.as_str().map(str::to_owned))
-                    .unwrap_or_else(|| format!("{:?}", e.kind)),
-                depth: e.depth,
-            }
-        })
-        .collect();
+    // Admit a node id if there is room under the cap; record truncation when
+    // a node has to be dropped. Returns `true` when the id is in the set.
+    let admit = |id: &str, node_ids: &mut HashSet<String>, truncated: &mut bool| -> bool {
+        if node_ids.contains(id) {
+            return true;
+        }
+        if node_ids.len() < MAX_GRAPH_NODES {
+            node_ids.insert(id.to_string());
+            true
+        } else {
+            *truncated = true;
+            false
+        }
+    };
+
+    let mut out_edges: Vec<GraphEdge> = Vec::with_capacity(edges.len());
+    for e in &edges {
+        let from = e.from.as_str();
+        let to = e.to.as_str();
+        // Drop edges that would reference a node we could not admit.
+        if !admit(from, &mut node_ids, &mut truncated)
+            || !admit(to, &mut node_ids, &mut truncated)
+        {
+            continue;
+        }
+        out_edges.push(GraphEdge {
+            from: from.to_string(),
+            to: to.to_string(),
+            kind: serde_json::to_value(e.kind)
+                .ok()
+                .and_then(|v| v.as_str().map(str::to_owned))
+                .unwrap_or_else(|| format!("{:?}", e.kind)),
+            depth: e.depth,
+        });
+    }
 
     let mut nodes: Vec<GraphNode> = Vec::with_capacity(node_ids.len());
     for id_str in node_ids {
@@ -200,6 +237,7 @@ pub fn graph(
         direction: format!("{:?}", input.direction).to_ascii_lowercase(),
         nodes,
         edges: out_edges,
+        truncated,
         reason,
     })
 }

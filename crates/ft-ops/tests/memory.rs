@@ -80,6 +80,10 @@ fn create_each_kind_lists_back() {
             risk_class: None,
             scope: None,
             request_id: None,
+            root_cause: None,
+            resolved_at: None,
+            findings: vec![],
+            runbooks_invoked: vec![],
         },
         &bus,
     )
@@ -181,6 +185,116 @@ fn create_each_kind_lists_back() {
     .unwrap();
     assert!(only_inc.rows.iter().all(|r| r.kind == "incident"));
     assert!(!only_inc.rows.is_empty());
+}
+
+#[test]
+fn create_incident_persists_optional_postmortem_fields() {
+    use ft_core::record::RecordBody;
+    use ft_core::RecordId;
+
+    let (_tr, ws) = fixture();
+    let id = alice();
+    let bus = bus();
+
+    // Seed a finding and a runbook to reference.
+    let finding = memory::create_finding(
+        &ws,
+        &id,
+        CreateFindingInput {
+            summary: "leaky cache".into(),
+            incident: None,
+            details: None,
+            risk_class: None,
+            affected: vec![],
+            scope: None,
+            request_id: None,
+        },
+        &bus,
+    )
+    .unwrap();
+    let finding_id = finding.record.envelope.id.as_str().to_string();
+
+    let runbook = memory::create_runbook(
+        &ws,
+        &id,
+        CreateRunbookInput {
+            title: "restart svc".into(),
+            summary: "when svc deadlocks".into(),
+            applies_to: vec!["api".into()],
+            risk_class: None,
+            scope: None,
+            request_id: None,
+        },
+        &bus,
+    )
+    .unwrap();
+    let runbook_id = runbook.record.envelope.id.as_str().to_string();
+
+    let resolved = chrono::DateTime::parse_from_rfc3339("2026-05-30T12:00:00Z")
+        .unwrap()
+        .with_timezone(&chrono::Utc);
+
+    let out = memory::create_incident(
+        &ws,
+        &id,
+        CreateIncidentInput {
+            summary: "outage".into(),
+            severity: None,
+            started_at: None,
+            services: vec![],
+            risk_class: None,
+            scope: None,
+            request_id: None,
+            root_cause: Some("expired TLS cert".into()),
+            resolved_at: Some(resolved),
+            findings: vec![finding_id.clone()],
+            runbooks_invoked: vec![runbook_id.clone()],
+        },
+        &bus,
+    )
+    .expect("create_incident with postmortem fields");
+
+    let RecordBody::Incident(body) = out.record.body else {
+        panic!("expected incident body");
+    };
+    assert_eq!(body.root_cause.as_deref(), Some("expired TLS cert"));
+    assert_eq!(body.resolved_at, Some(resolved));
+    assert_eq!(
+        body.findings.iter().map(RecordId::as_str).collect::<Vec<_>>(),
+        vec![finding_id.as_str()]
+    );
+    assert_eq!(
+        body.runbooks_invoked
+            .iter()
+            .map(RecordId::as_str)
+            .collect::<Vec<_>>(),
+        vec![runbook_id.as_str()]
+    );
+}
+
+#[test]
+fn create_incident_without_postmortem_fields_still_works() {
+    use ft_core::record::RecordBody;
+
+    let (_tr, ws) = fixture();
+    let id = alice();
+    let bus = bus();
+
+    // Backward-compat: JSON payload that omits the new fields deserializes and
+    // creates an incident with empty/None defaults.
+    let input: CreateIncidentInput =
+        serde_json::from_value(serde_json::json!({ "summary": "minimal outage" }))
+            .expect("deserialize minimal incident input");
+
+    let out = memory::create_incident(&ws, &id, input, &bus).expect("create_incident minimal");
+
+    let RecordBody::Incident(body) = out.record.body else {
+        panic!("expected incident body");
+    };
+    assert_eq!(body.root_cause, None);
+    assert_eq!(body.resolved_at, None);
+    assert!(body.findings.is_empty());
+    assert!(body.runbooks_invoked.is_empty());
 }
 
 #[test]

@@ -165,6 +165,21 @@ pub struct CreateIncidentInput {
     /// Optional client-supplied correlation id.
     #[serde(default)]
     pub request_id: Option<String>,
+    /// Root-cause analysis, when one is known.
+    #[serde(default)]
+    pub root_cause: Option<String>,
+    /// RFC3339 instant the incident was resolved, if known.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts-rs", ts(type = "string | null"))]
+    pub resolved_at: Option<DateTime<Utc>>,
+    /// Record ids (full or prefix) of findings created from this incident.
+    /// Each must resolve to a `Finding`.
+    #[serde(default)]
+    pub findings: Vec<String>,
+    /// Record ids (full or prefix) of runbooks invoked while responding.
+    /// Each must resolve to a `Runbook`.
+    #[serde(default)]
+    pub runbooks_invoked: Vec<String>,
 }
 
 /// `incident create` op.
@@ -176,17 +191,42 @@ pub fn create_incident(
 ) -> Result<CreatedMemory, OpsError> {
     let mut ctx = MemoryCtx::open(ws, identity, "incident create")?;
     let actor = ctx.actor.clone();
+
+    // Resolve referenced findings / runbooks, validating each kind.
+    let mut findings = Vec::with_capacity(input.findings.len());
+    for raw in &input.findings {
+        let id = ctx.resolve_id(raw)?;
+        if id.kind() != RecordKind::Finding {
+            return Err(OpsError::validation(
+                "findings",
+                format!("`{id}` is not a finding"),
+            ));
+        }
+        findings.push(id);
+    }
+    let mut runbooks_invoked = Vec::with_capacity(input.runbooks_invoked.len());
+    for raw in &input.runbooks_invoked {
+        let id = ctx.resolve_id(raw)?;
+        if id.kind() != RecordKind::Runbook {
+            return Err(OpsError::validation(
+                "runbooksInvoked",
+                format!("`{id}` is not a runbook"),
+            ));
+        }
+        runbooks_invoked.push(id);
+    }
+
     let body = Incident {
         summary: input.summary.clone(),
         severity: input
             .severity
             .map_or(Severity::Sev3, SeverityInput::to_core),
         started_at: input.started_at.unwrap_or_else(Utc::now),
-        resolved_at: None,
+        resolved_at: input.resolved_at,
         services_affected: input.services,
-        root_cause: None,
-        findings: Vec::new(),
-        runbooks_invoked: Vec::new(),
+        root_cause: input.root_cause,
+        findings,
+        runbooks_invoked,
         risk_class: input.risk_class.map(RiskClassInput::to_core),
         trust: TrustState::Draft,
     };

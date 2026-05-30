@@ -29,7 +29,9 @@ pub use criteria::{
     criteria_evidence, criteria_list, criteria_uncheck,
 };
 pub use diff::{DiffChange, DiffInput, DiffOutput, DiffRow, diff};
-pub use graph::{GraphDirectionInput, GraphEdge, GraphInput, GraphNode, GraphOutput, graph};
+pub use graph::{
+    GraphDirectionInput, GraphEdge, GraphInput, GraphNode, GraphOutput, MAX_GRAPH_NODES, graph,
+};
 pub use lint::{LintFinding, LintInput, LintOutput, LintSeverity, lint};
 pub use review::{
     ReviewAcRow, ReviewEvidenceRow, ReviewHistoryRow, ReviewInput, ReviewOutput, review,

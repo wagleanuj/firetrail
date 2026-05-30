@@ -190,29 +190,19 @@ impl TestRepo {
         })
     }
 
-    /// Run the `firetrail` binary against this repo.
-    ///
-    /// Locates the binary via `option_env!("CARGO_BIN_EXE_firetrail")`. At M1
-    /// the binary is still a stub; callers that depend on real behavior should
-    /// gate themselves with `#[ignore]` until ft-cli lands.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`TestKitError::Cmd`] if the binary was not built when this
-    /// crate was compiled (i.e. ft-cli is not in the dependency graph of the
-    /// test target).
-    pub fn firetrail(&self, args: &[&str]) -> Result<CmdOutput, TestKitError> {
-        let Some(bin) = option_env!("CARGO_BIN_EXE_firetrail") else {
-            return Err(TestKitError::Cmd(
-                "firetrail binary not available: CARGO_BIN_EXE_firetrail not set at compile time \
-                 (add ft-cli as a build-dependency or run the calling test target with ft-cli \
-                 built)"
-                    .to_string(),
-            ));
-        };
-        let str_args: Vec<&str> = args.to_vec();
-        self.run(bin, &str_args)
-    }
+    // NOTE (firetrail-8bh): a `TestRepo::firetrail(args)` accessor used to live
+    // here. It located the binary via `option_env!("CARGO_BIN_EXE_firetrail")`,
+    // but `ft-testkit` does not (and must not) depend on `ft-cli`, so that env
+    // var is never set when this crate compiles — the method always returned a
+    // "binary not available" error and never actually ran anything. It was a
+    // stub from the M1 era, before ft-cli existed, and had zero callers.
+    //
+    // The real, working pattern is for each `ft-cli` integration-test target to
+    // spawn its own binary via `env!("CARGO_BIN_EXE_firetrail")` (which IS set
+    // there) plus the env wiring tests need (FIRETRAIL_AUTHOR, cache home, etc).
+    // See `crates/ft-cli/tests/common/mod.rs::run_firetrail`. The stub was
+    // removed rather than reimplemented because it cannot be made to work from
+    // this crate and reintroducing it would just shadow the working pattern.
 }
 
 /// Helper: run a git subcommand, capturing stdout. Returns stdout on success,

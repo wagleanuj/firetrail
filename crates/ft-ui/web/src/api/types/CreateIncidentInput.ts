@@ -33,4 +33,22 @@ scope: string | null,
 /**
  * Optional client-supplied correlation id.
  */
-requestId: string | null, };
+requestId: string | null, 
+/**
+ * Root-cause analysis, when one is known.
+ */
+rootCause: string | null, 
+/**
+ * RFC3339 instant the incident was resolved, if known.
+ */
+resolvedAt: string | null, 
+/**
+ * Record ids (full or prefix) of findings created from this incident.
+ * Each must resolve to a `Finding`.
+ */
+findings: Array<string>, 
+/**
+ * Record ids (full or prefix) of runbooks invoked while responding.
+ * Each must resolve to a `Runbook`.
+ */
+runbooksInvoked: Array<string>, };

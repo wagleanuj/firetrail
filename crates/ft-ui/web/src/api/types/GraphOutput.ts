@@ -27,6 +27,12 @@ nodes: Array<GraphNode>,
  */
 edges: Array<GraphEdge>, 
 /**
+ * `true` when the node count hit [`MAX_GRAPH_NODES`] and the result was
+ * truncated. Edges pointing at dropped nodes are omitted, so the returned
+ * `nodes`/`edges` remain internally consistent.
+ */
+truncated: boolean, 
+/**
  * Self-describing reason when the walk found no edges.
  */
 reason: string | null, };

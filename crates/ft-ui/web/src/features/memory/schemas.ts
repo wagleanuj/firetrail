@@ -24,6 +24,10 @@ export const incidentSchema = z.object({
   services: commaList,
   riskClass: z.enum(RISK_CLASSES).optional(),
   scope: z.string().optional().default(''),
+  rootCause: z.string().optional().default(''),
+  resolvedAt: z.string().optional().default(''),
+  findings: commaList,
+  runbooksInvoked: commaList,
 })
 
 export const findingSchema = z.object({

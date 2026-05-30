@@ -20,7 +20,15 @@ export function IncidentForm({ onDone }: { onDone: () => void }) {
   const mutate = useCreateMemory()
   const form = useForm<IncidentValues>({
     resolver: zodResolver(incidentSchema) as never,
-    defaultValues: { summary: '', services: '', scope: '' },
+    defaultValues: {
+      summary: '',
+      services: '',
+      scope: '',
+      rootCause: '',
+      resolvedAt: '',
+      findings: '',
+      runbooksInvoked: '',
+    },
   })
 
   const onSubmit: SubmitHandler<IncidentValues> = async (v) => {
@@ -33,6 +41,10 @@ export function IncidentForm({ onDone }: { onDone: () => void }) {
       services: parsed.services,
       riskClass: parsed.riskClass ?? null,
       scope: parsed.scope || null,
+      rootCause: parsed.rootCause || null,
+      resolvedAt: parsed.resolvedAt || null,
+      findings: parsed.findings,
+      runbooksInvoked: parsed.runbooksInvoked,
     })
     onDone()
   }
@@ -74,6 +86,24 @@ export function IncidentForm({ onDone }: { onDone: () => void }) {
         </div>
         <Field label="Services (comma-separated)">
           <Input {...form.register('services')} placeholder="api, worker" />
+        </Field>
+        <Field label="Root cause">
+          <Input
+            {...form.register('rootCause')}
+            placeholder="What ultimately caused it (optional)"
+          />
+        </Field>
+        <Field label="Resolved at (RFC3339, optional)">
+          <Input
+            {...form.register('resolvedAt')}
+            placeholder="2026-05-30T18:00:00Z"
+          />
+        </Field>
+        <Field label="Findings (comma-separated record ids)">
+          <Input {...form.register('findings')} placeholder="FND-… , FND-…" />
+        </Field>
+        <Field label="Runbooks invoked (comma-separated record ids)">
+          <Input {...form.register('runbooksInvoked')} placeholder="RUN-… , RUN-…" />
         </Field>
         <Field label="Scope">
           <ScopeCombobox

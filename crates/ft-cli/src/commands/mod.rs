@@ -14,6 +14,7 @@ pub mod create;
 pub mod criteria;
 pub mod daemon_cmd;
 pub mod diff;
+pub mod doc;
 pub mod doctor;
 pub mod graph;
 pub mod hook;
@@ -163,6 +164,8 @@ pub enum CommandOutcome {
     Prime(prime::PrimeOutcome),
     /// `firetrail index rebuild` / `firetrail index refresh`.
     IndexAction(index_cmd::IndexActionOutcome),
+    /// `firetrail doc add` / `link` / `index`.
+    Doc(doc::DocOutcome),
     /// `firetrail daemon {start,stop,status}`.
     Daemon(daemon_cmd::DaemonOutcome),
     /// `firetrail ui`.
@@ -222,6 +225,7 @@ impl CommandOutcome {
             Self::Search(s) => s.command,
             Self::Prime(_) => "prime",
             Self::IndexAction(i) => i.command,
+            Self::Doc(d) => d.command,
             Self::Daemon(d) => d.command,
             Self::Ui(_) => "ui",
             Self::IdentityRegister(r) => r.command,
@@ -269,6 +273,7 @@ impl CommandOutcome {
             Self::Search(s) => s.markdown(),
             Self::Prime(p) => p.markdown(),
             Self::IndexAction(i) => i.markdown(),
+            Self::Doc(d) => d.markdown(),
             Self::Daemon(d) => d.markdown(),
             Self::Ui(u) => u.markdown(),
             Self::IdentityRegister(r) => r.markdown(),
@@ -316,6 +321,7 @@ impl CommandOutcome {
             Self::Search(s) => s.quiet_line(),
             Self::Prime(p) => p.quiet_line(),
             Self::IndexAction(i) => i.quiet_line(),
+            Self::Doc(d) => d.quiet_line(),
             Self::Daemon(d) => d.quiet_line(),
             Self::Ui(u) => u.quiet_line(),
             Self::IdentityRegister(r) => r.quiet_line(),
@@ -365,6 +371,7 @@ impl CommandOutcome {
             Self::Search(s) => serde_json::to_value(s).unwrap_or(Value::Null),
             Self::Prime(p) => p.json_data(),
             Self::IndexAction(i) => serde_json::to_value(i).unwrap_or(Value::Null),
+            Self::Doc(d) => serde_json::to_value(d).unwrap_or(Value::Null),
             Self::Daemon(d) => serde_json::to_value(d).unwrap_or(Value::Null),
             Self::Ui(u) => serde_json::to_value(u).unwrap_or(Value::Null),
             Self::IdentityRegister(r) => serde_json::to_value(r).unwrap_or(Value::Null),
@@ -412,6 +419,7 @@ impl CommandOutcome {
             Self::Search(s) => s.warnings.clone(),
             Self::Prime(p) => p.warnings.clone(),
             Self::IndexAction(i) => i.warnings.clone(),
+            Self::Doc(d) => d.warnings.clone(),
             Self::Daemon(d) => d.warnings.clone(),
             Self::Ui(u) => u.warnings.clone(),
             Self::IdentityRegister(r) => r.warnings.clone(),

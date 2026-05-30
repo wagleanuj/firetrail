@@ -217,6 +217,10 @@ pub enum Command {
     #[command(subcommand)]
     Identity(IdentityCmd),
 
+    /// File-backed documentation records (add / link / index).
+    #[command(subcommand)]
+    Doc(DocCmd),
+
     /// Scope registry queries (M5).
     #[command(subcommand)]
     Scope(ScopeCmd),
@@ -341,6 +345,49 @@ pub enum IdentityCmd {
     Show(IdentityShowArgs),
     /// Mark an identity as offboarded.
     Offboard(IdentityOffboardArgs),
+}
+
+/// `firetrail doc` — file-backed documentation records.
+#[derive(Debug, Subcommand)]
+pub enum DocCmd {
+    /// Adopt an existing markdown file as a doc record.
+    Add(DocAddArgs),
+    /// Link a doc to a work item (creates a `documented-in` relation).
+    Link(DocLinkArgs),
+    /// Re-read the file(s) and refresh stored `content_hash`/summary + search.
+    Index(DocIndexArgs),
+}
+
+/// `firetrail doc add` args.
+#[derive(Debug, Args)]
+pub struct DocAddArgs {
+    /// Path to the markdown file (must live inside the workspace).
+    pub file: String,
+    /// Open doc type tag (e.g. design, adr, runbook, reference).
+    #[arg(long = "type", default_value = "design")]
+    pub doc_type: String,
+    /// Override the title (defaults to the first H1 or the file name).
+    #[arg(long)]
+    pub title: Option<String>,
+    /// Owning scope.
+    #[arg(long)]
+    pub scope: Option<String>,
+}
+
+/// `firetrail doc link` args.
+#[derive(Debug, Args)]
+pub struct DocLinkArgs {
+    /// Doc record id.
+    pub doc: String,
+    /// Work item (task/epic/bug/subtask) id the doc documents.
+    pub work_item: String,
+}
+
+/// `firetrail doc index` args.
+#[derive(Debug, Args)]
+pub struct DocIndexArgs {
+    /// Specific doc id to refresh. Omit to check every doc record.
+    pub target: Option<String>,
 }
 
 /// Identity kind selector.

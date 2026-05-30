@@ -67,7 +67,7 @@ fn main() -> ExitCode {
 #[allow(clippy::too_many_lines)]
 fn dispatch(cli: &Cli) -> Result<commands::CommandOutcome, CliError> {
     use crate::cli::{
-        BugCmd, CheckCmd, CriteriaCmd, DaemonCmd, DecisionCmd, DepCmd, EpicCmd, FindingCmd,
+        BugCmd, CheckCmd, CriteriaCmd, DaemonCmd, DecisionCmd, DepCmd, DocCmd, EpicCmd, FindingCmd,
         GotchaCmd, HookCmd, IdentityCmd, ImportCmd, IncidentCmd, IndexCmd, LintCmd, MemoryCmd,
         MigrateCmd, RunbookCmd, RunbookStepCmd, ScopeCmd, ServerHooksCmd, SubtaskCmd, TaskCmd,
     };
@@ -175,6 +175,9 @@ fn dispatch(cli: &Cli) -> Result<commands::CommandOutcome, CliError> {
         Command::Identity(IdentityCmd::Offboard(args)) => {
             commands::identity::offboard(args, &cli.global)
         }
+        Command::Doc(DocCmd::Add(args)) => commands::doc::add(args, &cli.global),
+        Command::Doc(DocCmd::Link(args)) => commands::doc::link(args, &cli.global),
+        Command::Doc(DocCmd::Index(args)) => commands::doc::index(args, &cli.global),
 
         Command::Scope(ScopeCmd::List) => commands::scope::list(&cli.global),
         Command::Scope(ScopeCmd::Show(args)) => commands::scope::show(args, &cli.global),

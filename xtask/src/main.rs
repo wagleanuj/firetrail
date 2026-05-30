@@ -50,6 +50,7 @@ use ft_ops::tickets::{
     TicketKindFilter, TicketPriority, TicketRelationKind, TicketStatusFilter, UnclaimInput,
     UpdateInput,
 };
+use ft_ops::search::{GlobalSearchHit, GlobalSearchInput, GlobalSearchOutput, SearchKind};
 use ft_ops::trust::{
     EvidenceKindInput, MergeInput, PromoteInput, ReasonInput, ReviewInput as TrustReviewInput,
     SupersedeInput,
@@ -180,6 +181,11 @@ fn export_into(dir: &Path) -> Result<()> {
     SimilarInput::export_all_to(dir).context("export SimilarInput")?;
     SearchHitOut::export_all_to(dir).context("export SearchHitOut")?;
     SearchOutput::export_all_to(dir).context("export SearchOutput")?;
+    // Cross-domain (unified) search op types.
+    SearchKind::export_all_to(dir).context("export SearchKind")?;
+    GlobalSearchInput::export_all_to(dir).context("export GlobalSearchInput")?;
+    GlobalSearchHit::export_all_to(dir).context("export GlobalSearchHit")?;
+    GlobalSearchOutput::export_all_to(dir).context("export GlobalSearchOutput")?;
     SalvageEntryAction::export_all_to(dir).context("export SalvageEntryAction")?;
     SalvageEntry::export_all_to(dir).context("export SalvageEntry")?;
     SalvageInput::export_all_to(dir).context("export SalvageInput")?;

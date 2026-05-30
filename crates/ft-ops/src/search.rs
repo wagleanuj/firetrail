@@ -1,61 +1,92 @@
-//! Memory search ops: `search` (lexical / hybrid / vector) and `similar`.
+//! Cross-domain (unified) search op.
 //!
-//! Mirrors `ft_cli::commands::search` but stripped of clap and CLI-specific
-//! envelope types. When the requested mode benefits from an embedding the
-//! op auto-spawns the embed-daemon via a private helper; if the daemon
-//! is unreachable the op degrades to lexical search and surfaces a
-//! warning in [`SearchOutput::warnings`].
+//! Where [`crate::memory::search`] is hard-scoped to the six memory kinds,
+//! this op searches across **every** indexed [`ft_search::IndexKind`] —
+//! work-tracking records (epic / task / subtask / bug), memory kinds, and the
+//! synthetic domains (scope / identity / audit). It is the engine behind the
+//! web Cmd+K global palette.
 //!
-//! Quarantine filtering (ADR-0014) is applied at this layer so the search
-//! engine remains oblivious to import labels.
+//! The op is a thin wrapper over the `ft_search` engine: it builds a
+//! [`SearchQuery`] with an arbitrary `kind_filter`, runs the same
+//! daemon-first / mock-fallback embedding strategy as the memory search op,
+//! applies the ADR-0014 quarantine filter, and surfaces `kind` + `scope` +
+//! `trust` on every hit so callers can render badges and route to the record.
+//!
+//! ft-ui (and any other adapter) calls this instead of reaching into
+//! `ft_search` directly, keeping the layering identical to the memory surface.
 
 use ft_embed::Embedder as _;
 use ft_embed::{DaemonStatus, MockEmbedder, daemon as embed_daemon};
 use ft_import::is_quarantined;
-use ft_search::{EMBEDDING_DIM, HitMode, SearchHit, SearchMode as CoreSearchMode, SearchQuery};
+use ft_core::RecordKind;
+use ft_search::{
+    EMBEDDING_DIM, HitMode, IndexKind, SearchHit, SearchMode as CoreSearchMode, SearchQuery,
+};
 use ft_storage::Storage as _;
 use serde::{Deserialize, Serialize};
 
 use crate::error::OpsError;
 use crate::events::EventBus;
 use crate::identity::Identity;
+use crate::memory::{SearchMode, TrustStateInput};
 use crate::workspace::Workspace;
 
-use super::create::MemoryKind;
-use super::ctx::MemoryCtx;
-use super::views::TrustStateInput;
-
-/// Wire shape for the requested search mode.
+/// A search-layer kind the caller can filter on. Mirrors
+/// [`ft_search::IndexKind`] as a flat, ts-rs-exportable enum (the record
+/// variants are inlined so the wire shape is a single string union, matching
+/// the lowercase labels the engine already uses).
 #[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts-rs", ts(export))]
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-pub enum SearchMode {
-    /// Engine chooses: hybrid when embedding is available, lexical otherwise.
-    #[default]
-    Auto,
-    /// FTS5 lexical only.
-    Lexical,
-    /// Vector only (requires a query embedding + sqlite-vec).
-    Vector,
-    /// Vector + lexical weighted-sum rank.
-    Hybrid,
+pub enum SearchKind {
+    /// Epic work item.
+    Epic,
+    /// Task work item.
+    Task,
+    /// Subtask work item.
+    Subtask,
+    /// Bug work item.
+    Bug,
+    /// Incident memory record.
+    Incident,
+    /// Finding memory record.
+    Finding,
+    /// Runbook memory record.
+    Runbook,
+    /// Decision memory record.
+    Decision,
+    /// Gotcha memory record.
+    Gotcha,
+    /// Generic memory note.
+    Memory,
+    /// File-backed doc record.
+    Doc,
+    /// Scope definition (synthetic).
+    Scope,
+    /// Registered identity (synthetic).
+    Identity,
+    /// Audit/history entry (synthetic).
+    Audit,
 }
 
-impl SearchMode {
-    fn to_core(self) -> CoreSearchMode {
-        self.to_core_mode()
-    }
-
-    /// Map the wire mode onto the `ft_search` core mode. Crate-visible so the
-    /// cross-domain [`crate::search`] op can reuse it without duplicating the
-    /// match.
-    pub(crate) fn to_core_mode(self) -> CoreSearchMode {
+impl SearchKind {
+    fn to_index_kind(self) -> IndexKind {
         match self {
-            Self::Auto => CoreSearchMode::Auto,
-            Self::Lexical => CoreSearchMode::Lexical,
-            Self::Vector => CoreSearchMode::Vector,
-            Self::Hybrid => CoreSearchMode::Hybrid,
+            Self::Epic => IndexKind::Record(RecordKind::Epic),
+            Self::Task => IndexKind::Record(RecordKind::Task),
+            Self::Subtask => IndexKind::Record(RecordKind::Subtask),
+            Self::Bug => IndexKind::Record(RecordKind::Bug),
+            Self::Incident => IndexKind::Record(RecordKind::Incident),
+            Self::Finding => IndexKind::Record(RecordKind::Finding),
+            Self::Runbook => IndexKind::Record(RecordKind::Runbook),
+            Self::Decision => IndexKind::Record(RecordKind::Decision),
+            Self::Gotcha => IndexKind::Record(RecordKind::Gotcha),
+            Self::Memory => IndexKind::Record(RecordKind::Memory),
+            Self::Doc => IndexKind::Record(RecordKind::Doc),
+            Self::Scope => IndexKind::Scope,
+            Self::Identity => IndexKind::Identity,
+            Self::Audit => IndexKind::Audit,
         }
     }
 }
@@ -65,7 +96,7 @@ impl SearchMode {
 #[cfg_attr(feature = "ts-rs", ts(export))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SearchInput {
+pub struct GlobalSearchInput {
     /// Free-text query string.
     pub query: String,
     /// Mode. Defaults to [`SearchMode::Auto`].
@@ -74,9 +105,9 @@ pub struct SearchInput {
     /// Minimum trust floor.
     #[serde(default)]
     pub trust: Option<TrustStateInput>,
-    /// Restrict to memory kinds. Empty means "all kinds".
+    /// Restrict to these search kinds. Empty means "all kinds".
     #[serde(default)]
-    pub kinds: Vec<MemoryKind>,
+    pub kinds: Vec<SearchKind>,
     /// Restrict to owning scope.
     #[serde(default)]
     pub scope: Option<String>,
@@ -95,35 +126,16 @@ fn default_limit() -> usize {
     20
 }
 
-/// Input for [`similar`].
+/// One ranked cross-domain hit. Unlike [`crate::memory::SearchHitOut`] this
+/// carries the owning `scope` so the global palette can show + route by it.
 #[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts-rs", ts(export))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SimilarInput {
-    /// Source record id (full or unambiguous prefix).
+pub struct GlobalSearchHit {
+    /// Document id (record id, or `<tag>:<key>` for synthetic docs).
     pub id: String,
-    /// Cap the number of hits. Defaults to 10.
-    #[serde(default = "default_similar_limit")]
-    pub limit: usize,
-    /// Optional client-supplied correlation id.
-    #[serde(default)]
-    pub request_id: Option<String>,
-}
-
-fn default_similar_limit() -> usize {
-    10
-}
-
-/// One ranked hit.
-#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts-rs", ts(export))]
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SearchHitOut {
-    /// Record id.
-    pub id: String,
-    /// Record kind (lowercase).
+    /// Document kind (lowercase label, e.g. `task` / `memory` / `scope`).
     pub kind: String,
     /// Title.
     pub title: String,
@@ -131,6 +143,8 @@ pub struct SearchHitOut {
     pub score: f32,
     /// Trust state (lowercase).
     pub trust: String,
+    /// Owning scope, if any.
+    pub scope: Option<String>,
     /// Which signal produced this hit (`"lexical" | "vector" | "hybrid"`).
     pub mode: String,
     /// Quarantine marker (only `true` for imported-but-unpromoted records).
@@ -138,7 +152,7 @@ pub struct SearchHitOut {
     pub quarantine: bool,
 }
 
-impl From<SearchHit> for SearchHitOut {
+impl From<SearchHit> for GlobalSearchHit {
     fn from(h: SearchHit) -> Self {
         Self {
             id: h.id.as_storage_str(),
@@ -146,47 +160,50 @@ impl From<SearchHit> for SearchHitOut {
             title: h.title,
             score: h.score,
             trust: serialize_lower(&h.trust),
+            scope: h.owning_scope,
             mode: hit_mode_label(h.mode).to_string(),
             quarantine: false,
         }
     }
 }
 
-/// Output of [`search`] / [`similar`].
+/// Output of [`search`].
 #[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts-rs", ts(export))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SearchOutput {
+pub struct GlobalSearchOutput {
     /// Resolved mode label (after any degradation).
     pub mode: String,
     /// Ranked hits, highest score first.
-    pub hits: Vec<SearchHitOut>,
+    pub hits: Vec<GlobalSearchHit>,
     /// Non-fatal warnings (e.g. "vector search unavailable; degraded to
     /// lexical").
     #[serde(default)]
     pub warnings: Vec<String>,
 }
 
-/// `search` op.
+/// Cross-domain `search` op.
+///
+/// Embedding policy matches [`crate::memory::search`]: vector/hybrid modes try
+/// a daemon that is **already running** (auto-spawn via the same helper), and
+/// fall back to a deterministic mock embedder rather than erroring, so the op
+/// degrades to lexical when no model is installed. It never blocks on spawning
+/// a daemon from an HTTP request beyond the existing `ensure_running` policy.
 pub fn search(
     ws: &Workspace,
     identity: &Identity,
-    input: SearchInput,
+    input: GlobalSearchInput,
     _events: &EventBus,
-) -> Result<SearchOutput, OpsError> {
-    let mut ctx = MemoryCtx::open(ws, identity, "search")?;
+) -> Result<GlobalSearchOutput, OpsError> {
+    let mut ctx = crate::memory::ctx_for_trust(ws, identity, "search")?;
     let mut warnings: Vec<String> = Vec::new();
 
-    let mode = input.mode.to_core();
+    let mode = input.mode.to_core_mode();
     let want_embedding = matches!(mode, CoreSearchMode::Hybrid | CoreSearchMode::Vector);
 
-    // Embedding strategy: try the daemon (auto-spawning if needed) for any
-    // vector-flavoured request. If the daemon is unreachable, fall back to
-    // the deterministic MockEmbedder so vector mode still produces output
-    // in test environments without a model on disk.
     let embedding = if want_embedding {
-        match super::daemon::ensure_running(ws)? {
+        match crate::memory::ensure_daemon_running(ws)? {
             DaemonStatus::Running => match ws.daemon_socket_path() {
                 Ok(socket) => match embed_daemon::send_embed(&socket, &input.query) {
                     Ok(v) => Some(v),
@@ -205,10 +222,6 @@ pub fn search(
                 }
             },
             DaemonStatus::Stopped | DaemonStatus::Unreachable => {
-                // Mock fallback keeps semantic / hybrid producing
-                // deterministic results when the operator has no model
-                // installed. The CLI used the same MockEmbedder when
-                // --embedder=mock.
                 let embedder = MockEmbedder::new(0, EMBEDDING_DIM);
                 match embedder.embed(&input.query) {
                     Ok(v) => {
@@ -219,9 +232,8 @@ pub fn search(
                         Some(v)
                     }
                     Err(e) => {
-                        warnings.push(format!(
-                            "mock embedder failed ({e}); falling back to lexical"
-                        ));
+                        warnings
+                            .push(format!("mock embedder failed ({e}); falling back to lexical"));
                         None
                     }
                 }
@@ -259,18 +271,19 @@ pub fn search(
             .map_err(|e| OpsError::Internal(anyhow::anyhow!("search: {e}")))?
     };
 
-    // Quarantine filter (ADR-0014).
-    let hit_views: Vec<SearchHitOut> = hits
+    // Quarantine filter (ADR-0014). Synthetic docs never carry a record id and
+    // are always kept.
+    let hit_views: Vec<GlobalSearchHit> = hits
         .into_iter()
         .filter_map(|h| {
             let quarantined = match h.id.as_record_id() {
                 Some(rid) => ctx.storage.read(rid).is_ok_and(|rec| is_quarantined(&rec)),
-                None => false, // synthetic docs (scope/identity/audit) are never quarantined
+                None => false,
             };
             if quarantined && !input.include_quarantine {
                 return None;
             }
-            let mut view = SearchHitOut::from(h);
+            let mut view = GlobalSearchHit::from(h);
             if quarantined {
                 view.quarantine = true;
             }
@@ -278,55 +291,17 @@ pub fn search(
         })
         .collect();
 
-    Ok(SearchOutput {
+    Ok(GlobalSearchOutput {
         mode: mode_label(resolved_mode).to_string(),
         hits: hit_views,
         warnings,
     })
 }
 
-/// `similar` op.
-#[allow(clippy::needless_pass_by_value)]
-pub fn similar(
-    ws: &Workspace,
-    identity: &Identity,
-    input: SimilarInput,
-    _events: &EventBus,
-) -> Result<SearchOutput, OpsError> {
-    let mut ctx = MemoryCtx::open(ws, identity, "similar")?;
-    let id = ctx.resolve_id(&input.id)?;
-    let engine = ctx.read_search_engine()?;
-    let hits = engine
-        .similar(&id, input.limit.max(1))
-        .map_err(|e| OpsError::Internal(anyhow::anyhow!("similar: {e}")))?;
-    Ok(SearchOutput {
-        mode: "similar".to_string(),
-        hits: hits.into_iter().map(SearchHitOut::from).collect(),
-        warnings: Vec::new(),
-    })
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
-// Helpers.
+// Helpers (mirrors crate::memory::search; kept local so the surfaces stay
+// independent and the memory helpers can stay private).
 // ─────────────────────────────────────────────────────────────────────────────
-
-impl TrustStateInput {
-    /// Map the wire trust input onto the core trust state. Crate-visible so the
-    /// cross-domain [`crate::search`] op can reuse the same conversion.
-    pub(crate) fn to_core_for_search(self) -> ft_core::TrustState {
-        match self {
-            Self::Draft => ft_core::TrustState::Draft,
-            Self::Reviewed => ft_core::TrustState::Reviewed,
-            Self::Verified => ft_core::TrustState::Verified,
-            Self::Stale => ft_core::TrustState::Stale,
-            Self::Deprecated => ft_core::TrustState::Deprecated,
-            Self::Archived => ft_core::TrustState::Archived,
-            Self::Superseded => ft_core::TrustState::Superseded,
-            Self::Rejected => ft_core::TrustState::Rejected,
-            Self::Redacted => ft_core::TrustState::Redacted,
-        }
-    }
-}
 
 fn resolve_search_mode(
     requested: CoreSearchMode,

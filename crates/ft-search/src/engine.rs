@@ -264,6 +264,7 @@ impl SearchEngine {
                 title: meta.title,
                 score,
                 trust: meta.trust,
+                owning_scope: meta.owning_scope,
                 mode,
             });
         }
@@ -337,6 +338,7 @@ impl SearchEngine {
                 title: meta.title,
                 score,
                 trust: meta.trust,
+                owning_scope: meta.owning_scope,
                 mode: HitMode::Lexical,
             });
         }

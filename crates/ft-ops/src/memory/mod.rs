@@ -40,6 +40,16 @@ pub(crate) fn ctx_for_trust<'a>(
     ctx::MemoryCtx::open(ws, identity, op)
 }
 
+/// Ensure the embed-daemon is running (auto-spawning if reachable), returning
+/// its resulting status. Shared with the cross-domain [`crate::search`] op so
+/// both search surfaces follow the identical daemon-first / mock-fallback
+/// embedding policy. Not part of the public API.
+pub(crate) fn ensure_daemon_running(
+    ws: &crate::workspace::Workspace,
+) -> Result<ft_embed::DaemonStatus, crate::error::OpsError> {
+    daemon::ensure_running(ws)
+}
+
 pub mod create;
 pub mod salvage;
 pub mod search;

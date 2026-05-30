@@ -28,6 +28,9 @@ pub struct SearchHit {
     pub score: f32,
     /// Trust state at index time.
     pub trust: TrustState,
+    /// Owning scope of the indexed document, if any. `None` for synthetic docs
+    /// that carry no scope (and for records written before the column existed).
+    pub owning_scope: Option<String>,
     /// Which signal produced this hit.
     pub mode: HitMode,
 }

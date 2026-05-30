@@ -22,6 +22,7 @@ pub mod docs;
 pub mod identity;
 pub mod memory;
 pub mod scope;
+pub mod search;
 pub mod tickets;
 pub mod trust;
 
@@ -34,6 +35,7 @@ pub fn build(state: Arc<AppState>) -> Router {
         .nest("/tickets", tickets::router())
         .nest("/docs", docs::router())
         .nest("/memory", memory::router())
+        .nest("/search", search::router())
         .nest("/scope", scope::router())
         .nest("/identity", identity::router())
         .nest("/trust", trust::router())

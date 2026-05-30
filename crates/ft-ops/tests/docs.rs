@@ -7,7 +7,7 @@
 
 use ft_ops::docs::{self, AddDocInput, DocFreshnessView, EditDocInput, LinkDocInput};
 use ft_ops::tickets::{self, CreateTaskInput};
-use ft_ops::{EventBus, Identity, OpsError, Workspace};
+use ft_ops::{Event, EventBus, Identity, OpsError, Workspace};
 use ft_testkit::TestRepo;
 
 fn fixture() -> (TestRepo, Workspace) {
@@ -156,6 +156,48 @@ fn edit_writes_through_file_and_reindexes_to_fresh() {
     // And a subsequent read agrees it's fresh (the record was re-indexed).
     let after = docs::docs_for_ticket(&ws, &alice(), task_id, &bus()).unwrap();
     assert_eq!(after[0].freshness, DocFreshnessView::Fresh);
+}
+
+/// `edit` publishes a `DocEdited` event so other connected clients can
+/// invalidate their cached doc lists and re-derive the freshness badge
+/// (firetrail-e4jv).
+#[test]
+fn edit_emits_doc_edited_event() {
+    let (tr, ws) = fixture();
+    let id = alice();
+    let bus = bus();
+    std::fs::write(tr.root().join("design.md"), "# Design\n\nThe plan.\n").unwrap();
+    let added = docs::add(
+        &ws,
+        &id,
+        AddDocInput {
+            file: "design.md".into(),
+            doc_type: "design".into(),
+            title: None,
+            scope: None,
+        },
+        &bus,
+    )
+    .expect("add doc");
+
+    // Subscribe *after* setup so only the edit's event is observed.
+    let mut rx = bus.subscribe();
+    docs::edit(
+        &ws,
+        &id,
+        EditDocInput {
+            id: added.id.clone(),
+            content: "# Design\n\nThe revised plan.\n".into(),
+        },
+        &bus,
+    )
+    .expect("edit doc");
+
+    let emitted = rx.try_recv().expect("an event was emitted");
+    match emitted.event {
+        Event::DocEdited { id: doc_id } => assert_eq!(doc_id, added.id),
+        other => panic!("expected DocEdited, got {other:?}"),
+    }
 }
 
 #[test]

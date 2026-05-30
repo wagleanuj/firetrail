@@ -26,7 +26,7 @@ use ft_embed::{apply_doc_content, parse_doc_meta};
 use serde::{Deserialize, Serialize};
 
 use crate::error::OpsError;
-use crate::events::EventBus;
+use crate::events::{Event, EventBus};
 use crate::identity::Identity;
 use crate::tickets::ctx::{TicketCtx, append_relation, load_relations};
 use crate::workspace::Workspace;
@@ -198,7 +198,7 @@ pub fn edit(
     ws: &Workspace,
     identity: &Identity,
     input: EditDocInput,
-    _events: &EventBus,
+    events: &EventBus,
 ) -> Result<DocView, OpsError> {
     let mut ctx = TicketCtx::open(ws, identity, "doc edit")?;
     let id = ctx.resolve_id(&input.id)?;
@@ -226,6 +226,13 @@ pub fn edit(
     let RecordBody::Doc(doc) = &record.body else {
         unreachable!("body was a Doc above");
     };
+
+    // Notify other connected clients so they re-fetch the doc list and the
+    // freshness badge flips stale → fresh without a manual reload.
+    events.emit(Event::DocEdited {
+        id: record.envelope.id.as_str().to_string(),
+    });
+
     let freshness = ft_embed::doc_freshness(&ws.root, doc);
     Ok(DocView {
         id: record.envelope.id.as_str().to_string(),

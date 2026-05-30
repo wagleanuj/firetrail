@@ -67,6 +67,15 @@ pub enum Event {
         /// Relation kind (serialized form, e.g. `"blocked-by"`).
         relation: String,
     },
+    /// A doc's content was edited through the write-through edit path.
+    ///
+    /// Emitted by [`crate::docs::edit`] so other connected clients can
+    /// invalidate their cached ticket-doc lists and re-derive the freshness
+    /// badge (firetrail-e4jv).
+    DocEdited {
+        /// Doc record id.
+        id: String,
+    },
     /// A memory record was written.
     ///
     /// Emitted on **every** memory write (create or update). Kept distinct

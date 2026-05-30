@@ -74,6 +74,22 @@ const RELATION_KINDS: TicketRelationKind[] = [
   'caused-by',
 ]
 
+/**
+ * Serialized form of `RelationKind::DocumentedIn`. Not part of
+ * {@link TicketRelationKind} because doc edges aren't user-selectable ticket
+ * relations — they're authored via the Docs panel / `doc link`.
+ */
+const DOC_RELATION_KIND = 'documented-in'
+
+/**
+ * Relations shown in the generic Relations list. `documented-in` edges are
+ * filtered out — they already render in the richer Docs panel above, so showing
+ * them here too would be a redundant raw-id row (firetrail-e4jv).
+ */
+export function visibleRelations(relations: Relation[]): Relation[] {
+  return relations.filter((r) => (r.kind as string) !== DOC_RELATION_KIND)
+}
+
 export function TicketDetail({ id }: { id: string }) {
   const { data, isLoading, error } = useTicketQuery(id)
   if (isLoading) return <DetailSkeleton />
@@ -388,6 +404,7 @@ function DescriptionPanel({ id, initial }: { id: string; initial: string }) {
 
 function RelationsPanel({ id, relations }: { id: string; relations: Relation[] }) {
   const [open, setOpen] = useState(false)
+  const visible = visibleRelations(relations)
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
@@ -403,13 +420,13 @@ function RelationsPanel({ id, relations }: { id: string; relations: Relation[] }
           Add link
         </Button>
       </div>
-      {relations.length === 0 ? (
+      {visible.length === 0 ? (
         <p className="rounded-md border border-dashed border-border/60 px-3 py-3 text-sm text-muted-foreground">
           No relations.
         </p>
       ) : (
         <ul className="space-y-1">
-          {relations.map((r) => {
+          {visible.map((r) => {
             const outbound = r.from === id
             const other = outbound ? r.to : r.from
             return (

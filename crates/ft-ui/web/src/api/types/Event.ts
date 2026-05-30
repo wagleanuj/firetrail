@@ -55,7 +55,11 @@ to: string,
 /**
  * Relation kind (serialized form, e.g. `"blocked-by"`).
  */
-relation: string, } | { "kind": "memory_written", 
+relation: string, } | { "kind": "doc_edited", 
+/**
+ * Doc record id.
+ */
+id: string, } | { "kind": "memory_written", 
 /**
  * Memory id.
  */

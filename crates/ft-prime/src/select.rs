@@ -349,10 +349,19 @@ fn body_text(record: &Record) -> String {
             }
         }
         RecordBody::Memory(m) => m.body.clone(),
-        // TODO(firetrail-2mwp.6): deliver summary + path and let the agent read
-        // the full file on demand (protects the token budget). Interim: the
-        // stored summary excerpt.
-        RecordBody::Doc(d) => d.summary.clone(),
+        // A Doc is file-backed: deliver the summary + the path so the agent
+        // reads the full (and always-current) file on demand, rather than
+        // inlining a 2,000-line doc and blowing the token budget.
+        RecordBody::Doc(d) => {
+            if d.summary.is_empty() {
+                format!("Document: {} — read this file for full content.", d.path)
+            } else {
+                format!(
+                    "{}\n\nSource: {} — read this file for full, current content.",
+                    d.summary, d.path
+                )
+            }
+        }
     }
 }
 
@@ -398,3 +407,30 @@ fn record_matches_terms(record: &Record, terms: &[String]) -> bool {
 // don't trigger unused-import warnings.
 #[allow(dead_code)]
 const _KIND_NOTE: Option<RecordKind> = None;
+
+#[cfg(test)]
+mod doc_excerpt_tests {
+    use super::body_text;
+    use ft_core::{Doc, Identity, RecordBuilder, RecordKind, TrustState};
+
+    #[test]
+    fn doc_excerpt_includes_path_so_agent_reads_the_file() {
+        let rec = RecordBuilder::new(RecordKind::Doc, "Design", Identity::new("a@b.com").unwrap())
+            .doc(Doc {
+                path: "docs/plan.md".into(),
+                content_hash: String::new(),
+                title: "Design".into(),
+                summary: "the plan in brief".into(),
+                doc_type: "design".into(),
+                trust: TrustState::Reviewed,
+            })
+            .build()
+            .unwrap();
+        let excerpt = body_text(&rec);
+        assert!(excerpt.contains("the plan in brief"));
+        assert!(
+            excerpt.contains("docs/plan.md"),
+            "excerpt must surface the path: {excerpt}"
+        );
+    }
+}

@@ -25,8 +25,7 @@ pub fn run(args: &PrimeArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliE
         ));
     }
 
-    let ctx = WorkCtx::open(COMMAND, global.workspace.as_deref())?;
-    let warnings = ctx.warnings.clone();
+    let mut ctx = WorkCtx::open(COMMAND, global.workspace.as_deref())?;
 
     // Map the (already-resolved) global format to the prime format: if the
     // user asked for JSON we tell ft-prime so its budget heuristics adapt.
@@ -60,6 +59,9 @@ pub fn run(args: &PrimeArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliE
 
     let mut pack = if let Some(raw) = &args.task {
         let id = ctx.resolve_id(raw)?;
+        // Lazy freshness backbone: warn on linked docs whose .md changed out of
+        // band or went missing, so the pack never silently presents stale docs.
+        refresh_stale_linked_docs(&mut ctx, &id);
         prime_for_task(&ctx.storage, &ctx.index, &id, &opts)
             .map_err(|e| CliError::internal(COMMAND, format!("prime: {e}")))?
     } else {
@@ -70,6 +72,9 @@ pub fn run(args: &PrimeArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliE
         prime_for_query(&ctx.storage, &ctx.index, q, &opts)
             .map_err(|e| CliError::internal(COMMAND, format!("prime: {e}")))?
     };
+
+    // Captured after the freshness pass so stale/broken linked-doc notes surface.
+    let warnings = ctx.warnings.clone();
 
     // Quarantine filter (ADR-0014). The default ContextPack from ft-prime is
     // import-agnostic; we materialise the filter at the CLI layer (per
@@ -104,6 +109,53 @@ pub fn run(args: &PrimeArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliE
         warnings,
         quarantined_ids,
     }))
+}
+
+/// Lazy freshness backbone for file-backed docs (firetrail-2mwp.6).
+///
+/// Checks each `Doc` linked to the target and warns when its `.md` file changed
+/// since indexing (stale) or is missing (broken link). Read-only on purpose:
+/// prime already delivers the doc's `path`, so the agent reads the *live* file
+/// and always sees current content. Rewriting the record's `content_hash` to
+/// refresh search belongs to `firetrail doc index` / the git hook, where there
+/// is an explicit actor — doing it here would pollute the audit chain on every
+/// prime. Best-effort: index/read failures are silently skipped.
+fn refresh_stale_linked_docs(ctx: &mut WorkCtx, target: &ft_core::RecordId) {
+    let Ok(edges) = ctx.index.relations(target) else {
+        return;
+    };
+    let root = ctx.ws.root.clone();
+    let mut seen = HashSet::new();
+    let mut notes = Vec::new();
+    for edge in edges {
+        let other = if &edge.from == target {
+            edge.to
+        } else {
+            edge.from
+        };
+        if &other == target || !seen.insert(other.clone()) {
+            continue;
+        }
+        let Ok(rec) = ctx.read_record(&other) else {
+            continue;
+        };
+        if let ft_core::RecordBody::Doc(doc) = &rec.body {
+            match ft_embed::doc_freshness(&root, doc) {
+                ft_embed::DocFreshness::Stale => notes.push(format!(
+                    "linked doc {} ({}) changed since indexing — prime delivers the live file path; run `firetrail doc index` to refresh search",
+                    other.as_str(),
+                    doc.path
+                )),
+                ft_embed::DocFreshness::Missing => notes.push(format!(
+                    "linked doc {} points at a missing file ({}) — broken link",
+                    other.as_str(),
+                    doc.path
+                )),
+                ft_embed::DocFreshness::Fresh => {}
+            }
+        }
+    }
+    ctx.warnings.extend(notes);
 }
 
 #[derive(Debug, Clone)]

@@ -10,7 +10,7 @@ use ft_storage::{Storage as _, StorageFilter};
 use ft_trust::{StalePolicy, is_stale};
 use serde::Serialize;
 
-use crate::cli::{GlobalOpts, MemoryKindArg, MemoryListArgs, MemoryShowArgs, MemoryStaleArgs};
+use crate::cli::{GlobalOpts, MemoryListArgs, MemoryShowArgs, MemoryStaleArgs};
 use crate::commands::CommandOutcome;
 use crate::context::WorkCtx;
 use crate::error::CliError;
@@ -353,6 +353,3 @@ fn body_risk(body: &RecordBody) -> Option<RiskClass> {
         _ => None,
     }
 }
-
-// Silence unused-arg warnings from the kind-enum value in `MemoryKindArg`.
-const _MEMORY_KIND_ARG_USAGE: fn(MemoryKindArg) = |_| ();

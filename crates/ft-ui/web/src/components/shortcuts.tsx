@@ -16,6 +16,7 @@ import { useNavigate } from '@tanstack/react-router'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -175,6 +176,9 @@ function ShortcutsHelpDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="font-mono">Keyboard shortcuts</DialogTitle>
+          <DialogDescription className="sr-only">
+            List of available keyboard shortcuts.
+          </DialogDescription>
         </DialogHeader>
         <ul className="space-y-1.5 text-sm">
           {SHORTCUTS.map((s) => (

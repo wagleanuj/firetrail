@@ -119,7 +119,100 @@ pub async fn bootstrap_handler(
         return Ok(crate::assets::serve_index());
     }
 
+    // No token, no valid cookie. If this looks like a browser navigation
+    // (`Accept: text/html`), serve a friendly landing page instead of raw
+    // JSON — a human who bookmarked the URL or whose 24h cookie expired
+    // should be told how to re-bootstrap, not handed an API error blob.
+    // Programmatic clients (fetch/curl with `Accept: application/json` or
+    // a bare `*/*`) keep getting the JSON 401 so nothing automated breaks.
+    if accepts_html(&headers) {
+        return Ok(rebootstrap_landing_page());
+    }
+
     Err(AppError::Unauthorized("missing or invalid session".into()))
+}
+
+/// True if the request's `Accept` header explicitly lists `text/html`,
+/// i.e. it looks like a top-level browser navigation rather than a
+/// programmatic fetch. A bare `*/*` (curl's default) does NOT match.
+fn accepts_html(headers: &HeaderMap) -> bool {
+    headers
+        .get(header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|accept| {
+            accept
+                .split(',')
+                .any(|part| part.trim().split(';').next().unwrap_or("").trim() == "text/html")
+        })
+}
+
+/// A minimal, self-contained HTML page shown to browsers that reach `/`
+/// without a valid bootstrap token or session. Served as `200 text/html`:
+/// it is a navigable landing page, not an error condition for the user, so
+/// a 200 matches the "friendly re-bootstrap path" intent of the issue.
+fn rebootstrap_landing_page() -> Response {
+    const PAGE: &str = r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>firetrail — session expired</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #f6f7f9;
+    color: #1b1f24;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { background: #0d1117; color: #e6edf3; }
+    .card { background: #161b22; border-color: #30363d; }
+    code { background: #21262d; }
+  }
+  .card {
+    max-width: 28rem;
+    margin: 1.5rem;
+    padding: 2rem;
+    background: #fff;
+    border: 1px solid #d0d7de;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  h1 { font-size: 1.25rem; margin: 0 0 0.75rem; }
+  p { margin: 0 0 1rem; }
+  code {
+    background: #f0f1f3;
+    padding: 0.15rem 0.4rem;
+    border-radius: 6px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.95em;
+  }
+  .muted { color: #57606a; font-size: 0.9rem; margin-bottom: 0; }
+  @media (prefers-color-scheme: dark) { .muted { color: #8b949e; } }
+</style>
+</head>
+<body>
+  <main class="card">
+    <h1>Your firetrail session has expired</h1>
+    <p>This page needs a fresh bootstrap link. Your one-time token was already used, or your session cookie expired.</p>
+    <p>To get a new link, relaunch the UI from your terminal:</p>
+    <p><code>firetrail ui</code></p>
+    <p class="muted">It will open a fresh tab automatically. The port changes on each launch, so this bookmarked URL won't work on its own.</p>
+  </main>
+</body>
+</html>
+"#;
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        PAGE,
+    )
+        .into_response()
 }
 
 /// Build the signed `Set-Cookie` value for the session.

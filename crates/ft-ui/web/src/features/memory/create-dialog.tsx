@@ -10,6 +10,7 @@ import { useState } from 'react'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -50,6 +51,9 @@ export function CreateMemoryDialog({
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="font-mono">New memory</DialogTitle>
+          <DialogDescription className="sr-only">
+            Create a new memory record.
+          </DialogDescription>
         </DialogHeader>
         <Tabs value={kind} onValueChange={(v) => setKind(v as MemoryCreateKind)}>
           <TabsList className="flex flex-wrap">

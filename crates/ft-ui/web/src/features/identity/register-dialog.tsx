@@ -15,6 +15,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog'
 import {
@@ -111,6 +112,9 @@ export function RegisterIdentityDialog({ open, onOpenChange }: RegisterDialogPro
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="font-mono">Register identity</DialogTitle>
+          <DialogDescription>
+            Create a new identity and grant it capabilities.
+          </DialogDescription>
         </DialogHeader>
         <form id="register-identity-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           <Field label="Id" error={form.formState.errors.id?.message}>
@@ -197,6 +201,9 @@ export function OffboardConfirmDialog({
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="font-mono">Offboarded {id}</DialogTitle>
+            <DialogDescription className="sr-only">
+              Summary of the released claims after offboarding the identity.
+            </DialogDescription>
           </DialogHeader>
           <p className="text-sm text-foreground">
             <span className="font-mono text-primary">{result}</span> claim

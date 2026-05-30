@@ -22,6 +22,7 @@ import { Label } from '@/components/ui/label'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -234,6 +235,9 @@ export function SalvageQueue() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="font-mono">Apply salvage?</DialogTitle>
+            <DialogDescription className="sr-only">
+              Confirm applying salvage to the selected entries.
+            </DialogDescription>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
             Apply salvage to {selected.size}{' '}

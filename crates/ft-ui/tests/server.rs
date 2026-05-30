@@ -109,6 +109,80 @@ async fn test_bootstrap_then_workspace() {
 }
 
 #[tokio::test]
+async fn test_root_no_auth_browser_gets_html() {
+    // A human pointing a browser at `/` with no ?token= and no cookie sends
+    // `Accept: text/html`. They should get a friendly HTML page telling them
+    // to relaunch `firetrail ui`, not raw JSON.
+    let tmp = TempDir::new().unwrap();
+    init_workspace(tmp.path());
+    let (addr, _state) = spawn_server(tmp.path(), false).await;
+
+    let client = client_for(addr);
+    let url = format!("http://{addr}/");
+    let resp = client
+        .get(&url)
+        .header("Host", addr.to_string())
+        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::OK,
+        "browser landing page should be a 200"
+    );
+    let ct = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    assert!(
+        ct.starts_with("text/html"),
+        "expected text/html content-type for browser navigation, got `{ct}`"
+    );
+    let body = resp.text().await.unwrap();
+    assert!(
+        body.contains("firetrail ui"),
+        "landing page should mention the relaunch command `firetrail ui`; body: {body}"
+    );
+}
+
+#[tokio::test]
+async fn test_root_no_auth_api_client_gets_json_401() {
+    // A programmatic client (fetch, curl) sends `Accept: application/json`.
+    // The JSON 401 contract must stay intact for them.
+    let tmp = TempDir::new().unwrap();
+    init_workspace(tmp.path());
+    let (addr, _state) = spawn_server(tmp.path(), false).await;
+
+    let client = client_for(addr);
+    let url = format!("http://{addr}/");
+    let resp = client
+        .get(&url)
+        .header("Host", addr.to_string())
+        .header("Accept", "application/json")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), reqwest::StatusCode::UNAUTHORIZED);
+    let ct = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    assert!(
+        ct.starts_with("application/json"),
+        "API clients must still get a JSON 401, got content-type `{ct}`"
+    );
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["error"]["kind"], "unauthorized");
+}
+
+#[tokio::test]
 async fn test_bad_origin_rejected() {
     let tmp = TempDir::new().unwrap();
     init_workspace(tmp.path());

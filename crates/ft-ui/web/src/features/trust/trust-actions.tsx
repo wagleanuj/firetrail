@@ -28,6 +28,7 @@ import { Label } from '@/components/ui/label'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -264,6 +265,10 @@ function PromoteDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="font-mono">Promote to verified</DialogTitle>
+          <DialogDescription className="sr-only">
+            Promote this record to the verified trust level, optionally attaching
+            evidence.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           {required && (
@@ -356,6 +361,9 @@ function ReasonDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="font-mono">{title}</DialogTitle>
+          <DialogDescription className="sr-only">
+            Provide a reason for this trust action.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-1.5">
           <Label>Reason *</Label>
@@ -403,6 +411,9 @@ function SupersedeDialog({ recordId, onClose }: { recordId: string; onClose: () 
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="font-mono">Supersede record</DialogTitle>
+          <DialogDescription className="sr-only">
+            Mark this record as superseded by a successor record.
+          </DialogDescription>
         </DialogHeader>
         <p className="text-xs text-muted-foreground">
           Mark this record as superseded by another record (the successor).
@@ -456,6 +467,9 @@ function MergeDialog({ recordId, onClose }: { recordId: string; onClose: () => v
               ? `Merge into ${recordId.slice(0, 14)}`
               : 'Confirm merge'}
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Merge one or more source records into this record.
+          </DialogDescription>
         </DialogHeader>
         {step === 'inputs' ? (
           <>

@@ -15,6 +15,7 @@ import { Loader2 } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -118,6 +119,9 @@ export function CreateDialog({ open, onOpenChange }: CreateDialogProps) {
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="font-mono">New ticket</DialogTitle>
+          <DialogDescription className="sr-only">
+            Create a new ticket.
+          </DialogDescription>
         </DialogHeader>
         <Tabs value={kind} onValueChange={(v) => setKind(v as Kind)}>
           <TabsList>

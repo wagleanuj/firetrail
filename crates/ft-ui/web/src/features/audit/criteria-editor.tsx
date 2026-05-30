@@ -15,6 +15,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -216,6 +217,9 @@ function EvidenceDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="font-mono">Attach evidence to {which}</DialogTitle>
+          <DialogDescription className="sr-only">
+            Attach an evidence link to this audit criterion.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1.5">

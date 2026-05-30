@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -466,6 +467,9 @@ function AddLinkDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="font-mono">Add relation</DialogTitle>
+          <DialogDescription className="sr-only">
+            Link this ticket to another record.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1.5">

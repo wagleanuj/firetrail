@@ -331,6 +331,44 @@ fn salvage_with_nothing_to_do_is_ok_with_empty_list() {
     assert!(v["data"]["salvage_branch"].is_null());
 }
 
+// ── salvage: --non-interactive is canonical, --auto is a deprecated alias ────
+
+/// Both `--non-interactive` (canonical) and `--auto` (deprecated alias) drive
+/// the same non-interactive salvage, and passing them together no longer
+/// errors with a `conflicts_with` clash.
+#[test]
+fn salvage_non_interactive_and_auto_alias_both_work_without_conflict() {
+    for flags in [
+        vec!["--non-interactive"],
+        vec!["--auto"],
+        vec!["--auto", "--non-interactive"],
+    ] {
+        let tr = fresh_repo_with_hooks();
+        commit_all(tr.root(), "init firetrail");
+        git(tr.root(), &["checkout", "--quiet", "-b", "feat/aliases"]);
+        create_record(tr.root(), "finding", "alias-driven finding");
+        commit_all(tr.root(), "feature work");
+
+        let mut argv = vec!["--json", "memory", "salvage"];
+        argv.extend(flags.iter().copied());
+        argv.extend(["--base", "main"]);
+        let out = run_firetrail(tr.root(), &argv);
+        assert!(
+            out.success(),
+            "salvage with {flags:?} should succeed: stdout={}\nstderr={}",
+            out.stdout,
+            out.stderr
+        );
+        let v = parse_json(&out);
+        let entries = v["data"]["entries"].as_array().expect("entries");
+        let salvaged = entries.iter().filter(|e| e["action"] == "salvaged").count();
+        assert_eq!(
+            salvaged, 1,
+            "{flags:?} should non-interactively salvage the finding: {entries:?}"
+        );
+    }
+}
+
 // Force `CmdOutput` usage so its import remains explicitly required even
 // once the helpers above are inlined in the future. Keeps the diff minimal
 // when more tests land.

@@ -278,11 +278,11 @@ pub fn run(args: &MemorySalvageArgs, global: &GlobalOpts) -> Result<CommandOutco
     }))
 }
 
-/// Resolve whether the operator is in interactive mode. `--auto` /
-/// `--non-interactive` / `--dry-run` and a non-TTY stdin all force
+/// Resolve whether the operator is in interactive mode. `--non-interactive`
+/// (deprecated alias `--auto`) / `--dry-run` and a non-TTY stdin all force
 /// non-interactive (in which case [`decide`] uses kind-based defaults).
 fn is_interactive(args: &MemorySalvageArgs) -> bool {
-    if args.auto || args.non_interactive || args.dry_run {
+    if args.non_interactive || args.dry_run {
         return false;
     }
     std::io::stdin().is_terminal() && std::io::stdout().is_terminal()

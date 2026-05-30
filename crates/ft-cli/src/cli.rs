@@ -1086,13 +1086,12 @@ pub struct MemorySalvageArgs {
 
     /// Accept defaults for every record without prompting.
     ///
-    /// Equivalent to `--non-interactive`. Memory-kind records are salvaged;
-    /// structural-kind records (task/epic/subtask/bug) are skipped.
-    #[arg(long, conflicts_with = "non_interactive")]
-    pub auto: bool,
-
-    /// Explicit non-interactive flag (alias of `--auto`).
-    #[arg(long)]
+    /// Memory-kind records are salvaged; structural-kind records
+    /// (task/epic/subtask/bug) are skipped. `--auto` is a deprecated alias
+    /// kept for backward compatibility; supplying both (or either twice) is
+    /// harmless — the self-override lets clap fold repeats instead of
+    /// erroring with "cannot be used multiple times".
+    #[arg(long, alias = "auto", overrides_with = "non_interactive")]
     pub non_interactive: bool,
 
     /// Plan only — list what would be salvaged without mutating the repo.

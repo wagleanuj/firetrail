@@ -205,9 +205,10 @@ impl<'a> MemoryCtx<'a> {
 
     fn upsert_search_lexical(&mut self, record: &Record) {
         let op = self.op;
+        let root = self.ws.root.clone();
         match self.search_engine() {
             Ok(engine) => {
-                if let Err(e) = engine.upsert_lexical(record) {
+                if let Err(e) = engine.upsert_lexical_with_root(record, &root) {
                     tracing::warn!(error = %e, op = op, "search upsert failed");
                 }
             }
@@ -228,7 +229,7 @@ impl<'a> MemoryCtx<'a> {
         if ft_embed::daemon::status(&socket) != ft_embed::DaemonStatus::Running {
             return;
         }
-        let text = ft_embed::record_text(record);
+        let text = ft_embed::record_text_with_root(&self.ws.root, record);
         if let Err(e) =
             ft_embed::daemon::send_index_record(&socket, record.envelope.id.as_str(), &text)
         {

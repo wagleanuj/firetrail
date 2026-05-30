@@ -55,4 +55,6 @@ pub use download::{
 };
 pub use embedder::{Embedder, MockEmbedder, OnnxEmbedder};
 pub use error::EmbedError;
-pub use service::{DriftIssue, DriftReport, EmbedService, content_hash, cosine, record_text};
+pub use service::{
+    DriftIssue, DriftReport, EmbedService, content_hash, cosine, record_text, record_text_with_root,
+};

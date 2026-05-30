@@ -45,7 +45,7 @@ pub fn rebuild(global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
     for row in storage.iter(&StorageFilter::default()) {
         let rec = row.map_err(|e| CliError::internal(CMD_REBUILD, format!("read record: {e}")))?;
         engine
-            .upsert_lexical(&rec)
+            .upsert_lexical_with_root(&rec, &ws.root)
             .map_err(|e| CliError::internal(CMD_REBUILD, format!("upsert search: {e}")))?;
         search_rows += 1;
         records.push(rec);
@@ -97,7 +97,7 @@ pub fn refresh(global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
             .read(id)
             .map_err(|e| CliError::internal(CMD_REFRESH, format!("read {id}: {e}")))?;
         engine
-            .upsert_lexical(&rec)
+            .upsert_lexical_with_root(&rec, &ws.root)
             .map_err(|e| CliError::internal(CMD_REFRESH, format!("upsert search: {e}")))?;
         search_rows += 1;
         records.push(rec);

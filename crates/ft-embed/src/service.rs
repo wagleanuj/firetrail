@@ -250,6 +250,27 @@ pub fn record_text(record: &Record) -> String {
         .join("\n\n")
 }
 
+/// Like [`record_text`], but for file-backed [`Doc`] records it embeds the
+/// linked `.md` file's contents (resolved against `root`) rather than the
+/// stored summary excerpt.
+///
+/// A missing or unreadable file degrades to [`record_text`] (title + summary)
+/// rather than failing — a broken doc link must not poison indexing.
+#[must_use]
+pub fn record_text_with_root(root: &std::path::Path, record: &Record) -> String {
+    if let RecordBody::Doc(d) = &record.body {
+        if let Ok(content) = std::fs::read_to_string(root.join(&d.path)) {
+            let title = record.envelope.title.as_str();
+            return [title, content.trim()]
+                .into_iter()
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join("\n\n");
+        }
+    }
+    record_text(record)
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -404,5 +425,50 @@ mod tests {
         assert_eq!(cosine(&[1.0], &[1.0, 2.0]), 0.0);
         assert_eq!(cosine(&[0.0, 0.0], &[1.0, 0.0]), 0.0);
         assert!((cosine(&[1.0, 0.0], &[1.0, 0.0]) - 1.0).abs() < 1e-6);
+    }
+
+    fn doc_record(path: &str, summary: &str) -> Record {
+        use ft_core::{Doc, Identity, RecordBuilder, RecordKind, TrustState};
+        RecordBuilder::new(
+            RecordKind::Doc,
+            "Design doc",
+            Identity::new("a@b.com").unwrap(),
+        )
+        .doc(Doc {
+            path: path.into(),
+            content_hash: String::new(),
+            title: "Design doc".into(),
+            summary: summary.into(),
+            doc_type: "design".into(),
+            trust: TrustState::Reviewed,
+        })
+        .build()
+        .unwrap()
+    }
+
+    #[test]
+    fn record_text_with_root_embeds_file_contents() {
+        let dir = tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("design.md"),
+            "# Plan\nThe quokka subsystem uses a ringbuffer.",
+        )
+        .unwrap();
+        let rec = doc_record("design.md", "short excerpt");
+
+        let text = record_text_with_root(dir.path(), &rec);
+        // Full file content is embedded, not just the summary.
+        assert!(text.contains("quokka subsystem uses a ringbuffer"));
+        assert!(!text.contains("short excerpt"));
+    }
+
+    #[test]
+    fn record_text_with_root_falls_back_when_file_missing() {
+        let dir = tempdir().unwrap();
+        let rec = doc_record("does-not-exist.md", "short excerpt");
+        // No panic; degrades to the summary-based record_text.
+        let text = record_text_with_root(dir.path(), &rec);
+        assert_eq!(text, record_text(&rec));
+        assert!(text.contains("short excerpt"));
     }
 }

@@ -124,7 +124,25 @@ impl SearchEngine {
     /// Upsert the lexical row + metadata for a record. Thin wrapper over
     /// [`Self::upsert_document`].
     pub fn upsert_lexical(&self, record: &Record) -> Result<(), SearchError> {
-        let (title, body) = record_to_text(record);
+        self.upsert_lexical_inner(record, record_to_text(record))
+    }
+
+    /// Like [`Self::upsert_lexical`], but for file-backed `Doc` records indexes
+    /// the linked `.md` file's contents (resolved against `root`) instead of the
+    /// stored summary. A missing file degrades to the summary fallback.
+    pub fn upsert_lexical_with_root(
+        &self,
+        record: &Record,
+        root: &std::path::Path,
+    ) -> Result<(), SearchError> {
+        self.upsert_lexical_inner(record, record_to_text_with_root(record, Some(root)))
+    }
+
+    fn upsert_lexical_inner(
+        &self,
+        record: &Record,
+        (title, body): (String, String),
+    ) -> Result<(), SearchError> {
         let doc = IndexDoc {
             id: DocId::Record(record.envelope.id.clone()),
             kind: IndexKind::Record(record.envelope.kind),
@@ -805,11 +823,29 @@ fn record_to_text(record: &Record) -> (String, String) {
             parts.extend(m.tags.iter().cloned());
             parts.join("\n")
         }
-        // TODO(firetrail-2mwp.4): index the linked .md file contents. Interim:
-        // the stored summary keeps a Doc lexically searchable.
-        RecordBody::Doc(d) => format!("{}\n{}", d.title, d.summary),
+        RecordBody::Doc(d) => doc_index_body(d, None),
     };
     (title, body)
+}
+
+/// Like [`record_to_text`] but resolves a file-backed `Doc`'s body from the
+/// linked `.md` file (against `root`) when available.
+fn record_to_text_with_root(record: &Record, root: Option<&std::path::Path>) -> (String, String) {
+    if let RecordBody::Doc(d) = &record.body {
+        return (record.envelope.title.clone(), doc_index_body(d, root));
+    }
+    record_to_text(record)
+}
+
+/// FTS body for a `Doc`: the linked file's contents when readable, else the
+/// stored title + summary so a broken link stays lexically findable.
+fn doc_index_body(d: &ft_core::Doc, root: Option<&std::path::Path>) -> String {
+    if let Some(root) = root {
+        if let Ok(content) = std::fs::read_to_string(root.join(&d.path)) {
+            return content;
+        }
+    }
+    format!("{}\n{}", d.title, d.summary)
 }
 
 /// Escape user-supplied text so it parses as an FTS5 phrase query rather

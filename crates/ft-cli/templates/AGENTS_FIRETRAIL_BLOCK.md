@@ -162,6 +162,25 @@ importer expects a directory. **Memories are immutable**, so a field
 missed at create time cannot be patched in later; the importer is the
 only path that captures structured fields like `root_cause`.
 
+### Linking file-backed docs
+
+Design docs, ADRs, and runbooks that live as `.md` files (not memory
+records) are tracked as **Doc records** — a thin pointer with a
+`content_hash`; the `.md` file stays the source of truth. Adopt and link
+them so `prime --task <id>` delivers the doc (link + summary + path) to
+the next agent:
+
+```
+firetrail doc add <file.md> --type design   # adr | runbook | reference (default design)
+firetrail doc link <doc-id> <work-item-id>  # DocumentedIn → prime delivers it
+firetrail doc index [<doc-id>]              # refresh content_hash/summary; no arg = all docs
+```
+
+`doc add` also takes `--title` and `--scope`. `doc link` is the only
+way to create the edge `prime` follows — there is no frontmatter
+shortcut. A stale `content_hash` is re-indexed lazily when `prime`
+reads the doc, so linking is safe even if the file is edited later.
+
 ### Searching and priming context
 
 ```

@@ -39,7 +39,7 @@ the quick reference.
    firetrail ready
    firetrail show <id>
    firetrail search "<task keywords>"       # has this been solved before?
-   firetrail prime --task <id>              # context pack
+   firetrail prime --task <id>              # context pack (incl. linked docs)
    firetrail claim <id>
    ```
 
@@ -79,6 +79,20 @@ the quick reference.
    into a temp dir and point the importer at it; that's the only path
    that captures structured fields. Memories are immutable — fields
    missed at create time cannot be patched in later.
+
+   Produced a design / ADR / runbook / reference doc as a live `.md`
+   file? Adopt it as a Doc record and link it so the next agent gets it
+   on `prime`. The `.md` file stays the source of truth — the record is
+   a thin pointer with a `content_hash`.
+   ```
+   firetrail doc add <file.md> --type design   # adr | runbook | reference
+   firetrail doc link <doc-id> <work-item-id>  # the link prime follows
+   firetrail doc index [<doc-id>]              # refresh after editing the file
+   ```
+   `doc link` is the ONLY thing that makes `prime --task` deliver the
+   doc — there is no frontmatter shortcut. Linking is safe after edits:
+   a stale `content_hash` is re-indexed lazily when `prime` reads the
+   doc, so run `doc index` (no arg = all docs) only to refresh eagerly.
 
 4. Finished work?
    ```
@@ -125,6 +139,12 @@ firetrail doctor                 # workspace health
 - Trust progression is `draft → reviewed → verified`. You cannot
   self-promote to `verified` without the `can_promote_verified`
   capability. Check via `firetrail identity show <id>`.
+- A Doc record points at a live `.md` file — it does not copy the body.
+  Move or rename the file and the pointer dangles (the doc shows as a
+  broken link). Restore the path, or `doc add` the new path and
+  `doc link` it again — re-adding mints a new record id, so the old
+  link won't follow. `doc link` is what makes `prime --task` deliver
+  the doc.
 
 See `AGENTS.md` for the comprehensive workflow, the full list of
 gotchas, and design references.

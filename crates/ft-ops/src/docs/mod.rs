@@ -18,11 +18,12 @@
 //! Like every op in this crate these are embedded-storage only and take
 //! `(&Workspace, &Identity, Input, &EventBus)`.
 
+use std::collections::HashSet;
 use std::path::Path;
 
 use chrono::Utc;
-use ft_core::{Doc, RecordBody, RecordBuilder, RecordKind, Relation, RelationKind};
-use ft_embed::{apply_doc_content, parse_doc_meta};
+use ft_core::{Doc, RecordBody, RecordBuilder, RecordId, RecordKind, Relation, RelationKind};
+use ft_embed::{apply_doc_content, parse_doc_meta, parse_frontmatter};
 use serde::{Deserialize, Serialize};
 
 use crate::error::OpsError;
@@ -262,31 +263,69 @@ pub fn add(
     let content = std::fs::read_to_string(&abs)
         .map_err(|e| OpsError::validation("file", format!("cannot read {}: {e}", input.file)))?;
 
+    // Spec §5 frontmatter is authoritative where present: `doc_type` and
+    // `scope` override the call inputs (mirroring each other's precedence),
+    // `status` seeds the trust state, and `links:` becomes DocumentedIn edges.
+    let fm = parse_frontmatter(&content);
     let (parsed_title, summary) = parse_doc_meta(&content);
     let title = input
         .title
         .or(parsed_title)
         .unwrap_or_else(|| file_stem(&input.file));
     let actor = ctx.actor.clone();
+    let doc_type = fm.doc_type.unwrap_or(input.doc_type);
+    let trust = fm.status.unwrap_or(ft_core::TrustState::Draft);
+    let scope = fm.scope.or(input.scope);
 
     let mut builder = RecordBuilder::new(RecordKind::Doc, &title, actor).doc(Doc {
         path: input.file.clone(),
         content_hash: ft_embed::content_hash(&content),
         title: title.clone(),
         summary,
-        doc_type: input.doc_type,
-        trust: ft_core::TrustState::Draft,
+        doc_type,
+        trust,
     });
-    if let Some(scope) = &input.scope {
+    if let Some(scope) = &scope {
         builder = builder.owning_scope(scope);
     }
     let mut record = builder
         .build()
         .map_err(|e| OpsError::Internal(anyhow::anyhow!("build doc: {e}")))?;
     ctx.save_record(&mut record)?;
+    let doc_id = record.envelope.id.clone();
+
+    // Adopt each frontmatter `links:` work item as a `work_item
+    // --DocumentedIn--> doc` edge. Unresolvable ids, self-links, and
+    // duplicates are skipped silently — a forgiving convention, not a gate.
+    let mut seen: HashSet<RecordId> = HashSet::new();
+    let mut linked_any = false;
+    for raw in &fm.links {
+        let Ok(work_id) = ctx.resolve_id(raw) else {
+            continue;
+        };
+        if work_id == doc_id || !seen.insert(work_id.clone()) {
+            continue;
+        }
+        append_relation(
+            ws,
+            &Relation {
+                from: work_id,
+                to: doc_id.clone(),
+                kind: RelationKind::DocumentedIn,
+                created_at: Utc::now(),
+                created_by: ctx.actor.clone(),
+            },
+        )?;
+        linked_any = true;
+    }
+    if linked_any {
+        ctx.index
+            .refresh(&ctx.storage, &[], &[])
+            .map_err(|e| OpsError::Internal(anyhow::anyhow!("index refresh: {e}")))?;
+    }
 
     Ok(AddDocOutput {
-        id: record.envelope.id.as_str().to_string(),
+        id: doc_id.as_str().to_string(),
         path: input.file,
     })
 }

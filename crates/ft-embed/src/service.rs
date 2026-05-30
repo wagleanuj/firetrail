@@ -285,6 +285,145 @@ fn strip_frontmatter(text: &str) -> &str {
     text
 }
 
+/// Machine-readable fields a doc may declare in its YAML frontmatter
+/// (firetrail docs design spec §5). All are optional: a doc with no
+/// frontmatter — or none of these keys — yields the [`Default`].
+///
+/// `links` carries the work-item ids this doc documents; the doc-add path
+/// turns each into a `work_item --DocumentedIn--> doc` edge. Unknown keys are
+/// ignored and an unrecognized `status` value leaves [`status`](Self::status)
+/// `None` (the record stays `Draft`) rather than erroring.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DocFrontmatter {
+    /// `doc_type:` — overrides the `--type` flag when present.
+    pub doc_type: Option<String>,
+    /// `status:` — mapped to a [`ft_core::TrustState`]; `None` if absent or
+    /// unrecognized.
+    pub status: Option<ft_core::TrustState>,
+    /// `scope:` — owning scope for the record envelope.
+    pub scope: Option<String>,
+    /// `links:` — work-item ids this doc documents (block or inline list).
+    pub links: Vec<String>,
+}
+
+/// Parse the [`DocFrontmatter`] from a doc's markdown.
+///
+/// Hand-parses a deliberately small, flat subset of YAML — `key: scalar`
+/// pairs plus a `links:` list in either block (`- item`) or inline
+/// (`[a, b]`) form. Trailing `" #"` comments and surrounding quotes are
+/// stripped. Anything outside this subset is ignored, never an error: the
+/// goal is a forgiving convention layer, not a YAML engine.
+#[must_use]
+pub fn parse_frontmatter(text: &str) -> DocFrontmatter {
+    let mut fm = DocFrontmatter::default();
+    let Some(block) = frontmatter_block(text) else {
+        return fm;
+    };
+
+    let mut lines = block.lines().peekable();
+    while let Some(raw) = lines.next() {
+        let line = strip_comment(raw);
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let Some((key, value)) = trimmed.split_once(':') else {
+            continue;
+        };
+        let value = unquote(value.trim());
+        match key.trim() {
+            "doc_type" if !value.is_empty() => fm.doc_type = Some(value.to_string()),
+            "scope" if !value.is_empty() => fm.scope = Some(value.to_string()),
+            "status" => fm.status = parse_trust_state(value),
+            "links" => {
+                if value.is_empty() {
+                    // Block list: consume the following `  - item` lines.
+                    while let Some(peek) = lines.peek() {
+                        let item_line = strip_comment(peek);
+                        let item = item_line.trim();
+                        if let Some(rest) = item.strip_prefix("- ") {
+                            let id = unquote(rest.trim());
+                            if !id.is_empty() {
+                                fm.links.push(id.to_string());
+                            }
+                            lines.next();
+                        } else if item.is_empty() {
+                            lines.next();
+                        } else {
+                            break; // next key — leave it for the outer loop.
+                        }
+                    }
+                } else {
+                    fm.links.extend(parse_inline_list(value));
+                }
+            }
+            _ => {}
+        }
+    }
+    fm
+}
+
+/// The inner text of a leading `---\n … \n---` frontmatter block, if present.
+fn frontmatter_block(text: &str) -> Option<&str> {
+    let rest = text
+        .strip_prefix("---\n")
+        .or_else(|| text.strip_prefix("---\r\n"))?;
+    let end = rest.find("\n---")?;
+    Some(&rest[..end])
+}
+
+/// Drop a trailing `" #…"` YAML comment from a line.
+fn strip_comment(line: &str) -> &str {
+    match line.find(" #") {
+        Some(idx) => &line[..idx],
+        None => line,
+    }
+}
+
+/// Strip a single pair of matching surrounding quotes.
+fn unquote(s: &str) -> &str {
+    let s = s.trim();
+    for q in ['"', '\''] {
+        if s.len() >= 2 && s.starts_with(q) && s.ends_with(q) {
+            return &s[1..s.len() - 1];
+        }
+    }
+    s
+}
+
+/// Map a `status:` value to a [`ft_core::TrustState`] (the `snake_case` wire
+/// names). Unrecognized values yield `None`.
+fn parse_trust_state(s: &str) -> Option<ft_core::TrustState> {
+    use ft_core::TrustState;
+    Some(match s.trim() {
+        "draft" => TrustState::Draft,
+        "reviewed" => TrustState::Reviewed,
+        "verified" => TrustState::Verified,
+        "stale" => TrustState::Stale,
+        "deprecated" => TrustState::Deprecated,
+        "archived" => TrustState::Archived,
+        "superseded" => TrustState::Superseded,
+        "rejected" => TrustState::Rejected,
+        "redacted" => TrustState::Redacted,
+        _ => return None,
+    })
+}
+
+/// Split an inline `[a, b]` (or bare comma-scalar) list into trimmed,
+/// unquoted, non-empty items.
+fn parse_inline_list(value: &str) -> Vec<String> {
+    let inner = value
+        .strip_prefix('[')
+        .and_then(|v| v.strip_suffix(']'))
+        .unwrap_or(value);
+    inner
+        .split(',')
+        .map(|s| unquote(s.trim()))
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
 /// Extract the embeddable text from a [`Record`]: title + the body's prose
 /// fields, separated by `"\n\n"`.
 ///
@@ -611,6 +750,71 @@ mod tests {
         let (_t, summary) = super::parse_doc_meta(&long);
         assert!(summary.len() <= 280);
         assert!(summary.ends_with("..."));
+    }
+
+    #[test]
+    fn parse_frontmatter_reads_scalars_block_list_and_maps_status() {
+        let md = "---\n\
+            doc_type: adr\n\
+            status: reviewed\n\
+            scope: ft-ui\n\
+            links:\n\
+            \x20 - firetrail-n3gh\n\
+            \x20 - firetrail-2mwp\n\
+            ---\n\
+            # Title\n\nBody.\n";
+        let fm = super::parse_frontmatter(md);
+        assert_eq!(fm.doc_type.as_deref(), Some("adr"));
+        assert_eq!(fm.status, Some(ft_core::TrustState::Reviewed));
+        assert_eq!(fm.scope.as_deref(), Some("ft-ui"));
+        assert_eq!(fm.links, vec!["firetrail-n3gh", "firetrail-2mwp"]);
+    }
+
+    #[test]
+    fn parse_frontmatter_reads_inline_list_and_strips_comments_and_quotes() {
+        let md = "---\n\
+            doc_type: \"design\"  # the kind\n\
+            links: [firetrail-a, firetrail-b]\n\
+            ---\nbody\n";
+        let fm = super::parse_frontmatter(md);
+        assert_eq!(fm.doc_type.as_deref(), Some("design"));
+        assert_eq!(fm.links, vec!["firetrail-a", "firetrail-b"]);
+        assert_eq!(fm.status, None);
+        assert_eq!(fm.scope, None);
+    }
+
+    #[test]
+    fn parse_frontmatter_unknown_status_leaves_none() {
+        let fm = super::parse_frontmatter("---\nstatus: bananas\n---\nbody\n");
+        assert_eq!(fm.status, None, "unknown status value is ignored, not an error");
+    }
+
+    #[test]
+    fn parse_frontmatter_absent_block_yields_empty() {
+        let fm = super::parse_frontmatter("# Just a heading\n\nNo frontmatter here.\n");
+        assert_eq!(fm.doc_type, None);
+        assert_eq!(fm.status, None);
+        assert_eq!(fm.scope, None);
+        assert!(fm.links.is_empty());
+    }
+
+    #[test]
+    fn parse_frontmatter_maps_all_known_statuses() {
+        let cases = [
+            ("draft", ft_core::TrustState::Draft),
+            ("reviewed", ft_core::TrustState::Reviewed),
+            ("verified", ft_core::TrustState::Verified),
+            ("stale", ft_core::TrustState::Stale),
+            ("deprecated", ft_core::TrustState::Deprecated),
+            ("archived", ft_core::TrustState::Archived),
+            ("superseded", ft_core::TrustState::Superseded),
+            ("rejected", ft_core::TrustState::Rejected),
+            ("redacted", ft_core::TrustState::Redacted),
+        ];
+        for (raw, want) in cases {
+            let md = format!("---\nstatus: {raw}\n---\n");
+            assert_eq!(super::parse_frontmatter(&md).status, Some(want), "status {raw}");
+        }
     }
 
     #[test]

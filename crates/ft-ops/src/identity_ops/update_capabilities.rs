@@ -103,6 +103,12 @@ pub fn update_capabilities(
         .save(&ws.root)
         .map_err(|e| OpsError::Internal(anyhow::anyhow!("save registry: {e}")))?;
 
+    // firetrail-8z0m.5: re-embed the `identity:<id>` synthetic doc on write so
+    // an updated capability matrix is reflected in semantic search immediately.
+    if let Some(saved) = registry.identities.iter().find(|i| i.id == input.id) {
+        crate::synthetic_embed::dispatch_identity(ws, "identity update", saved);
+    }
+
     emit_updated(
         events,
         input.request_id.as_deref(),

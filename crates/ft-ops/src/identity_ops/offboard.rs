@@ -72,6 +72,12 @@ pub fn offboard(
         .save(&ws.root)
         .map_err(|e| OpsError::Internal(anyhow::anyhow!("save registry: {e}")))?;
 
+    // firetrail-8z0m.5: re-embed the `identity:<id>` synthetic doc on write so
+    // the offboarded status is reflected in semantic search immediately.
+    if let Some(saved) = registry.identities.iter().find(|i| i.id == input.id) {
+        crate::synthetic_embed::dispatch_identity(ws, "identity offboard", saved);
+    }
+
     let mut released: Vec<String> = Vec::new();
     let mut warnings: Vec<String> = Vec::new();
 

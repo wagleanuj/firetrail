@@ -329,7 +329,8 @@ impl SearchEngine {
                 continue;
             };
             let score =
-                ranking::lexical_only_score(row.lexical_score, meta.trust, meta.updated_at, now);
+                ranking::lexical_only_score(row.lexical_score, meta.trust, meta.updated_at, now)
+                    * ranking::kind_weight(meta.kind);
             hits.push(SearchHit {
                 id: DocId::parse(&row.id_str),
                 kind: meta.kind,
@@ -622,6 +623,19 @@ struct RecordMeta {
 }
 
 fn combine_score(
+    row: &ScoringRow,
+    meta: &RecordMeta,
+    now: DateTime<Utc>,
+    requested_mode: SearchMode,
+    vec_loaded: bool,
+) -> (HitMode, f32) {
+    let (mode, score) = base_combine_score(row, meta, now, requested_mode, vec_loaded);
+    // firetrail-8z0m.7: down-rank audit echoes so they sort below the parent
+    // record / other domains while staying searchable.
+    (mode, score * ranking::kind_weight(meta.kind))
+}
+
+fn base_combine_score(
     row: &ScoringRow,
     meta: &RecordMeta,
     now: DateTime<Utc>,

@@ -185,7 +185,7 @@ fn index_synthetic_docs(
     }
 
     for rec in records {
-        let trust = audit_record_trust(rec);
+        let trust = crate::context::audit_record_trust(rec);
         docs.extend(ft_search::audit_docs(rec, trust));
     }
 
@@ -195,63 +195,67 @@ fn index_synthetic_docs(
             .map_err(|e| CliError::internal(cmd, format!("upsert synthetic doc: {e}")))?;
     }
 
-    dispatch_synthetic_embeddings(ws, &docs, warnings);
+    // firetrail-8z0m.6: rebuild also best-effort embeds the *records* it just
+    // re-indexed lexically, so a fresh rebuild yields fully-semantic record
+    // search instead of lexical-only-until-resave. Same daemon-status gate and
+    // non-fatal policy as the synthetic-doc dispatch below — never spawns a
+    // daemon (see `dispatch_rebuild_embeddings`).
+    dispatch_rebuild_embeddings(ws, records, &docs, warnings);
 
     Ok(docs.len())
 }
 
-/// Trust an audit doc inherits — mirrors the engine's record-trust rule
-/// (memory bodies carry trust; work kinds default to reviewed).
-fn audit_record_trust(rec: &ft_core::Record) -> ft_core::TrustState {
-    use ft_core::{RecordBody, TrustState};
-    match &rec.body {
-        RecordBody::Incident(b) => b.trust,
-        RecordBody::Finding(b) => b.trust,
-        RecordBody::Runbook(b) => b.trust,
-        RecordBody::Decision(b) => b.trust,
-        RecordBody::Gotcha(b) => b.trust,
-        RecordBody::Memory(b) => b.trust,
-        RecordBody::Doc(b) => b.trust,
-        RecordBody::Epic(_) | RecordBody::Task(_) | RecordBody::Subtask(_) | RecordBody::Bug(_) => {
-            TrustState::Reviewed
-        }
-    }
-}
-
-/// Send `IndexRecord` requests for synthetic docs so their vectors land.
+/// Send `IndexRecord` requests for the records (firetrail-8z0m.6) and synthetic
+/// docs (firetrail-8z0m.3) re-indexed by this rebuild/refresh, so their vectors
+/// land.
 ///
 /// Best effort, and deliberately **non-spawning**: we only dispatch when a
-/// daemon is *already* running. `index rebuild` must not start a background
-/// embedder, because that daemon would open the same `SQLite` database
-/// concurrently with the rebuild's own connection (corrupting it) and outlive
-/// the command (breaking subsequent index opens). Guaranteed embedding of
-/// freshly-changed config/audit docs is handled incrementally on write
-/// (firetrail-8z0m.5); here we opportunistically embed when a daemon already
-/// exists (e.g. one auto-spawned by an earlier `search`), else stay
-/// lexical-only.
-fn dispatch_synthetic_embeddings(
+/// daemon is *already* running (`DaemonStatus::Running`). `index rebuild` must
+/// not start a background embedder, because that daemon would open the same
+/// `SQLite` database concurrently with the rebuild's own connection (corrupting
+/// it) and outlive the command (breaking subsequent index opens). This mirrors
+/// the on-write gate in `try_dispatch_index_record` (records) exactly: status
+/// must already be `Running`, never spawn. Guaranteed embedding of
+/// freshly-changed records/config/audit docs is handled incrementally on write
+/// (firetrail-8z0m.5 / firetrail-0nu); here we opportunistically embed when a
+/// daemon already exists (e.g. one auto-spawned by an earlier `search`), else
+/// stay lexical-only.
+fn dispatch_rebuild_embeddings(
     ws: &crate::workspace::Workspace,
+    records: &[ft_core::Record],
     docs: &[IndexDoc],
     warnings: &mut Vec<String>,
 ) {
-    if docs.is_empty() {
+    if records.is_empty() && docs.is_empty() {
         return;
     }
     let socket = match ws.daemon_socket_path() {
         Ok(s) => s,
         Err(e) => {
-            warnings.push(format!("synthetic-doc embedding skipped: {e}"));
+            warnings.push(format!("rebuild embedding skipped: {e}"));
             return;
         }
     };
     if ft_embed::daemon::status(&socket) != ft_embed::daemon::DaemonStatus::Running {
         warnings.push(
-            "synthetic-doc embedding skipped: no embed daemon running (docs indexed \
-             lexically; start the daemon or re-save to embed)"
+            "rebuild embedding skipped: no embed daemon running (records + synthetic docs \
+             indexed lexically; start the daemon or re-save to embed)"
                 .to_string(),
         );
         return;
     }
+    // Records: embed under their bare RecordId, using the same text builder as
+    // the on-write dispatch (`try_dispatch_index_record`) so a rebuilt vector is
+    // byte-identical to an on-write one.
+    for rec in records {
+        let text = ft_embed::record_text_with_root(&ws.root, rec);
+        if let Err(e) =
+            ft_embed::daemon::send_index_record(&socket, rec.envelope.id.as_str(), &text)
+        {
+            warnings.push(format!("embed {} failed: {e}", rec.envelope.id.as_str()));
+        }
+    }
+    // Synthetic docs (scope/identity/audit): embed under their namespaced DocId.
     for doc in docs {
         let id = doc.id.as_storage_str();
         if let Err(e) = ft_embed::daemon::send_index_record(&socket, &id, &doc.embed_text()) {

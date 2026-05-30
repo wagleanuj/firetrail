@@ -184,8 +184,34 @@ impl<'a> TicketCtx<'a> {
 
         self.upsert_search_lexical(record);
         self.try_dispatch_index_record(record);
+        self.upsert_and_embed_audit_docs(record);
 
         Ok(path)
+    }
+
+    /// firetrail-8z0m.5: keep the record's `audit:<id>#h<n>` synthetic docs
+    /// current on write. Upsert each audit doc lexically (FTS + meta) and
+    /// dispatch its embedding under the audit `DocId`, mirroring how
+    /// `index rebuild` indexes + embeds these docs. Non-fatal.
+    fn upsert_and_embed_audit_docs(&mut self, record: &Record) {
+        let docs = crate::synthetic_embed::audit_docs_for(record);
+        if docs.is_empty() {
+            return;
+        }
+        let op = self.op;
+        match self.search_engine() {
+            Ok(engine) => {
+                for doc in &docs {
+                    if let Err(e) = engine.upsert_document(doc) {
+                        tracing::warn!(error = %e, op = op, "audit doc upsert failed");
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, op = op, "search engine unavailable for audit docs");
+            }
+        }
+        crate::synthetic_embed::dispatch_docs(self.ws, self.op, &docs);
     }
 
     fn upsert_search_lexical(&mut self, record: &Record) {

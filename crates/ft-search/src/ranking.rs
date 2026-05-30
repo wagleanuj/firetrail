@@ -14,6 +14,8 @@
 use chrono::{DateTime, Utc};
 use ft_core::TrustState;
 
+use crate::IndexKind;
+
 /// Vector-similarity weight. See module docs.
 pub const ALPHA: f32 = 0.50;
 /// Lexical (FTS5 bm25-derived) weight.
@@ -49,6 +51,28 @@ pub fn trust_weight(trust: TrustState) -> f32 {
         | TrustState::Superseded
         | TrustState::Rejected
         | TrustState::Redacted => 0.0,
+    }
+}
+
+/// Kind-based ranking multiplier in `(0.0, 1.0]` (firetrail-8z0m.7).
+///
+/// Per-entry audit/history docs reuse the parent record's title (`<op>: <record
+/// title>`), so a title search returns the record *and* every one of its audit
+/// entries — pure noise that crowds out the real record and other domains.
+///
+/// We keep audit docs searchable (so an audit-scoped query still finds them) but
+/// **down-rank** them with a multiplier so an `Audit` hit always sorts below an
+/// otherwise-equal `Record` (or scope/identity) hit. All non-audit kinds keep
+/// full weight (`1.0`), so this is a no-op for every previously-indexed domain.
+///
+/// `0.25` is small enough to push audit echoes below their parent record yet
+/// large enough that a genuinely strong audit-only match (e.g. a query that hits
+/// the op summary, not the title) can still surface.
+#[must_use]
+pub fn kind_weight(kind: IndexKind) -> f32 {
+    match kind {
+        IndexKind::Audit => 0.25,
+        IndexKind::Record(_) | IndexKind::Scope | IndexKind::Identity => 1.0,
     }
 }
 
@@ -177,6 +201,35 @@ mod tests {
         assert!((0.0..=1.0).contains(&n));
         let huge = normalize_bm25(-1e9);
         assert!((0.0..=1.0).contains(&huge));
+    }
+
+    #[test]
+    fn audit_kind_down_ranked_below_other_kinds() {
+        use ft_core::RecordKind;
+        // Audit is strictly discounted; every other domain stays at full weight.
+        assert!(kind_weight(IndexKind::Audit) < kind_weight(IndexKind::Record(RecordKind::Task)));
+        assert!(kind_weight(IndexKind::Audit) < kind_weight(IndexKind::Scope));
+        assert!(kind_weight(IndexKind::Audit) < kind_weight(IndexKind::Identity));
+        assert!((kind_weight(IndexKind::Record(RecordKind::Memory)) - 1.0).abs() < f32::EPSILON);
+        assert!((kind_weight(IndexKind::Scope) - 1.0).abs() < f32::EPSILON);
+        // Still positive — audit docs stay searchable, just lower.
+        assert!(kind_weight(IndexKind::Audit) > 0.0);
+    }
+
+    #[test]
+    fn audit_hit_ranks_below_equal_score_record_hit() {
+        use ft_core::RecordKind;
+        let now = chrono::DateTime::<Utc>::from_timestamp(1_700_000_000, 0).unwrap();
+        // Two hits with identical raw lexical score, trust, and recency: one a
+        // record, one an audit echo. After applying kind_weight the audit hit
+        // must rank strictly lower.
+        let raw = lexical_only_score(0.9, TrustState::Reviewed, now, now);
+        let record_score = raw * kind_weight(IndexKind::Record(RecordKind::Task));
+        let audit_score = raw * kind_weight(IndexKind::Audit);
+        assert!(
+            audit_score < record_score,
+            "audit hit ({audit_score}) must rank below equal-score record hit ({record_score})"
+        );
     }
 
     #[test]

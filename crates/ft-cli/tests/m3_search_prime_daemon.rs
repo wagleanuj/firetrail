@@ -232,6 +232,86 @@ fn index_rebuild_succeeds_and_search_works_after() {
 }
 
 #[test]
+fn audit_docs_are_searchable_on_write_without_rebuild() {
+    // firetrail-8z0m.5: saving a record appends a history entry whose
+    // `audit:<id>#h<n>` synthetic doc is now upserted (and embed-dispatched)
+    // on write. The audit doc must therefore be searchable via `--kind audit`
+    // *immediately*, with no intervening `index rebuild`.
+    let tr = fresh_repo();
+    let task = run_firetrail(
+        tr.root(),
+        &[
+            "task",
+            "create",
+            "Investigate flaky payment webhook",
+            "--json",
+        ],
+    );
+    assert!(task.success(), "task create failed: {}", task.stderr);
+    let id = id_from_create(&task);
+
+    // No rebuild here — straight to search.
+    let out = run_firetrail(
+        tr.root(),
+        &["search", "webhook", "--kind", "audit", "--json"],
+    );
+    assert!(out.success(), "audit search failed: {}", out.stderr);
+    let hits = parse_json(&out)["data"]["hits"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    assert!(
+        hits.iter().any(|h| {
+            h["kind"].as_str() == Some("audit")
+                && h["id"]
+                    .as_str()
+                    .is_some_and(|i| i.starts_with(&format!("audit:{id}")))
+        }),
+        "expected an on-write audit doc for {id} searchable without rebuild, got {hits:#?}"
+    );
+}
+
+#[test]
+fn index_rebuild_dispatches_record_embeddings_non_fatally_without_daemon() {
+    // firetrail-8z0m.6: `index rebuild` now best-effort embeds records (not just
+    // synthetic docs). With no embed daemon running (the hermetic-CI case) the
+    // dispatch path must be *reached* and *non-fatal*: rebuild still succeeds,
+    // every record is upserted lexically, and the skip is surfaced as a single
+    // warning that names both records and synthetic docs.
+    let tr = fresh_repo();
+    let (_id1, _id2) = create_two_records(tr.root());
+
+    let rebuild = run_firetrail(tr.root(), &["index", "rebuild", "--json"]);
+    assert!(rebuild.success(), "rebuild failed: {}", rebuild.stderr);
+    let v = parse_json(&rebuild);
+    assert_eq!(v["command"], "index rebuild");
+    // Lexical indexing of records still happened.
+    let search_rows = v["data"]["search_rows_upserted"].as_u64().unwrap();
+    assert!(search_rows >= 2, "records must still be upserted lexically");
+
+    // The new record-embedding dispatch ran and degraded gracefully: a single
+    // "rebuild embedding skipped" warning (covering records + synthetic docs)
+    // proves the daemon-status gate fired with status != Running rather than
+    // the rebuild spawning a daemon or hard-failing.
+    let warnings = v["data"]["warnings"].as_array().expect("warnings array");
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.as_str().is_some_and(|s| s.contains("rebuild embedding skipped"))),
+        "expected a 'rebuild embedding skipped' warning, got {warnings:#?}"
+    );
+
+    // Records are still searchable (lexical-only) after the (skipped) embed.
+    let out = run_firetrail(tr.root(), &["search", "payment", "--json"]);
+    assert!(out.success(), "search after rebuild failed: {}", out.stderr);
+    let hits = parse_json(&out)["data"]["hits"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    assert!(!hits.is_empty(), "records must remain searchable after rebuild");
+}
+
+#[test]
 fn search_finds_scopes_identities_and_audit_after_rebuild() {
     // Task 9: prove `firetrail search --kind scope|identity|audit` works after
     // `index rebuild` synthesizes the corresponding domain docs.

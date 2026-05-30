@@ -356,6 +356,13 @@ pub fn register(
         .save(&ws.root)
         .map_err(|e| CliError::internal(CMD_REGISTER, format!("save registry: {e}")))?;
 
+    // firetrail-8z0m.5: re-embed the `identity:<id>` synthetic doc on write
+    // (best-effort, daemon-gated, non-fatal) so semantic search reflects the
+    // new identity immediately.
+    if let Some(saved) = registry.identities.iter().find(|i| i.id == args.id) {
+        dispatch_identity_embedding(&ws, CMD_REGISTER, saved);
+    }
+
     let _ = global;
     Ok(CommandOutcome::IdentityRegister(IdentityRegisterOutcome {
         command: CMD_REGISTER,
@@ -434,6 +441,12 @@ pub fn offboard(
         .save(&ctx.ws.root)
         .map_err(|e| CliError::internal(CMD_OFFBOARD, format!("save registry: {e}")))?;
 
+    // firetrail-8z0m.5: re-embed the `identity:<id>` synthetic doc on write so
+    // the offboarded status is reflected in semantic search immediately.
+    if let Some(saved) = registry.identities.iter().find(|i| i.id == args.id) {
+        dispatch_identity_embedding(&ctx.ws, CMD_OFFBOARD, saved);
+    }
+
     let mut released: Vec<String> = Vec::new();
     if args.sweep_claims {
         // Walk every record once; gather records claimed by any of the
@@ -499,5 +512,35 @@ fn clear_claim(body: &mut RecordBody) {
         RecordBody::Subtask(s) => s.claim = None,
         RecordBody::Bug(b) => b.claim = None,
         _ => {}
+    }
+}
+
+/// firetrail-8z0m.5: best-effort, daemon-gated re-embed of an identity's
+/// `identity:<id>` synthetic search doc after a registry write.
+///
+/// Mirrors the record on-write policy (`WorkCtx::try_dispatch_index_record`)
+/// and the synthetic-doc dispatch in `index_cmd`: dispatch **only** when an
+/// embed daemon is already running (`DaemonStatus::Running`); never spawn one;
+/// swallow every failure (the registry write already succeeded — a missing
+/// vector just means lexical-only until the next rebuild).
+fn dispatch_identity_embedding(
+    ws: &crate::workspace::Workspace,
+    command: &str,
+    identity: &RegisteredIdentity,
+) {
+    let socket = match ws.daemon_socket_path() {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!(error = %e, command = command, "resolve daemon socket for identity embed");
+            return;
+        }
+    };
+    if ft_embed::daemon::status(&socket) != ft_embed::DaemonStatus::Running {
+        return;
+    }
+    let doc = ft_search::identity_doc(identity, chrono::Utc::now());
+    let id = doc.id.as_storage_str();
+    if let Err(e) = ft_embed::daemon::send_index_record(&socket, &id, &doc.embed_text()) {
+        tracing::warn!(error = %e, command = command, id = %id, "identity embed-on-write dispatch failed");
     }
 }

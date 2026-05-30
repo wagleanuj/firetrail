@@ -155,6 +155,13 @@ pub fn register(
         .save(&ws.root)
         .map_err(|e| OpsError::Internal(anyhow::anyhow!("save registry: {e}")))?;
 
+    // firetrail-8z0m.5: re-embed the `identity:<id>` synthetic doc on write so
+    // semantic search reflects the new identity immediately (best-effort,
+    // daemon-gated, non-fatal — same policy as record on-write dispatch).
+    if let Some(saved) = registry.identities.iter().find(|i| i.id == input.id) {
+        crate::synthetic_embed::dispatch_identity(ws, "identity register", saved);
+    }
+
     emit_updated(events, input.request_id.as_deref(), &input.id, &["create"]);
     Ok(IdentityRegisterOutput { identity: view })
 }

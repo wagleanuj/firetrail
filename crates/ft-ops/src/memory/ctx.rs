@@ -172,7 +172,35 @@ impl<'a> MemoryCtx<'a> {
 
         self.upsert_search_lexical(record);
         self.try_dispatch_index_record(record);
+        self.upsert_and_embed_audit_docs(record);
         Ok(path)
+    }
+
+    /// firetrail-8z0m.5: keep the record's `audit:<id>#h<n>` synthetic docs
+    /// current on write — append-of-history happens in `save_record`, so a save
+    /// always produces at least one new audit entry. Upsert each audit doc
+    /// lexically (FTS + meta) and dispatch its embedding under the audit `DocId`,
+    /// mirroring how `index rebuild` indexes + embeds these docs. Non-fatal: a
+    /// search-layer hiccup must never block the write.
+    fn upsert_and_embed_audit_docs(&mut self, record: &Record) {
+        let docs = crate::synthetic_embed::audit_docs_for(record);
+        if docs.is_empty() {
+            return;
+        }
+        let op = self.op;
+        match self.search_engine() {
+            Ok(engine) => {
+                for doc in &docs {
+                    if let Err(e) = engine.upsert_document(doc) {
+                        tracing::warn!(error = %e, op = op, "audit doc upsert failed");
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, op = op, "search engine unavailable for audit docs");
+            }
+        }
+        crate::synthetic_embed::dispatch_docs(self.ws, self.op, &docs);
     }
 
     /// Persist `record` after auto-appending a history entry (Create on

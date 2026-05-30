@@ -307,7 +307,55 @@ impl WorkCtx {
         // blocks the write.
         self.try_dispatch_index_record(record);
 
+        // firetrail-8z0m.5: keep the record's `audit:<id>#h<n>` synthetic docs
+        // current on write (a save always appends ≥1 history entry). Upsert each
+        // lexically and dispatch its embedding under the audit DocId — mirrors
+        // how `index rebuild` indexes + embeds audit docs. Non-fatal.
+        self.upsert_and_embed_audit_docs(record);
+
         Ok(path)
+    }
+
+    /// Upsert + embed the per-entry `audit:<id>#h<n>` synthetic docs for a
+    /// freshly-written record (firetrail-8z0m.5).
+    ///
+    /// Embedding dispatch follows the same daemon-status gate as
+    /// [`Self::try_dispatch_index_record`]: only when a daemon is already
+    /// `Running`, never spawning one. Every step is best-effort and non-fatal.
+    fn upsert_and_embed_audit_docs(&mut self, record: &Record) {
+        let docs = ft_search::audit_docs(record, audit_record_trust(record));
+        if docs.is_empty() {
+            return;
+        }
+        let cmd = self.command.clone();
+        match self.search_engine() {
+            Ok(engine) => {
+                for doc in &docs {
+                    if let Err(e) = engine.upsert_document(doc) {
+                        tracing::warn!(error = %e, command = %cmd, "audit doc upsert failed");
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, command = %cmd, "search engine unavailable for audit docs");
+            }
+        }
+        let socket = match self.ws.daemon_socket_path() {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(error = %e, command = %cmd, "resolve daemon socket for audit embed");
+                return;
+            }
+        };
+        if ft_embed::daemon::status(&socket) != ft_embed::DaemonStatus::Running {
+            return;
+        }
+        for doc in &docs {
+            let id = doc.id.as_storage_str();
+            if let Err(e) = ft_embed::daemon::send_index_record(&socket, &id, &doc.embed_text()) {
+                tracing::warn!(error = %e, command = %cmd, id = %id, "audit embed-on-write dispatch failed");
+            }
+        }
     }
 
     /// Best-effort embed-on-write hand-off (firetrail-0nu).
@@ -363,6 +411,27 @@ impl WorkCtx {
             },
             other => CliError::internal(&self.command, other),
         })
+    }
+}
+
+/// Trust an audit synthetic doc inherits from its parent record — mirrors the
+/// engine's record-trust rule (memory bodies carry trust; work kinds default to
+/// reviewed). Shared by [`WorkCtx::upsert_and_embed_audit_docs`] and
+/// `commands::index_cmd`'s rebuild path so on-write and rebuild assign identical
+/// trust to the same audit doc.
+pub(crate) fn audit_record_trust(rec: &Record) -> ft_core::TrustState {
+    use ft_core::{RecordBody, TrustState};
+    match &rec.body {
+        RecordBody::Incident(b) => b.trust,
+        RecordBody::Finding(b) => b.trust,
+        RecordBody::Runbook(b) => b.trust,
+        RecordBody::Decision(b) => b.trust,
+        RecordBody::Gotcha(b) => b.trust,
+        RecordBody::Memory(b) => b.trust,
+        RecordBody::Doc(b) => b.trust,
+        RecordBody::Epic(_) | RecordBody::Task(_) | RecordBody::Subtask(_) | RecordBody::Bug(_) => {
+            TrustState::Reviewed
+        }
     }
 }
 

@@ -240,6 +240,7 @@ const ALL_KINDS: &[RecordKind] = &[
     RecordKind::Decision,
     RecordKind::Gotcha,
     RecordKind::Memory,
+    RecordKind::Doc,
 ];
 
 impl Storage for ExternalStorage {

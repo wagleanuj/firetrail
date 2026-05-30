@@ -112,6 +112,7 @@ const ALL_KINDS: &[RecordKind] = &[
     RecordKind::Decision,
     RecordKind::Gotcha,
     RecordKind::Memory,
+    RecordKind::Doc,
 ];
 
 impl Storage for EmbeddedStorage {
@@ -417,6 +418,41 @@ mod tests {
         assert_eq!(back, r);
         assert_eq!(back.envelope.state_hash, r.envelope.state_hash);
         assert_eq!(back.envelope.prev_state_hash, r.envelope.prev_state_hash);
+    }
+
+    #[test]
+    fn doc_record_round_trips_in_its_partition() {
+        use ft_core::{Doc, Identity, RecordBuilder};
+        let tr = TestRepo::new().unwrap();
+        let s = open_storage(&tr);
+        let r = RecordBuilder::new(
+            RecordKind::Doc,
+            "Docs design",
+            Identity::new("alice@example.com").unwrap(),
+        )
+        .doc(Doc {
+            path: "docs/x.md".into(),
+            content_hash: "b3:abc".into(),
+            title: "Docs design".into(),
+            summary: "file-backed docs".into(),
+            doc_type: "design".into(),
+            trust: ft_core::TrustState::Reviewed,
+        })
+        .build()
+        .unwrap();
+
+        let path = s.write(&r).unwrap();
+        // Lives under the `doc/` partition.
+        assert!(path.parent().unwrap().ends_with("doc"), "path: {path:?}");
+        assert_eq!(s.read(&r.envelope.id).unwrap(), r);
+
+        // Discoverable via the kind filter.
+        let by_kind: Vec<_> = s
+            .iter(&StorageFilter::default().kind(RecordKind::Doc))
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(by_kind.len(), 1);
+        assert_eq!(by_kind[0].envelope.id, r.envelope.id);
     }
 
     #[test]

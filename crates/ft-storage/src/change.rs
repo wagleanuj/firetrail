@@ -64,6 +64,7 @@ const ALL_KINDS: &[RecordKind] = &[
     RecordKind::Decision,
     RecordKind::Gotcha,
     RecordKind::Memory,
+    RecordKind::Doc,
 ];
 
 /// Classify a single changed path.

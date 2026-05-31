@@ -197,15 +197,160 @@ pub fn run(args: &DoctorArgs, global: &GlobalOpts) -> Result<CommandOutcome, Cli
     check_claim_consistency(&ws, &mut checks);
     check_external_sync(&ws, &mut checks);
 
+    // RepoProfile checks (firetrail-lj41.4). `strict_violations` captures the
+    // failing tiers a `--strict` run must turn into a non-zero exit.
+    let strict_violations = check_profile(&ws, &mut checks);
+
     let clean = checks.iter().all(|c| c.status == CheckStatus::Ok);
     let _ = global;
 
-    Ok(CommandOutcome::Doctor(DoctorReport {
+    let report = DoctorReport {
         root: ws.root.display().to_string(),
         clean,
         checks,
         warnings,
-    }))
+    };
+
+    // `--strict` is the CI escape hatch: build the full report (so callers
+    // still see every check in `details`), then fail when a profile tier is
+    // not satisfied. Default (non-strict) doctor never blocks.
+    if args.strict && !strict_violations.is_empty() {
+        return Err(CliError::UserError {
+            command: COMMAND.into(),
+            message: format!(
+                "doctor --strict: {} unmet profile requirement(s): {}",
+                strict_violations.len(),
+                strict_violations.join("; ")
+            ),
+            details: serde_json::to_value(&report).unwrap_or(serde_json::Value::Null),
+        });
+    }
+
+    Ok(CommandOutcome::Doctor(report))
+}
+
+/// `RepoProfile` tiers (design §4). Appends the `profile.*` checks and returns
+/// the list of `--strict` violation messages (empty when none apply).
+///
+/// Severity model: `CheckStatus` has only `Ok`/`Warn`/`Fail`, so the
+/// "Draft = info" tier is emitted as a `Warn` (keeps it observable in the
+/// table). Missing profile, missing validate command, and unverified profile
+/// are all warnings under default doctor; `--strict` escalates them to a
+/// non-zero exit via the returned violation list.
+fn check_profile(ws: &workspace::Workspace, checks: &mut Vec<CheckResult>) -> Vec<String> {
+    use ft_core::{RecordBody, RecordKind, TrustState};
+    use ft_storage::{Storage, StorageFilter};
+
+    let mut violations: Vec<String> = Vec::new();
+
+    // storage.open check already reported any open failure; nothing
+    // profile-specific to add when storage is unavailable.
+    let Ok(storage) = EmbeddedStorage::open(&ws.root) else {
+        return violations;
+    };
+
+    let ids = match storage.list(&StorageFilter::default().kind(RecordKind::RepoProfile)) {
+        Ok(v) => v,
+        Err(e) => {
+            checks.push(CheckResult::warn(
+                "profile.present",
+                "Repo profile",
+                format!("could not list repo profiles: {e}"),
+                "inspect `.firetrail/records/repo_profile/`",
+            ));
+            return violations;
+        }
+    };
+
+    if ids.is_empty() {
+        checks.push(CheckResult::warn(
+            "profile.present",
+            "Repo profile",
+            "No repo profile — run the firetrail-bootstrap skill.",
+            "run the firetrail-bootstrap skill to populate the profile",
+        ));
+        violations.push("no repo profile".to_string());
+        return violations;
+    }
+
+    // Degenerate: more than one RepoProfile record exists.
+    if ids.len() > 1 {
+        checks.push(CheckResult::warn(
+            "profile.singleton",
+            "Repo profile",
+            format!(
+                "{} repo profile records found (expected exactly 1)",
+                ids.len()
+            ),
+            "remove the extra `repo_profile` record(s); the profile is a singleton",
+        ));
+    }
+
+    // Read the singleton (smallest id, matching profile_get's determinism).
+    let mut sorted = ids;
+    sorted.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+    let id = &sorted[0];
+    let body = match storage.read(id) {
+        Ok(rec) => {
+            if let RecordBody::RepoProfile(b) = rec.body {
+                b
+            } else {
+                checks.push(CheckResult::warn(
+                    "profile.present",
+                    "Repo profile",
+                    format!("{id} is not a repo profile record"),
+                    "inspect `.firetrail/records/repo_profile/`",
+                ));
+                return violations;
+            }
+        }
+        Err(e) => {
+            checks.push(CheckResult::warn(
+                "profile.present",
+                "Repo profile",
+                format!("could not read repo profile {id}: {e}"),
+                "inspect `.firetrail/records/repo_profile/`",
+            ));
+            return violations;
+        }
+    };
+
+    let has_validate = body
+        .validate_command
+        .as_ref()
+        .is_some_and(|c| !c.trim().is_empty());
+    let confirmed = matches!(body.trust, TrustState::Reviewed | TrustState::Verified);
+
+    if !has_validate {
+        checks.push(CheckResult::warn(
+            "profile.validate",
+            "Repo profile validate",
+            "No validate command — the audit loop can't run a deterministic gate.",
+            "set one with `firetrail profile set --validate <cmd>`",
+        ));
+        violations.push("no validate command".to_string());
+    }
+
+    if !confirmed {
+        checks.push(CheckResult::warn(
+            "profile.trust",
+            "Repo profile trust",
+            "Repo profile is unconfirmed — review and verify it.",
+            "confirm it with `firetrail trust` (Draft → Reviewed → Verified)",
+        ));
+        violations.push("profile unconfirmed (Draft/unverified)".to_string());
+    }
+
+    // The "all good" tier — only when validate is set and trust is confirmed.
+    if has_validate && confirmed {
+        checks.push(CheckResult::ok(
+            "profile.present",
+            "Repo profile",
+            "repo profile present and confirmed",
+        ));
+    }
+
+    violations
 }
 
 fn check_config(ws: &workspace::Workspace, checks: &mut Vec<CheckResult>) {

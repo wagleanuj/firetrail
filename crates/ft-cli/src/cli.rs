@@ -221,6 +221,11 @@ pub enum Command {
     #[command(subcommand)]
     Doc(DocCmd),
 
+    /// Repo profile: the singleton bag of repo facts (commands, tooling,
+    /// component map) the agent maintains and `doctor` checks (`RepoProfile`).
+    #[command(subcommand)]
+    Profile(ProfileCmd),
+
     /// Scope registry queries (M5).
     #[command(subcommand)]
     Scope(ScopeCmd),
@@ -388,6 +393,90 @@ pub struct DocLinkArgs {
 pub struct DocIndexArgs {
     /// Specific doc id to refresh. Omit to check every doc record.
     pub target: Option<String>,
+}
+
+/// `firetrail profile …` — the singleton repo profile surface.
+///
+/// The agent maintains the profile incrementally during bootstrap; every
+/// `set` / `component` write applies a partial update and writes the record as
+/// `Draft` (a human confirms it later via `firetrail trust`).
+#[derive(Debug, Subcommand)]
+pub enum ProfileCmd {
+    /// Print the current profile (exit non-zero if no profile exists).
+    Show(ProfileShowArgs),
+    /// Create or partially-update the profile (only the flags passed change).
+    Set(ProfileSetArgs),
+    /// Manage the shallow component map.
+    #[command(subcommand)]
+    Component(ProfileComponentCmd),
+}
+
+/// `firetrail profile show` args.
+///
+/// `--json` is handled by the global `--json` / `--format` options; this
+/// struct carries no fields of its own but keeps the subcommand shape uniform.
+#[derive(Debug, Args)]
+pub struct ProfileShowArgs {}
+
+/// `firetrail profile set` args — partial update.
+///
+/// `Option` flags overwrite the corresponding field only when supplied;
+/// repeatable `Vec` flags overwrite the existing vec only when at least one
+/// value is given (otherwise the stored vec is preserved).
+#[derive(Debug, Args)]
+pub struct ProfileSetArgs {
+    /// Canonical "prove a change is good" command (consumed by the audit loop).
+    #[arg(long)]
+    pub validate: Option<String>,
+    /// Standard test command.
+    #[arg(long)]
+    pub test: Option<String>,
+    /// Standard build command.
+    #[arg(long)]
+    pub build: Option<String>,
+    /// Standard lint command.
+    #[arg(long)]
+    pub lint: Option<String>,
+    /// Primary language (repeatable). Overwrites the stored list when present.
+    #[arg(long = "language", value_name = "LANG")]
+    pub languages: Vec<String>,
+    /// Package manager (repeatable). Overwrites the stored list when present.
+    #[arg(long = "package-manager", value_name = "PM")]
+    pub package_managers: Vec<String>,
+    /// Runtime note (e.g. `node 20`).
+    #[arg(long)]
+    pub runtime: Option<String>,
+    /// Free-form note the agent / user wants to persist.
+    #[arg(long)]
+    pub note: Option<String>,
+}
+
+/// `firetrail profile component …`
+#[derive(Debug, Subcommand)]
+pub enum ProfileComponentCmd {
+    /// Add (or update) a component in the shallow map.
+    Add(ProfileComponentAddArgs),
+    /// Remove a component by name.
+    Rm(ProfileComponentRmArgs),
+}
+
+/// `firetrail profile component add <name> <path> [--summary <s>]` args.
+#[derive(Debug, Args)]
+pub struct ProfileComponentAddArgs {
+    /// Human-readable component name (e.g. `ft-cli`).
+    pub name: String,
+    /// Repo-relative path to the component (e.g. `crates/ft-cli`).
+    pub path: String,
+    /// Optional one-line summary.
+    #[arg(long)]
+    pub summary: Option<String>,
+}
+
+/// `firetrail profile component rm <name>` args.
+#[derive(Debug, Args)]
+pub struct ProfileComponentRmArgs {
+    /// Name of the component to remove.
+    pub name: String,
 }
 
 /// Identity kind selector.
@@ -1603,6 +1692,12 @@ pub struct DoctorArgs {
     /// Apply safe remediations for failed checks (rebuild index, reinstall hooks).
     #[arg(long)]
     pub fix: bool,
+
+    /// CI escape hatch: exit non-zero when the repo profile is missing, has no
+    /// validate command, or is still unverified (`Draft`). Default (no
+    /// `--strict`) never blocks — those tiers surface only as warnings.
+    #[arg(long)]
+    pub strict: bool,
 }
 
 /// Storage-mode selection for `firetrail init`.

@@ -69,7 +69,8 @@ fn dispatch(cli: &Cli) -> Result<commands::CommandOutcome, CliError> {
     use crate::cli::{
         BugCmd, CheckCmd, CriteriaCmd, DaemonCmd, DecisionCmd, DepCmd, DocCmd, EpicCmd, FindingCmd,
         GotchaCmd, HookCmd, IdentityCmd, ImportCmd, IncidentCmd, IndexCmd, LintCmd, MemoryCmd,
-        MigrateCmd, RunbookCmd, RunbookStepCmd, ScopeCmd, ServerHooksCmd, SubtaskCmd, TaskCmd,
+        MigrateCmd, ProfileCmd, ProfileComponentCmd, RunbookCmd, RunbookStepCmd, ScopeCmd,
+        ServerHooksCmd, SubtaskCmd, TaskCmd,
     };
     match &cli.command {
         Command::Init(args) => commands::init::run(args, &cli.global),
@@ -178,6 +179,15 @@ fn dispatch(cli: &Cli) -> Result<commands::CommandOutcome, CliError> {
         Command::Doc(DocCmd::Add(args)) => commands::doc::add(args, &cli.global),
         Command::Doc(DocCmd::Link(args)) => commands::doc::link(args, &cli.global),
         Command::Doc(DocCmd::Index(args)) => commands::doc::index(args, &cli.global),
+
+        Command::Profile(ProfileCmd::Show(args)) => commands::profile::show(args, &cli.global),
+        Command::Profile(ProfileCmd::Set(args)) => commands::profile::set(args, &cli.global),
+        Command::Profile(ProfileCmd::Component(ProfileComponentCmd::Add(args))) => {
+            commands::profile::component_add(args, &cli.global)
+        }
+        Command::Profile(ProfileCmd::Component(ProfileComponentCmd::Rm(args))) => {
+            commands::profile::component_rm(args, &cli.global)
+        }
 
         Command::Scope(ScopeCmd::List) => commands::scope::list(&cli.global),
         Command::Scope(ScopeCmd::Show(args)) => commands::scope::show(args, &cli.global),

@@ -151,11 +151,17 @@ fn doctor_clean_on_fresh_init() {
 
     let v: serde_json::Value = serde_json::from_str(&doc.stdout).unwrap();
     assert_eq!(v["command"], "doctor");
-    assert_eq!(v["data"]["clean"], true, "expected clean run: {v}");
 
+    // A fresh init has no repo profile yet, so `profile.present` is the one
+    // expected non-ok check (a deliberate nudge toward the bootstrap skill —
+    // design §4). Every other infrastructure check must be ok.
     let checks = v["data"]["checks"].as_array().expect("checks array");
     assert!(!checks.is_empty());
     for c in checks {
+        if c["id"] == "profile.present" {
+            assert_eq!(c["status"], "warn", "fresh repo profile should warn: {c}");
+            continue;
+        }
         assert_eq!(
             c["status"],
             "ok",

@@ -61,19 +61,28 @@ epic closing. These are explicitly out of scope.
 ### 1. Index: criteria counts (`ft-index`)
 
 `IndexedRecord` already carries `parent_id`, `blocked_by_count`,
-`blocks_count`. Add two fields, computed at index time from the record's
-acceptance criteria (criteria live on the record body — `Task`/`Subtask`/`Bug`
-— per `ft-core/src/acceptance.rs`):
+`blocks_count`. Add two fields:
 
 ```rust
 pub criteria_total: u32,   // count of acceptance criteria
-pub criteria_met: u32,     // count with AcStatus::Checked
+pub criteria_met: u32,     // count with status = 'checked'
 ```
 
-- Bump the index schema version; upgrade triggers a rebuild (the index is a
-  derived cache, so this is safe — no data migration, just a re-scan).
-- Records with no criteria report `0/0`; the UI renders no bar in that case.
+**No schema migration is required.** The `acceptance_criteria` table already
+exists in schema v1 (with a `status` column whose checked value serializes to
+`"checked"`), and `blocked_by_count`/`blocks_count` are already computed as
+correlated subqueries in the `list`/`ready` SELECTs — not stored columns. The
+two new counts are computed the same way:
 
+```sql
+(SELECT COUNT(*) FROM acceptance_criteria WHERE record_id = r.id) AS ct,
+(SELECT COUNT(*) FROM acceptance_criteria WHERE record_id = r.id AND status = 'checked') AS cm
+```
+
+So the change is: add the two fields to `IndexedRecord`, add the two
+subqueries to both SELECTs in `build_list_sql` / the ready query, and read the
+two new columns in the row mapper. `CURRENT_VERSION` stays `1`; no rebuild.
+Records with no criteria report `0/0`; the UI renders no bar in that case.
 This keeps the board a pure index read — **no per-card record loads**.
 
 ### 2. Board op: tickets-only + enriched cards (`ft-ops`)
@@ -240,8 +249,8 @@ ft-index (criteria_total/met, parent_id, blocked_by_count)
   erroring.
 - The close-epic nudge uses the existing close endpoint, inheriting its
   criteria validation and conflict handling (e.g. already-closed → 409).
-- Index schema bump: if the rebuild fails, the board falls back to the
-  existing error surface (`Board` already renders a load error state).
+- Index changes are query-only (no migration); a malformed count subquery
+  surfaces through the existing `Board` load-error state.
 
 ## Testing
 
@@ -264,7 +273,7 @@ ft-index (criteria_total/met, parent_id, blocked_by_count)
 
 ## Rollout
 
-1. Index field add + schema bump (rebuild on upgrade).
+1. Index field add (query-only, no migration/rebuild).
 2. Board op fix + enrichment (ships bug #1 fix immediately).
 3. Board frontend: rich card (ships bug #2 fix) + swimlane toggle + chips.
 4. Backlog view.

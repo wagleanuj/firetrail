@@ -30,6 +30,7 @@ import { useBoardQuery } from './use-board-query'
 import { columnForStatus, useMoveCard } from './use-ticket-mutations'
 import { BoardCardBody } from './board-card'
 import type { BoardEpic } from '@/api/types/BoardEpic'
+import { EpicChips } from './epic-chips'
 
 type Column = keyof Omit<BoardOutput, 'epics'>
 
@@ -54,6 +55,7 @@ export function Board({ onCreateClick, ready = false, onReadyChange }: BoardProp
   const { data, isLoading, error } = useBoardQuery({ ready })
   const move = useMoveCard()
   const [activeDrag, setActiveDrag] = useState<{ id: string; from: Column } | null>(null)
+  const [epicFilter, setEpicFilter] = useState<Set<string>>(new Set())
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
 
   if (isLoading) return <BoardSkeleton />
@@ -70,6 +72,11 @@ export function Board({ onCreateClick, ready = false, onReadyChange }: BoardProp
   const totalCards = data.todo.length + data.in_progress.length + data.review.length + data.done.length
   if (totalCards === 0) {
     return <EmptyState onCreateClick={onCreateClick} />
+  }
+
+  function filterCards(cards: BoardCard[]): BoardCard[] {
+    if (epicFilter.size === 0) return cards
+    return cards.filter((c) => epicFilter.has(c.epic_id ?? ''))
   }
 
   function handleDragEnd(e: DragEndEvent) {
@@ -116,13 +123,18 @@ export function Board({ onCreateClick, ready = false, onReadyChange }: BoardProp
             </>
           }
         />
+        <EpicChips
+          epics={data.epics ?? []}
+          selected={epicFilter}
+          onChange={setEpicFilter}
+        />
         <div className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           {COLUMNS.map(({ key, label }) => (
             <DroppableColumn
               key={key}
               column={key}
               label={label}
-              cards={data[key]}
+              cards={filterCards(data[key])}
               activeDrag={activeDrag}
               epicMap={epicMap}
             />

@@ -61,13 +61,24 @@ interface BoardProps {
   onCreateClick: () => void
   ready?: boolean
   onReadyChange?: (next: boolean) => void
+  /** Controlled epic filter. When omitted, the board keeps it in local state. */
+  epicFilter?: Set<string>
+  onEpicFilterChange?: (next: Set<string>) => void
 }
 
-export function Board({ onCreateClick, ready = false, onReadyChange }: BoardProps) {
+export function Board({
+  onCreateClick,
+  ready = false,
+  onReadyChange,
+  epicFilter: epicFilterProp,
+  onEpicFilterChange,
+}: BoardProps) {
   const { data, isLoading, error } = useBoardQuery({ ready })
   const move = useMoveCard()
   const [activeDrag, setActiveDrag] = useState<{ id: string; from: Column } | null>(null)
-  const [epicFilter, setEpicFilter] = useState<Set<string>>(new Set())
+  const [localEpicFilter, setLocalEpicFilter] = useState<Set<string>>(new Set())
+  const epicFilter = epicFilterProp ?? localEpicFilter
+  const setEpicFilter = onEpicFilterChange ?? setLocalEpicFilter
   const [groupByEpicOn, setGroupByEpicOn] = useState(readGrouping)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
 

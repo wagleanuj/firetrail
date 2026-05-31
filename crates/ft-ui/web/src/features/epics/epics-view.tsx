@@ -67,6 +67,7 @@ function EpicRow({
           </div>
           <Link
             to="/"
+            search={{ epics: [epic.id] }}
             className="mt-1 block text-sm font-semibold text-foreground hover:text-primary"
           >
             {epic.title}

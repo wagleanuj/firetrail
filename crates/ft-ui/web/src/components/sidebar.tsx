@@ -19,6 +19,7 @@ import {
   Keyboard,
   PanelLeftClose,
   PanelLeftOpen,
+  Layers,
   type LucideIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -40,6 +41,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { to: '/', label: 'Board', icon: KanbanSquare, exact: true },
   { to: '/backlog', label: 'Backlog', icon: ListTodo },
+  { to: '/epics', label: 'Epics', icon: Layers },
   { to: '/memory', label: 'Memory', icon: Brain },
   { to: '/scope', label: 'Scope', icon: Boxes },
   { to: '/identity', label: 'Identity', icon: Users },

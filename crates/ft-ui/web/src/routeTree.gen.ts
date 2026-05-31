@@ -14,6 +14,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ScopeIndexRouteImport } from './routes/scope/index'
 import { Route as MemoryIndexRouteImport } from './routes/memory/index'
 import { Route as IdentityIndexRouteImport } from './routes/identity/index'
+import { Route as EpicsIndexRouteImport } from './routes/epics/index'
 import { Route as AuditIndexRouteImport } from './routes/audit/index'
 import { Route as TicketsIdRouteImport } from './routes/tickets/$id'
 import { Route as ScopeIdRouteImport } from './routes/scope/$id'
@@ -51,6 +52,11 @@ const MemoryIndexRoute = MemoryIndexRouteImport.update({
 const IdentityIndexRoute = IdentityIndexRouteImport.update({
   id: '/identity/',
   path: '/identity/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EpicsIndexRoute = EpicsIndexRouteImport.update({
+  id: '/epics/',
+  path: '/epics/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuditIndexRoute = AuditIndexRouteImport.update({
@@ -133,6 +139,7 @@ export interface FileRoutesByFullPath {
   '/scope/$id': typeof ScopeIdRoute
   '/tickets/$id': typeof TicketsIdRoute
   '/audit/': typeof AuditIndexRoute
+  '/epics/': typeof EpicsIndexRoute
   '/identity/': typeof IdentityIndexRoute
   '/memory/': typeof MemoryIndexRoute
   '/scope/': typeof ScopeIndexRoute
@@ -153,6 +160,7 @@ export interface FileRoutesByTo {
   '/scope/$id': typeof ScopeIdRoute
   '/tickets/$id': typeof TicketsIdRoute
   '/audit': typeof AuditIndexRoute
+  '/epics': typeof EpicsIndexRoute
   '/identity': typeof IdentityIndexRoute
   '/memory': typeof MemoryIndexRoute
   '/scope': typeof ScopeIndexRoute
@@ -174,6 +182,7 @@ export interface FileRoutesById {
   '/scope/$id': typeof ScopeIdRoute
   '/tickets/$id': typeof TicketsIdRoute
   '/audit/': typeof AuditIndexRoute
+  '/epics/': typeof EpicsIndexRoute
   '/identity/': typeof IdentityIndexRoute
   '/memory/': typeof MemoryIndexRoute
   '/scope/': typeof ScopeIndexRoute
@@ -196,6 +205,7 @@ export interface FileRouteTypes {
     | '/scope/$id'
     | '/tickets/$id'
     | '/audit/'
+    | '/epics/'
     | '/identity/'
     | '/memory/'
     | '/scope/'
@@ -216,6 +226,7 @@ export interface FileRouteTypes {
     | '/scope/$id'
     | '/tickets/$id'
     | '/audit'
+    | '/epics'
     | '/identity'
     | '/memory'
     | '/scope'
@@ -236,6 +247,7 @@ export interface FileRouteTypes {
     | '/scope/$id'
     | '/tickets/$id'
     | '/audit/'
+    | '/epics/'
     | '/identity/'
     | '/memory/'
     | '/scope/'
@@ -257,6 +269,7 @@ export interface RootRouteChildren {
   ScopeIdRoute: typeof ScopeIdRoute
   TicketsIdRoute: typeof TicketsIdRoute
   AuditIndexRoute: typeof AuditIndexRoute
+  EpicsIndexRoute: typeof EpicsIndexRoute
   IdentityIndexRoute: typeof IdentityIndexRoute
   MemoryIndexRoute: typeof MemoryIndexRoute
   ScopeIndexRoute: typeof ScopeIndexRoute
@@ -299,6 +312,13 @@ declare module '@tanstack/react-router' {
       path: '/identity'
       fullPath: '/identity/'
       preLoaderRoute: typeof IdentityIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/epics/': {
+      id: '/epics/'
+      path: '/epics'
+      fullPath: '/epics/'
+      preLoaderRoute: typeof EpicsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/audit/': {
@@ -409,6 +429,7 @@ const rootRouteChildren: RootRouteChildren = {
   ScopeIdRoute: ScopeIdRoute,
   TicketsIdRoute: TicketsIdRoute,
   AuditIndexRoute: AuditIndexRoute,
+  EpicsIndexRoute: EpicsIndexRoute,
   IdentityIndexRoute: IdentityIndexRoute,
   MemoryIndexRoute: MemoryIndexRoute,
   ScopeIndexRoute: ScopeIndexRoute,

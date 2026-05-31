@@ -10,6 +10,12 @@ description = "Local HTTP/JSON server + embedded SPA for firetrail. Adapter over
 [lints]
 workspace = true
 
+# Release builds (cargo-dist) ship the `ft-ui` server binary with the SPA
+# embedded. `web/dist/` is produced by the pnpm build injected via
+# `github-build-setup` (see .github/build-setup.yml) before `dist build`.
+[package.metadata.dist]
+features = ["bundled-ui"]
+
 [dependencies]
 ft-ops = { path = "../ft-ops", features = ["ts-rs"] }
 ft-identity = { path = "../ft-identity", version = "0.1.0" }

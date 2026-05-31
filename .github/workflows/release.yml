@@ -127,6 +127,19 @@ jobs:
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
             echo "$HOME/.cargo/bin" >> $GITHUB_PATH
           fi
+      - name: "Setup Node (bundled-ui web build)"
+        uses: "actions/setup-node@v4"
+        with:
+          "node-version": "20"
+      - name: "Setup pnpm"
+        uses: "pnpm/action-setup@v4"
+        with:
+          "run_install": false
+          "version": 9
+      - name: "Install web deps"
+        run: "pnpm -C crates/ft-ui/web install --frozen-lockfile=false"
+      - name: "Build web bundle (produces crates/ft-ui/web/dist)"
+        run: "pnpm -C crates/ft-ui/web build"
       - name: Install dist
         run: ${{ matrix.install_dist.run }}
       # Get the dist-manifest

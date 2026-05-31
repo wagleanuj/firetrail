@@ -17,3 +17,7 @@ install-path = "CARGO_HOME"
 hosting = "github"
 # Whether to install an updater program
 install-updater = false
+# Extra steps injected into each build job before `dist build` — installs Node +
+# pnpm and builds crates/ft-ui/web/dist so the ft-ui binary can embed the SPA
+# (bundled-ui). Path is relative to .github/workflows/.
+github-build-setup = "../build-setup.yml"

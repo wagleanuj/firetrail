@@ -1,0 +1,18 @@
+# Injected by cargo-dist into the release build jobs via
+# `github-build-setup` in dist-workspace.toml. Runs BEFORE `dist build`
+# on every build runner so that `crates/ft-ui/web/dist/` exists when the
+# `ft-ui` binary is compiled with `--features bundled-ui` (which embeds the
+# SPA via rust-embed). Mirrors the `ui` job in ci.yml.
+- name: Setup Node (bundled-ui web build)
+  uses: actions/setup-node@v4
+  with:
+    node-version: '20'
+- name: Setup pnpm
+  uses: pnpm/action-setup@v4
+  with:
+    version: 9
+    run_install: false
+- name: Install web deps
+  run: pnpm -C crates/ft-ui/web install --frozen-lockfile=false
+- name: Build web bundle (produces crates/ft-ui/web/dist)
+  run: pnpm -C crates/ft-ui/web build

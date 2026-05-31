@@ -48,6 +48,28 @@ pub const MAX_FRAME_LEN: u32 = 1024 * 1024;
 /// Default idle timeout: a daemon that sees no traffic for this long exits.
 pub const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
 
+/// Read/write timeout for a liveness `Ping` round-trip. A healthy daemon
+/// answers `Pong` immediately; this short bound keeps [`status`] from blocking
+/// indefinitely on a daemon that accepted the connection but is wedged.
+const PING_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Read/write timeout for an `Embed` round-trip. Generous enough to cover a
+/// cold model load / inference on the daemon side, but finite so a stuck
+/// daemon surfaces as an error (→ lexical fallback) instead of hanging the
+/// caller — and, in the web server, an entire tokio worker — forever.
+const EMBED_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Read/write timeout for control round-trips (`IndexRecord`, `Shutdown`).
+const CONTROL_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Apply a symmetric read+write timeout to a client connection. A `None`-free
+/// wrapper so every client call bounds its blocking I/O the same way.
+fn set_client_timeout(stream: &UnixStream, dur: Duration) -> Result<(), EmbedError> {
+    stream.set_read_timeout(Some(dur))?;
+    stream.set_write_timeout(Some(dur))?;
+    Ok(())
+}
+
 /// Polling cadence for the non-blocking accept loop. Small enough that
 /// shutdown / idle detection feels prompt, large enough not to busy-loop.
 const ACCEPT_POLL_INTERVAL: Duration = Duration::from_millis(50);
@@ -203,6 +225,9 @@ pub fn status(socket_path: &Path) -> DaemonStatus {
     }
     match UnixStream::connect(socket_path) {
         Ok(mut s) => {
+            if set_client_timeout(&s, PING_TIMEOUT).is_err() {
+                return DaemonStatus::Unreachable;
+            }
             if write_frame(&mut s, &EmbedRequest::Ping).is_err() {
                 return DaemonStatus::Unreachable;
             }
@@ -218,6 +243,7 @@ pub fn status(socket_path: &Path) -> DaemonStatus {
 /// Send one embed request, await one response.
 pub fn send_embed(socket_path: &Path, text: &str) -> Result<Vec<f32>, EmbedError> {
     let mut s = UnixStream::connect(socket_path)?;
+    set_client_timeout(&s, EMBED_TIMEOUT)?;
     write_frame(
         &mut s,
         &EmbedRequest::Embed {
@@ -237,6 +263,7 @@ pub fn send_embed(socket_path: &Path, text: &str) -> Result<Vec<f32>, EmbedError
 /// configured [`RecordIndexer`]. Returns once the daemon has acked.
 pub fn send_index_record(socket_path: &Path, id: &str, text: &str) -> Result<(), EmbedError> {
     let mut s = UnixStream::connect(socket_path)?;
+    set_client_timeout(&s, CONTROL_TIMEOUT)?;
     write_frame(
         &mut s,
         &EmbedRequest::IndexRecord {
@@ -254,6 +281,7 @@ pub fn send_index_record(socket_path: &Path, id: &str, text: &str) -> Result<(),
 /// Ask the daemon to shut down. Returns once it has acknowledged.
 pub fn send_shutdown(socket_path: &Path) -> Result<(), EmbedError> {
     let mut s = UnixStream::connect(socket_path)?;
+    set_client_timeout(&s, CONTROL_TIMEOUT)?;
     write_frame(&mut s, &EmbedRequest::Shutdown)?;
     match read_frame::<EmbedResponse>(&mut s)? {
         EmbedResponse::ShuttingDown => Ok(()),
@@ -455,6 +483,46 @@ mod tests {
         let dir = tempdir().unwrap();
         let sock = dir.path().join("missing.sock");
         assert_eq!(status(&sock), DaemonStatus::Stopped);
+    }
+
+    /// A daemon that accepts the connection but never answers must NOT hang the
+    /// client: [`status`] bounds its read with [`PING_TIMEOUT`] and reports
+    /// `Unreachable`. Regression guard for the web-UI "search loads forever"
+    /// hang (firetrail-paag).
+    #[test]
+    fn status_unreachable_on_wedged_daemon_within_timeout() {
+        let dir = tempdir().unwrap();
+        let sock = dir.path().join("wedged.sock");
+        let listener = UnixListener::bind(&sock).unwrap();
+        let keep_running = Arc::new(AtomicBool::new(true));
+        let flag = Arc::clone(&keep_running);
+        // Accept connections and sit on them without ever writing a frame.
+        let server = thread::spawn(move || {
+            while flag.load(Ordering::Relaxed) {
+                if let Ok((stream, _)) = listener.accept() {
+                    // Hold the connection open; drop only when the test ends.
+                    while flag.load(Ordering::Relaxed) {
+                        thread::sleep(Duration::from_millis(20));
+                    }
+                    drop(stream);
+                }
+            }
+        });
+
+        let start = Instant::now();
+        let result = status(&sock);
+        let elapsed = start.elapsed();
+
+        keep_running.store(false, Ordering::Relaxed);
+        // Nudge accept() out of its blocking wait so the thread can exit.
+        let _ = UnixStream::connect(&sock);
+        let _ = server.join();
+
+        assert_eq!(result, DaemonStatus::Unreachable);
+        assert!(
+            elapsed < PING_TIMEOUT + Duration::from_secs(2),
+            "status should give up near PING_TIMEOUT, took {elapsed:?}"
+        );
     }
 
     #[test]

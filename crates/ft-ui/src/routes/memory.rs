@@ -291,7 +291,14 @@ pub async fn search_handler(
         include_quarantine: q.include_quarantine,
         request_id: request_id(&headers),
     };
-    let out = memory::search::search(&state.workspace, &identity, input, &state.events)?;
+    // Synchronous, potentially multi-second op (embedding / embed-daemon
+    // spawn): run on the blocking pool so semantic searches never starve the
+    // async runtime (firetrail-paag).
+    let out = tokio::task::spawn_blocking(move || {
+        memory::search::search(&state.workspace, &identity, input, &state.events)
+    })
+    .await
+    .map_err(|e| AppError::Internal(anyhow::anyhow!("search task failed: {e}")))??;
     Ok((StatusCode::OK, Json(out)))
 }
 
@@ -326,7 +333,13 @@ pub async fn similar_handler(
         limit: q.limit.unwrap_or(10),
         request_id: request_id(&headers),
     };
-    let out = memory::search::similar(&state.workspace, &identity, input, &state.events)?;
+    // `similar` embeds the seed record, so it shares search's blocking profile;
+    // keep it off the async workers too (firetrail-paag).
+    let out = tokio::task::spawn_blocking(move || {
+        memory::search::similar(&state.workspace, &identity, input, &state.events)
+    })
+    .await
+    .map_err(|e| AppError::Internal(anyhow::anyhow!("similar task failed: {e}")))??;
     Ok((StatusCode::OK, Json(out)))
 }
 

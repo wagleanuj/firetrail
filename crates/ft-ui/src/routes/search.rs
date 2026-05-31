@@ -109,7 +109,16 @@ pub async fn search_handler(
         include_quarantine: q.include_quarantine,
         request_id: request_id(&headers),
     };
-    let out = search::search(&state.workspace, &identity, input, &state.events)?;
+    // `search::search` is synchronous and can block for seconds (embedding /
+    // embed-daemon spawn). Run it on the blocking pool so a slow search never
+    // ties up an async worker thread — and so a burst of debounced semantic
+    // searches can't starve the runtime and stall every other request
+    // (firetrail-paag).
+    let out = tokio::task::spawn_blocking(move || {
+        search::search(&state.workspace, &identity, input, &state.events)
+    })
+    .await
+    .map_err(|e| AppError::Internal(anyhow::anyhow!("search task failed: {e}")))??;
     Ok((StatusCode::OK, Json(out)))
 }
 

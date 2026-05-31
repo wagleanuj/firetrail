@@ -6,7 +6,7 @@
  * Click-to-open routes to `/tickets/:id`, which renders the detail drawer on
  * top of `/` via TanStack Router nested routes.
  */
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   DndContext,
   PointerSensor,
@@ -16,7 +16,7 @@ import {
   useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core'
-import { Plus, KanbanSquare } from 'lucide-react'
+import { Plus, KanbanSquare, Layers } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { LAYOUT_TRANSITION, reducedTransition } from '@/lib/motion'
 import { EmptyState as SharedEmptyState } from '@/components/ui/empty-state'
@@ -31,8 +31,20 @@ import { columnForStatus, useMoveCard } from './use-ticket-mutations'
 import { BoardCardBody } from './board-card'
 import type { BoardEpic } from '@/api/types/BoardEpic'
 import { EpicChips } from './epic-chips'
+import { BoardSwimlanes } from './board-swimlanes'
 
-type Column = keyof Omit<BoardOutput, 'epics'>
+export type Column = keyof Omit<BoardOutput, 'epics'>
+
+const GROUPING_KEY = 'ft-ui:board-group-by-epic'
+
+function readGrouping(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    return window.localStorage.getItem(GROUPING_KEY) === '1'
+  } catch {
+    return false
+  }
+}
 
 const COLUMNS: Array<{ key: Column; label: string }> = [
   { key: 'todo', label: 'Todo' },
@@ -56,7 +68,16 @@ export function Board({ onCreateClick, ready = false, onReadyChange }: BoardProp
   const move = useMoveCard()
   const [activeDrag, setActiveDrag] = useState<{ id: string; from: Column } | null>(null)
   const [epicFilter, setEpicFilter] = useState<Set<string>>(new Set())
+  const [groupByEpicOn, setGroupByEpicOn] = useState(readGrouping)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(GROUPING_KEY, groupByEpicOn ? '1' : '0')
+    } catch {
+      /* ignore persistence failures (private mode, etc.) */
+    }
+  }, [groupByEpicOn])
 
   if (isLoading) return <BoardSkeleton />
   if (error) {
@@ -81,9 +102,13 @@ export function Board({ onCreateClick, ready = false, onReadyChange }: BoardProp
 
   function handleDragEnd(e: DragEndEvent) {
     setActiveDrag(null)
-    const overCol = e.over?.id as Column | undefined
+    const rawId = e.over?.id as string | undefined
     const drag = e.active.data.current as { id: string; from: Column } | undefined
-    if (!overCol || !drag) return
+    if (!rawId || !drag) return
+    // In swimlane mode the droppable id is `"${laneKey}::${column}"`.
+    // In flat mode it is just the column key. Parse accordingly.
+    const overCol = (rawId.includes('::') ? rawId.split('::').pop() : rawId) as Column
+    if (!overCol) return
     if (overCol === drag.from) return
     move.mutate({ id: drag.id, from: drag.from, to: overCol })
   }
@@ -116,6 +141,17 @@ export function Board({ onCreateClick, ready = false, onReadyChange }: BoardProp
                   {ready ? 'Unblocked only' : 'Show all'}
                 </Button>
               )}
+              <Button
+                size="sm"
+                variant={groupByEpicOn ? 'default' : 'outline'}
+                onClick={() => setGroupByEpicOn((v) => !v)}
+                aria-pressed={groupByEpicOn}
+                data-testid="group-by-epic-toggle"
+                className="gap-2"
+              >
+                <Layers className="h-4 w-4" />
+                Group by epic
+              </Button>
               <Button onClick={onCreateClick} size="sm" className="gap-2">
                 <Plus className="h-4 w-4" />
                 New ticket
@@ -128,33 +164,49 @@ export function Board({ onCreateClick, ready = false, onReadyChange }: BoardProp
           selected={epicFilter}
           onChange={setEpicFilter}
         />
-        <div className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {COLUMNS.map(({ key, label }) => (
-            <DroppableColumn
-              key={key}
-              column={key}
-              label={label}
-              cards={filterCards(data[key])}
-              activeDrag={activeDrag}
-              epicMap={epicMap}
-            />
-          ))}
-        </div>
+        {groupByEpicOn ? (
+          <BoardSwimlanes
+            out={{
+              ...data,
+              todo: filterCards(data.todo),
+              in_progress: filterCards(data.in_progress),
+              review: filterCards(data.review),
+              done: filterCards(data.done),
+            }}
+            activeDrag={activeDrag}
+            epicMap={epicMap}
+          />
+        ) : (
+          <div className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {COLUMNS.map(({ key, label }) => (
+              <DroppableColumn
+                key={key}
+                column={key}
+                label={label}
+                cards={filterCards(data[key])}
+                activeDrag={activeDrag}
+                epicMap={epicMap}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </DndContext>
   )
 }
 
-interface DroppableColumnProps {
+export interface DroppableColumnProps {
   column: Column
   label: string
   cards: BoardCard[]
   activeDrag: { id: string; from: Column } | null
   epicMap: Map<string, string>
+  /** Override the droppable id (defaults to `column`). Use composite ids in swimlane mode. */
+  droppableId?: string
 }
 
-function DroppableColumn({ column, label, cards, activeDrag, epicMap }: DroppableColumnProps) {
-  const { setNodeRef, isOver } = useDroppable({ id: column })
+export function DroppableColumn({ column, label, cards, activeDrag, epicMap, droppableId }: DroppableColumnProps) {
+  const { setNodeRef, isOver } = useDroppable({ id: droppableId ?? column })
   return (
     <div
       ref={setNodeRef}
@@ -189,14 +241,14 @@ function DroppableColumn({ column, label, cards, activeDrag, epicMap }: Droppabl
   )
 }
 
-interface DraggableCardProps {
+export interface DraggableCardProps {
   card: BoardCard
   column: Column
   dragging: boolean
   epicMap: Map<string, string>
 }
 
-function DraggableCard({ card, column, dragging, epicMap }: DraggableCardProps) {
+export function DraggableCard({ card, column, dragging, epicMap }: DraggableCardProps) {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({
     id: card.id,
     data: { id: card.id, from: column },

@@ -6,7 +6,7 @@
  */
 import { Link } from '@tanstack/react-router'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
-import { epicColor } from './epic-color'
+import { epicColor, epicColorSoft } from './epic-color'
 import { PriorityBadge } from './board'
 import type { BoardCard } from '@/api/types/BoardCard'
 
@@ -46,7 +46,7 @@ export function BoardCardBody({
             <span
               className="truncate rounded-full px-1.5 py-0.5 text-[0.625rem]"
               style={{
-                background: `${epicColor(card.epic_id)}22`,
+                background: epicColorSoft(card.epic_id),
                 color: epicColor(card.epic_id),
               }}
             >

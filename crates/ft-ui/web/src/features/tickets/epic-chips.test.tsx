@@ -7,7 +7,7 @@ describe('EpicChips', () => {
     const onChange = vi.fn()
     render(<EpicChips epics={[{ id: 'EPIC-1', short_id: 'EPIC-1', title: 'Auth' }]} selected={new Set()} onChange={onChange} />)
     fireEvent.click(screen.getByText('Auth'))
-    expect(onChange).toHaveBeenCalledWith(expect.any(Set))
+    expect(onChange).toHaveBeenCalledWith(new Set(['EPIC-1']))
   })
   it('renders a No epic chip', () => {
     render(<EpicChips epics={[]} selected={new Set()} onChange={() => {}} />)

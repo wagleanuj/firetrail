@@ -1,6 +1,6 @@
 import type { BoardEpic } from '@/api/types/BoardEpic'
 import { cn } from '@/lib/utils'
-import { epicColor } from './epic-color'
+import { epicColor, epicColorSoft } from './epic-color'
 
 const NO_EPIC = '' // sentinel id for "No epic"
 
@@ -34,7 +34,7 @@ export function EpicChips({
             ? 'border-transparent text-foreground'
             : 'border-border/60 text-muted-foreground hover:text-foreground',
         )}
-        style={on && color ? { background: `${color}22`, color } : undefined}
+        style={on && color ? { background: epicColorSoft(id), color } : undefined}
       >
         {label}
       </button>
@@ -42,7 +42,7 @@ export function EpicChips({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
+    <div role="group" aria-label="Filter by epic" className="flex flex-wrap items-center gap-1.5">
       {epics.map((e) => chip(e.id, e.title, epicColor(e.id)))}
       {chip(NO_EPIC, 'No epic')}
     </div>

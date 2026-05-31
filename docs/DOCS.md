@@ -46,6 +46,7 @@ scope: ft-ui            # optional owning scope
 | `decisions/` | ADRs (numbered) |
 | `components/` | Per-crate specs |
 | `plans/` | Implementation plans |
+| `specs/` | Design specs (e.g. `specs/2026-05-31-repo-profile-bootstrap-design.md`, epic `firetrail-lj41`) |
 | `superpowers/specs/` | Design specs |
 
 Adding frontmatter to a file is all it takes to make it a first-class,

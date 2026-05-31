@@ -254,6 +254,52 @@ requirements. See ADR-0013.
 
 ---
 
+## Repo profile
+
+`RepoProfile` is a record kind (`RecordKind::RepoProfile`, prefix `PROFILE`,
+stored under `records/repo_profile/`) that holds a small, always-read set of
+facts about the host repo: the canonical validate command, the standard
+test/build/lint commands, language/tooling facts (`languages`,
+`package_managers`, `runtime`), and a shallow component map (names + paths only,
+via `ComponentRef`). It is the foundation later subsystems read from —
+architecture docs, repo rules, and the audit loop all need these facts.
+
+**Singleton, by convention.** One `RepoProfile` per repo. `ft-storage` exposes
+`profile_get` / `profile_set` helpers (in `ft-storage/src/profile.rs`) that read
+and upsert the singleton through the `Storage` trait — `profile_set` updates the
+existing record in place if present, else creates it.
+
+**Where it lives.** In external storage mode the profile is written to the
+separate data repo (cloned under `.firetrail/cache/data-repo/`, gitignored in the
+host), keeping the host repo clean as artifacts accumulate. In embedded mode it
+lives alongside the other records.
+
+**Trust lifecycle is the propose→confirm signal.** This is a direct application
+of ADR-0005: the *agent decides, firetrail stores*. The agent inspects the repo,
+discusses with the user, and writes the profile as `Draft` (`origin: agent`) —
+its proposal. A human confirming transitions it `Draft → Reviewed → Verified`
+through the existing trust machine (no bespoke review path). Firetrail ships no
+language/tooling auto-detection in Rust; that judgment lives in the
+`firetrail-bootstrap` skill.
+
+**Surfaces.** The profile is written/read through:
+
+- `firetrail profile show | set | component add | rm` — the CLI the bootstrap
+  skill drives (partial-update semantics).
+- `firetrail doctor` — warns when the profile is missing or `validate_command` is
+  empty, info when it is still `Draft`; `--strict` exits non-zero for CI
+  enforcement.
+- `/api/profile` (+ `/api/profile/components`) in ft-ui — a read/edit Profile
+  panel; confirmation goes through the existing `/api/trust/*` routes.
+- The `firetrail-bootstrap` skill — the agent-run conversation that populates it.
+
+See `docs/components/repo-profile.md` and the design spec
+`docs/specs/2026-05-31-repo-profile-bootstrap-design.md` (epic `firetrail-lj41`).
+This is sub-project A; architecture docs, repo rules, and the audit loop that
+build on it are future work tracked separately.
+
+---
+
 ## Flows
 
 Selected flows that touch multiple crates.

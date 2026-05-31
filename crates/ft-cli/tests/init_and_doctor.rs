@@ -500,7 +500,7 @@ fn skills_reference_only_real_subcommands() {
             }
             // Indented "  name   description" — first token is the command.
             if line.starts_with(' ') {
-                if let Some(tok) = line.trim_start().split_whitespace().next() {
+                if let Some(tok) = line.split_whitespace().next() {
                     cmds.insert(tok.to_string());
                 }
             }

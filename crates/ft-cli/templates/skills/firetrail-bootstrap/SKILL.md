@@ -1,12 +1,17 @@
 ---
 name: firetrail-bootstrap
-description: Use when starting in a firetrail repo that has no roadmap or architecture docs and no open work — a fresh or empty workspace. Asks the user for consent, then guides a self-contained setup session that drafts ARCHITECTURE.md and ROADMAP.md, adopts them as Doc records, and seeds the first epic and tasks with dependency edges.
+description: Use when starting in a firetrail repo that has no roadmap or architecture docs and no open work — a fresh or empty workspace — or when `firetrail doctor` reports a missing or unconfirmed repo profile. Asks the user for consent, then guides a self-contained setup session that drafts ARCHITECTURE.md and ROADMAP.md, adopts them as Doc records, seeds the first epic and tasks with dependency edges, and populates the repo profile (validate/test/build/lint commands, tooling facts, component map) by inspecting the repo and confirming with the user.
 ---
 
 # Firetrail bootstrap (fresh-repo setup)
 
 Use this when you land in a firetrail workspace that looks empty. Do NOT
 auto-generate anything — detect, then ASK the user before acting.
+
+Steps 1–7 set up a fresh workspace (docs + first work). **Step 8 (repo
+profile)** is semi-independent: if `firetrail doctor` reports a missing or
+unconfirmed profile in a repo that already has work, jump straight to Step 8 —
+the rest of this skill doesn't apply, but the profile flow still does.
 
 ## 1. Detect (conservative)
 
@@ -18,8 +23,9 @@ firetrail list            # any work records at all?
 Also check for `docs/ROADMAP.md` and `docs/ARCHITECTURE.md`.
 
 Treat the workspace as **fresh** only when there are no open/active work
-records AND no roadmap doc. If the repo already has work or a roadmap, this
-skill does not apply — return to the router and use `firetrail ready`.
+records AND no roadmap doc. If the repo already has work or a roadmap, the
+fresh-setup steps (2–7) do not apply — return to the router and use `firetrail
+ready`. (Exception: if `doctor` flagged the repo profile, still do Step 8.)
 
 ## 2. Ask for consent (always)
 
@@ -78,5 +84,73 @@ wire and verify the dependency graph.
 firetrail graph <epic-id>   # the shape looks right?
 firetrail ready             # only the genuine leaves are unblocked?
 ```
+
+## 8. Populate the repo profile
+
+The **repo profile** is a singleton record of repo facts every other firetrail
+tool reads from: the canonical validate/test/build/lint commands, the
+language/tooling facts, and a shallow component map. `firetrail doctor` warns
+when it is missing or still unconfirmed — that warning is what sends you here,
+whether or not the rest of this skill applied.
+
+firetrail ships **no detection heuristics** — this is YOUR judgment (ADR-0005).
+firetrail only stores, indexes, and surfaces what you decide. So:
+
+**8a. Inspect.** Read the repo to discover the *real* commands and layout — do
+not guess:
+- Manifests: `Cargo.toml`, `package.json` (its `scripts`), `Makefile`,
+  `justfile`, `pyproject.toml`, `go.mod`, etc.
+- CI configs: `.github/workflows/*.yml`, and any other pipeline files — these
+  usually spell out the exact validate/test/lint invocations the team trusts.
+- Directory layout (e.g. `crates/`, `packages/`, `apps/`, `src/`) for a
+  **shallow** component map — names + paths only, not deep docs.
+
+**8b. Propose & discuss.** Tell the user what you found and confirm it, one piece
+at a time. Take **extra care with the validate command** — that is the single
+"prove a change is good" command the audit loop will run, so it must be the one
+the user actually trusts as the gate. Formatting belongs *inside* validate or
+lint (e.g. `cargo fmt --check && cargo test && cargo clippy`); there is no
+separate format field.
+
+**8c. Persist incrementally.** As each piece is confirmed, write it. `profile
+set` is a partial update — only the flags you pass change; everything else is
+preserved — so call it repeatedly as the discussion unfolds. It creates the
+record if absent, updates in place if present, and always writes it as `Draft`
+with `origin = Agent` (your proposal, not yet confirmed):
+
+```
+firetrail profile set --validate "<cmd>" --test "<cmd>" --build "<cmd>" --lint "<cmd>" \
+                      --language rust --language typescript \
+                      --package-manager cargo --package-manager pnpm \
+                      --runtime "node 20" --note "<free text>"
+
+firetrail profile component add <name> <path> --summary "<one line>"   # repeat per component
+firetrail profile component rm  <name>                                 # if you got one wrong
+
+firetrail profile show          # review what's stored (add --json for machine output)
+```
+`--language` and `--package-manager` are repeatable; passing any value
+overwrites the stored list, so include the full set each time you set them.
+
+**8d. Finalize.** Once the user is happy, confirm the profile by transitioning it
+out of `Draft` via the existing trust commands — that, not the write itself, is
+the signal downstream tools trust:
+
+```
+firetrail memory review  <profile-id> --reason "<why confirmed>"   # Draft → Reviewed
+firetrail memory promote <profile-id>                              # Reviewed → Verified (optional)
+```
+Get `<profile-id>` from `firetrail profile show`.
+
+**8e. New / sparse repos.** When there's little to detect, mostly *ask* the user.
+Leaving `validate_command` empty initially is fine — `firetrail doctor` keeps
+nudging until it's filled and confirmed; don't invent a command just to silence
+it. Re-running this step later (the build setup changed, a component moved) is
+just another `profile set` round: it updates the record in place and re-enters
+`Draft` until re-confirmed.
+
+> `firetrail doctor --strict` (for CI) exits non-zero when the validate command
+> is empty or the profile is still unconfirmed — so getting through 8a–8d
+> unblocks a `--strict` pipeline.
 
 Then return to the router loop and claim the first ready item.

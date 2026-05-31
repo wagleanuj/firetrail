@@ -16,9 +16,10 @@ export function useTicketEvents(enabled = true) {
 
   useEffect(() => {
     if (!last) return
-    // Any ticket-shaped event invalidates the board snapshot.
+    // Any ticket-shaped event invalidates the board snapshot and epics roll-up.
     if (last.kind.startsWith('ticket_')) {
       queryClient.invalidateQueries({ queryKey: ['board'] })
+      queryClient.invalidateQueries({ queryKey: ['epics'] })
     }
     // Per-ticket invalidations: pull out the ids we know each variant carries.
     switch (last.kind) {

@@ -23,6 +23,7 @@ pub mod events;
 pub mod identity;
 pub mod identity_ops;
 pub mod memory;
+pub mod profile;
 pub mod scope;
 pub mod search;
 pub mod synthetic_embed;

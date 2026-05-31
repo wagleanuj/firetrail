@@ -76,6 +76,15 @@ pub enum Event {
         /// Doc record id.
         id: String,
     },
+    /// The singleton repo profile was created or edited.
+    ///
+    /// Emitted by [`crate::profile::update`] / `add_component` /
+    /// `remove_component` so connected clients re-fetch the Profile panel
+    /// (`RepoProfile` epic).
+    ProfileUpdated {
+        /// Profile record id.
+        id: String,
+    },
     /// A memory record was written.
     ///
     /// Emitted on **every** memory write (create or update). Kept distinct

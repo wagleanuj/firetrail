@@ -39,6 +39,7 @@ use ft_ops::memory::{
     SearchOutput, SeverityInput, ShowInput as MemoryShowInput, SimilarInput, StaleInput,
     TrustStateInput,
 };
+use ft_ops::profile::{AddComponentInput, ComponentView, ProfileView, UpdateProfileInput};
 use ft_ops::scope::{
     AliasEntry, AliasesInput, AliasesOutput, CodeOwnersRow, ListInput as ScopeListInput,
     ListOutput as ScopeListOutput, OwnersInput, OwnersOutput, ScopeDetail, ScopeSummary,
@@ -256,6 +257,11 @@ fn export_into(dir: &Path) -> Result<()> {
     GraphNode::export_all_to(dir).context("export GraphNode")?;
     GraphEdge::export_all_to(dir).context("export GraphEdge")?;
     GraphDirectionInput::export_all_to(dir).context("export GraphDirectionInput")?;
+    // Repo profile panel (RepoProfile epic).
+    ProfileView::export_all_to(dir).context("export ProfileView")?;
+    ComponentView::export_all_to(dir).context("export ComponentView")?;
+    UpdateProfileInput::export_all_to(dir).context("export UpdateProfileInput")?;
+    AddComponentInput::export_all_to(dir).context("export AddComponentInput")?;
     Ok(())
 }
 

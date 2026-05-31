@@ -59,6 +59,10 @@ relation: string, } | { "kind": "doc_edited",
 /**
  * Doc record id.
  */
+id: string, } | { "kind": "profile_updated", 
+/**
+ * Profile record id.
+ */
 id: string, } | { "kind": "memory_written", 
 /**
  * Memory id.

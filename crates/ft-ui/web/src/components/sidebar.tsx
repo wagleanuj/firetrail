@@ -15,6 +15,7 @@ import {
   Brain,
   Boxes,
   Users,
+  FileCog,
   ScrollText,
   Keyboard,
   PanelLeftClose,
@@ -45,6 +46,7 @@ const NAV: NavItem[] = [
   { to: '/memory', label: 'Memory', icon: Brain },
   { to: '/scope', label: 'Scope', icon: Boxes },
   { to: '/identity', label: 'Identity', icon: Users },
+  { to: '/profile', label: 'Profile', icon: FileCog },
   { to: '/audit', label: 'Audit', icon: ScrollText },
 ]
 

@@ -22,6 +22,7 @@ pub mod docs;
 pub mod epics;
 pub mod identity;
 pub mod memory;
+pub mod profile;
 pub mod scope;
 pub mod search;
 pub mod tickets;
@@ -37,6 +38,7 @@ pub fn build(state: Arc<AppState>) -> Router {
         .nest("/tickets", tickets::router())
         .nest("/docs", docs::router())
         .nest("/memory", memory::router())
+        .nest("/profile", profile::router())
         .nest("/search", search::router())
         .nest("/scope", scope::router())
         .nest("/identity", identity::router())

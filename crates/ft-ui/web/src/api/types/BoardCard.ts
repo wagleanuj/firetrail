@@ -17,10 +17,34 @@ short_id: string,
  */
 title: string, 
 /**
+ * Record kind, lowercase (`"epic"|"task"|"subtask"|"bug"`). Drives the type pill.
+ */
+kind: string, 
+/**
  * Priority (lowercase, e.g. `"p1"`).
  */
 priority: string, 
 /**
  * Owner identity if set.
  */
-owner: string | null, };
+owner: string | null, 
+/**
+ * Canonical id of the enclosing epic, resolved by walking `parent_id`. `None` for orphans/epics.
+ */
+epic_id: string | null, 
+/**
+ * Total acceptance criteria attached to this record.
+ */
+criteria_total: number, 
+/**
+ * Acceptance criteria with status `checked`.
+ */
+criteria_met: number, 
+/**
+ * Direct children of kind `Subtask`.
+ */
+subtask_count: number, 
+/**
+ * Count of outgoing `blocked-by` edges.
+ */
+blocked_by_count: number, };

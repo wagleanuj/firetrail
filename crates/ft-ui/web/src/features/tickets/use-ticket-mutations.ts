@@ -26,7 +26,7 @@ import {
 import type { ClaimOutputWire, CloseOutputWire, CreatedTicketWire, UnclaimOutputWire, UpdateOutputWire } from '@/api/wire/record'
 import { ticketQueryKey } from './use-ticket-query'
 
-type Column = keyof BoardOutput
+type Column = keyof Omit<BoardOutput, 'epics'>
 
 const STATUS_TO_COLUMN: Record<string, Column> = {
   open: 'todo',
@@ -110,8 +110,14 @@ export function useCreateTicket(): UseMutationResult<CreatedTicketWire, unknown,
         id: env.id,
         short_id: env.id.slice(0, 10),
         title: env.title,
+        kind: env.kind,
         priority: env.priority,
         owner: env.owner?.name ?? null,
+        epic_id: null,
+        criteria_total: 0,
+        criteria_met: 0,
+        subtask_count: 0,
+        blocked_by_count: 0,
       }
       qc.setQueriesData<BoardOutput>({ queryKey: ['board'] }, (board) => {
         if (!board) return board

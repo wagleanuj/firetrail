@@ -11,6 +11,7 @@ import * as React from 'react'
 import { Link } from '@tanstack/react-router'
 import {
   KanbanSquare,
+  ListTodo,
   Brain,
   Boxes,
   Users,
@@ -38,6 +39,7 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { to: '/', label: 'Board', icon: KanbanSquare, exact: true },
+  { to: '/backlog', label: 'Backlog', icon: ListTodo },
   { to: '/memory', label: 'Memory', icon: Brain },
   { to: '/scope', label: 'Scope', icon: Boxes },
   { to: '/identity', label: 'Identity', icon: Users },

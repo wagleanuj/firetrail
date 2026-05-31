@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as BacklogRouteImport } from './routes/backlog'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ScopeIndexRouteImport } from './routes/scope/index'
 import { Route as MemoryIndexRouteImport } from './routes/memory/index'
@@ -27,6 +28,11 @@ import { Route as AuditDiffRouteImport } from './routes/audit/diff'
 import { Route as AuditReviewRecordIdRouteImport } from './routes/audit/review.$recordId'
 import { Route as AuditCriteriaRecordIdRouteImport } from './routes/audit/criteria.$recordId'
 
+const BacklogRoute = BacklogRouteImport.update({
+  id: '/backlog',
+  path: '/backlog',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -115,6 +121,7 @@ const AuditCriteriaRecordIdRoute = AuditCriteriaRecordIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/backlog': typeof BacklogRoute
   '/audit/diff': typeof AuditDiffRoute
   '/audit/graph': typeof AuditGraphRoute
   '/audit/lint': typeof AuditLintRoute
@@ -134,6 +141,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/backlog': typeof BacklogRoute
   '/audit/diff': typeof AuditDiffRoute
   '/audit/graph': typeof AuditGraphRoute
   '/audit/lint': typeof AuditLintRoute
@@ -154,6 +162,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/backlog': typeof BacklogRoute
   '/audit/diff': typeof AuditDiffRoute
   '/audit/graph': typeof AuditGraphRoute
   '/audit/lint': typeof AuditLintRoute
@@ -175,6 +184,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/backlog'
     | '/audit/diff'
     | '/audit/graph'
     | '/audit/lint'
@@ -194,6 +204,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/backlog'
     | '/audit/diff'
     | '/audit/graph'
     | '/audit/lint'
@@ -213,6 +224,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/backlog'
     | '/audit/diff'
     | '/audit/graph'
     | '/audit/lint'
@@ -233,6 +245,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  BacklogRoute: typeof BacklogRoute
   AuditDiffRoute: typeof AuditDiffRoute
   AuditGraphRoute: typeof AuditGraphRoute
   AuditLintRoute: typeof AuditLintRoute
@@ -253,6 +266,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/backlog': {
+      id: '/backlog'
+      path: '/backlog'
+      fullPath: '/backlog'
+      preLoaderRoute: typeof BacklogRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -377,6 +397,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  BacklogRoute: BacklogRoute,
   AuditDiffRoute: AuditDiffRoute,
   AuditGraphRoute: AuditGraphRoute,
   AuditLintRoute: AuditLintRoute,

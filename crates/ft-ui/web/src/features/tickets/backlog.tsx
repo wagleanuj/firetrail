@@ -34,8 +34,6 @@ import type { BoardCard } from '@/api/types/BoardCard'
 export interface BacklogRow extends BoardCard {
   /** The board column this card came from. */
   status: 'todo' | 'in_progress' | 'review' | 'done'
-  subtask_count: number
-  blocked_by_count: number
 }
 
 export type SortKey = 'priority' | 'title' | 'status' | 'kind' | 'owner'
@@ -145,13 +143,26 @@ function SortableHead({
   onSort: (col: SortKey) => void
   className?: string
 }) {
+  const isActive = col === sortKey
+  const ariaSort: React.AriaAttributes['aria-sort'] = isActive
+    ? sortDir === 'asc'
+      ? 'ascending'
+      : 'descending'
+    : 'none'
+
   return (
     <TableHead
-      className={cn('cursor-pointer select-none whitespace-nowrap hover:text-foreground', className)}
-      onClick={() => onSort(col)}
+      aria-sort={ariaSort}
+      className={cn('whitespace-nowrap', className)}
     >
-      {label}
-      <SortIcon col={col} active={sortKey} dir={sortDir} />
+      <button
+        type="button"
+        className="flex cursor-pointer select-none items-center hover:text-foreground"
+        onClick={() => onSort(col)}
+      >
+        {label}
+        <SortIcon col={col} active={sortKey} dir={sortDir} />
+      </button>
     </TableHead>
   )
 }

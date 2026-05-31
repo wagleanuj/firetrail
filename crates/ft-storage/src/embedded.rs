@@ -113,6 +113,7 @@ const ALL_KINDS: &[RecordKind] = &[
     RecordKind::Gotcha,
     RecordKind::Memory,
     RecordKind::Doc,
+    RecordKind::RepoProfile,
 ];
 
 impl Storage for EmbeddedStorage {
@@ -488,6 +489,11 @@ mod tests {
         // `git init` — assert NotInitialized.
         let err = EmbeddedStorage::open(dir.path()).unwrap_err();
         assert!(matches!(err, StorageError::NotInitialized(_)));
+    }
+
+    #[test]
+    fn all_kinds_includes_repo_profile() {
+        assert!(ALL_KINDS.contains(&RecordKind::RepoProfile));
     }
 
     #[test]

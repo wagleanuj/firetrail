@@ -32,6 +32,7 @@ mod error;
 mod external;
 mod filter;
 mod history;
+mod profile;
 mod refs;
 mod storage;
 mod validate;
@@ -50,6 +51,7 @@ pub use external::{
 };
 pub use filter::StorageFilter;
 pub use history::write_with_history;
+pub use profile::{profile_get, profile_set};
 pub use refs::{ExternalRefViolation, validate_external_references};
 pub use storage::Storage;
 pub use validate::{

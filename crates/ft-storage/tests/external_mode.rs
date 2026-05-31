@@ -3,12 +3,12 @@
 use std::path::Path;
 use std::process::Command;
 
-use ft_core::Identity;
+use ft_core::{Identity, RecordBody, RepoProfileBody};
 use ft_storage::{
     EmbeddedStorage, ExternalConfig, ExternalStorage, Storage, StorageMode, SyncPolicy,
-    open_for_workspace, sync_status, validate_external_references,
+    open_for_workspace, profile_get, profile_set, sync_status, validate_external_references,
 };
-use ft_testkit::{TestRepo, make_task};
+use ft_testkit::{TestRepo, make_identity, make_task};
 
 /// Create a bare repository to act as the "remote" data repo, seeded with an
 /// initial commit so `git clone` succeeds.
@@ -113,6 +113,58 @@ fn open_clones_and_round_trips_through_push_pull() {
         .read(&record.envelope.id)
         .expect("reader sees record");
     assert_eq!(back.envelope.title, "from-writer");
+}
+
+#[test]
+fn profile_set_is_singleton_in_external_mode() {
+    let remote = make_bare_remote("profile");
+    let ws = TestRepo::new().unwrap();
+    let storage =
+        ExternalStorage::open(ws.root(), &external_config(remote_url(&remote))).expect("open");
+
+    // No profile to begin with.
+    assert!(profile_get(&storage).unwrap().is_none());
+
+    let first = profile_set(
+        &storage,
+        RepoProfileBody {
+            validate_command: Some("cargo test".into()),
+            ..Default::default()
+        },
+        &make_identity(),
+    )
+    .unwrap();
+
+    let second = profile_set(
+        &storage,
+        RepoProfileBody {
+            validate_command: Some("just ci".into()),
+            ..Default::default()
+        },
+        &make_identity(),
+    )
+    .unwrap();
+
+    // Updated in place: same id, no duplicate.
+    assert_eq!(first.envelope.id, second.envelope.id);
+
+    // Exactly one profile file under the cloned data repo.
+    let dir = storage.clone_path().join(".firetrail/records/repo_profile");
+    let files: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().is_some_and(|x| x == "json"))
+        .collect();
+    assert_eq!(files.len(), 1, "exactly one profile file: {files:?}");
+
+    // The second set's fields are what persisted.
+    let back = profile_get(&storage).unwrap().expect("profile present");
+    match &back.body {
+        RecordBody::RepoProfile(b) => {
+            assert_eq!(b.validate_command.as_deref(), Some("just ci"));
+        }
+        other => panic!("expected RepoProfile body, got {other:?}"),
+    }
 }
 
 #[test]

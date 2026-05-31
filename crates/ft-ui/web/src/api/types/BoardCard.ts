@@ -21,6 +21,13 @@ title: string,
  */
 kind: string, 
 /**
+ * Fine-grained status, lowercase `snake_case` (`"open"`, `"ready"`,
+ * `"in_progress"`, `"blocked"`, `"review"`, `"closed"`, `"deferred"`,
+ * `"archived"`). The column buckets several statuses together, so consumers
+ * that need the exact status (e.g. the backlog table) read this field.
+ */
+status: string, 
+/**
  * Priority (lowercase, e.g. `"p1"`).
  */
 priority: string, 

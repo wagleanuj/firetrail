@@ -3,7 +3,7 @@ import { groupByEpic } from './board-swimlanes'
 import type { BoardOutput } from '@/api/types/BoardOutput'
 
 function makeCard(id: string, epic_id: string | null) {
-  return { id, short_id: id, title: id, kind: 'task', priority: 'p2', owner: null, epic_id, criteria_total: 0, criteria_met: 0, subtask_count: 0, blocked_by_count: 0 }
+  return { id, short_id: id, title: id, kind: 'task', status: 'open', priority: 'p2', owner: null, epic_id, criteria_total: 0, criteria_met: 0, subtask_count: 0, blocked_by_count: 0 }
 }
 
 describe('groupByEpic', () => {

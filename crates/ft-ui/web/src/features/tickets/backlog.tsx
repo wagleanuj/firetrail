@@ -27,14 +27,15 @@ import { PageHeader } from '@/components/page-header'
 import { cn } from '@/lib/utils'
 import { useBoardQuery } from './use-board-query'
 import { useUpdateTicket } from './use-ticket-mutations'
+import type { UpdatePatch } from './api'
 import type { BoardCard } from '@/api/types/BoardCard'
 import { KIND_VARIANT } from './ticket-kind'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface BacklogRow extends BoardCard {
-  /** The board column this card came from. */
-  status: 'todo' | 'in_progress' | 'review' | 'done'
+  /** The board column this card was bucketed into. */
+  column: 'todo' | 'in_progress' | 'review' | 'done'
 }
 
 export type SortKey = 'priority' | 'title' | 'status' | 'kind' | 'owner'
@@ -49,11 +50,16 @@ const PRIORITY_ORDER: Record<string, number> = {
   p4: 4,
 }
 
-const STATUS_ORDER: Record<string, number> = {
-  todo: 0,
-  in_progress: 1,
-  review: 2,
-  done: 3,
+/** Rank for sorting the fine-grained `status` field (life-cycle order). */
+const STATUS_RANK: Record<string, number> = {
+  open: 0,
+  ready: 1,
+  in_progress: 2,
+  blocked: 3,
+  review: 4,
+  closed: 5,
+  deferred: 6,
+  archived: 7,
 }
 
 export function sortRows(
@@ -67,7 +73,7 @@ export function sortRows(
     if (key === 'priority') {
       cmp = (PRIORITY_ORDER[a.priority] ?? 99) - (PRIORITY_ORDER[b.priority] ?? 99)
     } else if (key === 'status') {
-      cmp = (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99)
+      cmp = (STATUS_RANK[a.status] ?? 99) - (STATUS_RANK[b.status] ?? 99)
     } else if (key === 'title') {
       cmp = a.title.localeCompare(b.title)
     } else if (key === 'kind') {
@@ -87,16 +93,16 @@ function flattenBoard(data: {
   review: BoardCard[]
   done: BoardCard[]
 }): BacklogRow[] {
-  const pairs: [BacklogRow['status'], BoardCard[]][] = [
+  const pairs: [BacklogRow['column'], BoardCard[]][] = [
     ['todo', data.todo],
     ['in_progress', data.in_progress],
     ['review', data.review],
     ['done', data.done],
   ]
   const result: BacklogRow[] = []
-  for (const [status, cards] of pairs) {
+  for (const [column, cards] of pairs) {
     for (const card of cards) {
-      result.push({ ...card, status } as BacklogRow)
+      result.push({ ...card, column })
     }
   }
   return result
@@ -185,31 +191,25 @@ function PriorityCell({ row }: { row: BacklogRow }) {
   )
 }
 
-/** Compact inline status editor. */
+/** Compact inline status editor. Reads the card's fine-grained `status` so
+ *  ready/blocked/deferred/archived render distinctly (not collapsed to a column). */
 function StatusCell({ row }: { row: BacklogRow }) {
   const update = useUpdateTicket(row.id)
-  const STATUS_OPTS = [
+  const STATUS_OPTS: { value: NonNullable<UpdatePatch['status']>; label: string }[] = [
     { value: 'open', label: 'Open' },
     { value: 'ready', label: 'Ready' },
     { value: 'in_progress', label: 'In Progress' },
+    { value: 'blocked', label: 'Blocked' },
     { value: 'review', label: 'Review' },
     { value: 'closed', label: 'Closed' },
+    { value: 'deferred', label: 'Deferred' },
+    { value: 'archived', label: 'Archived' },
   ]
-  // Derive display label from column
-  const colToStatus: Record<BacklogRow['status'], string> = {
-    todo: 'open',
-    in_progress: 'in_progress',
-    review: 'review',
-    done: 'closed',
-  }
-  const currentStatus = colToStatus[row.status]
   return (
     <Select
-      value={currentStatus}
+      value={row.status}
       onValueChange={(val) =>
-        update.mutate({
-          status: val as 'open' | 'ready' | 'in_progress' | 'review' | 'closed',
-        })
+        update.mutate({ status: val as NonNullable<UpdatePatch['status']> })
       }
     >
       <SelectTrigger
@@ -388,7 +388,7 @@ export function Backlog() {
     let rows = allRows
     if (epicFilter !== '__all__') rows = rows.filter((r) => r.epic_id === epicFilter)
     if (ownerFilter !== '__all__') rows = rows.filter((r) => r.owner === ownerFilter)
-    if (statusFilter !== '__all__') rows = rows.filter((r) => r.status === statusFilter)
+    if (statusFilter !== '__all__') rows = rows.filter((r) => r.column === statusFilter)
     if (kindFilter !== '__all__') rows = rows.filter((r) => r.kind === kindFilter)
     return rows
   }, [allRows, epicFilter, ownerFilter, statusFilter, kindFilter])

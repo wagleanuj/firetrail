@@ -6,7 +6,7 @@
  *     for low-frequency ops like create/link)
  *   - surfaces typed errors via `toastApiError`
  */
-import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/react-query'
+import { useMutation, useQueryClient, type QueryKey, type UseMutationResult } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import type { BoardOutput } from '@/api/types/BoardOutput'
 import type { BoardCard } from '@/api/types/BoardCard'
@@ -64,14 +64,22 @@ interface MoveCardVars {
 }
 
 /** Optimistic drag-to-column transition. */
-export function useMoveCard(): UseMutationResult<UpdateOutputWire, unknown, MoveCardVars, { previous?: BoardOutput }> {
+export function useMoveCard(): UseMutationResult<
+  UpdateOutputWire,
+  unknown,
+  MoveCardVars,
+  { previous: Array<[QueryKey, BoardOutput | undefined]> }
+> {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, to }) =>
       updateTicket(id, { status: statusForColumn(to) }),
     onMutate: async ({ id, from, to }) => {
       await qc.cancelQueries({ queryKey: ['board'] })
-      const previous = qc.getQueryData<BoardOutput>(['board', null, null])
+      // Board query keys are 4-element (['board', scope, owner, ready]); there
+      // may be several cached at once (e.g. ready-filtered + unfiltered).
+      // Snapshot them all so the rollback restores exactly what was patched.
+      const previous = qc.getQueriesData<BoardOutput>({ queryKey: ['board'] })
       qc.setQueriesData<BoardOutput>({ queryKey: ['board'] }, (board) => {
         if (!board) return board
         const fromList = board[from]
@@ -86,8 +94,8 @@ export function useMoveCard(): UseMutationResult<UpdateOutputWire, unknown, Move
       return { previous }
     },
     onError: (err, _vars, ctx) => {
-      if (ctx?.previous) {
-        qc.setQueryData(['board', null, null], ctx.previous)
+      for (const [key, data] of ctx?.previous ?? []) {
+        qc.setQueryData(key, data)
       }
       qc.invalidateQueries({ queryKey: ['board'] })
       toastApiError(err)
@@ -111,6 +119,7 @@ export function useCreateTicket(): UseMutationResult<CreatedTicketWire, unknown,
         short_id: env.id.slice(0, 10),
         title: env.title,
         kind: env.kind,
+        status: 'open',
         priority: env.priority,
         owner: env.owner?.name ?? null,
         epic_id: null,

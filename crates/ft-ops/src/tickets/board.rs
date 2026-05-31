@@ -9,7 +9,7 @@ use crate::events::EventBus;
 use crate::identity::Identity;
 use crate::workspace::Workspace;
 
-use super::ctx::TicketCtx;
+use super::ctx::{TICKET_KINDS, TicketCtx, status_str};
 
 /// Max hops when walking `parent_id` to find the enclosing epic. The domain
 /// chain is Epic → Task → Subtask (depth 2); the larger bound leaves room for
@@ -64,6 +64,11 @@ pub struct BoardCard {
     pub title: String,
     /// Record kind, lowercase (`"epic"|"task"|"subtask"|"bug"`). Drives the type pill.
     pub kind: String,
+    /// Fine-grained status, lowercase `snake_case` (`"open"`, `"ready"`,
+    /// `"in_progress"`, `"blocked"`, `"review"`, `"closed"`, `"deferred"`,
+    /// `"archived"`). The column buckets several statuses together, so consumers
+    /// that need the exact status (e.g. the backlog table) read this field.
+    pub status: String,
     /// Priority (lowercase, e.g. `"p1"`).
     pub priority: String,
     /// Owner identity if set.
@@ -110,14 +115,6 @@ pub struct BoardOutput {
     /// a [`BoardCard`] in its status column.
     pub epics: Vec<BoardEpic>,
 }
-
-/// The four record kinds that belong on the ticket board.
-const TICKET_KINDS: [RecordKind; 4] = [
-    RecordKind::Epic,
-    RecordKind::Task,
-    RecordKind::Subtask,
-    RecordKind::Bug,
-];
 
 /// `board` op — kanban snapshot derived from the index.
 ///
@@ -203,6 +200,7 @@ pub(crate) fn card_from(
         short_id: r.id.short(8).to_string(),
         title: r.title.clone(),
         kind: record_kind_str(r.kind).to_string(),
+        status: status_str(r.status),
         priority: format!("{:?}", r.priority).to_lowercase(),
         owner: r.owner.as_ref().map(|o| o.as_str().to_string()),
         epic_id,

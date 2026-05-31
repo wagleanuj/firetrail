@@ -15,6 +15,7 @@ const card: BoardCard = {
   short_id: 'TASK-1',
   title: 'Reset flow',
   kind: 'task',
+  status: 'in_progress',
   priority: 'p2',
   owner: 'alice',
   epic_id: 'EPIC-9',

@@ -1,6 +1,6 @@
 //! Kanban-style snapshot grouped by status.
 
-use ft_core::{Identity as CoreIdentity, Status};
+use ft_core::{Identity as CoreIdentity, RecordKind, Status};
 use ft_index::{IndexedRecord, ListQuery, ReadyQuery};
 use serde::{Deserialize, Serialize};
 
@@ -60,6 +60,14 @@ pub struct BoardOutput {
     pub done: Vec<BoardCard>,
 }
 
+/// The four record kinds that belong on the ticket board.
+const TICKET_KINDS: [RecordKind; 4] = [
+    RecordKind::Epic,
+    RecordKind::Task,
+    RecordKind::Subtask,
+    RecordKind::Bug,
+];
+
 /// `board` op — kanban snapshot derived from the index.
 ///
 /// Read-only; emits no events.
@@ -72,7 +80,10 @@ pub fn board(
     let ctx = TicketCtx::open(ws, identity, "board")?;
 
     if input.ready {
-        let mut rq = ReadyQuery::default();
+        let mut rq = ReadyQuery {
+            kinds: Some(TICKET_KINDS.to_vec()),
+            ..ReadyQuery::default()
+        };
         if let Some(o) = input.owner {
             let identity = CoreIdentity::new(o.clone())
                 .map_err(|e| OpsError::validation("owner", format!("invalid owner: {e}")))?;
@@ -91,6 +102,7 @@ pub fn board(
     let mut q = ListQuery {
         include_closed: true,
         include_archived: false,
+        kinds: Some(TICKET_KINDS.to_vec()),
         ..ListQuery::default()
     };
     if let Some(o) = input.owner {
@@ -137,5 +149,103 @@ fn build_board(rows: &[IndexedRecord]) -> BoardOutput {
         in_progress,
         review,
         done,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::memory::{self, CreateDecisionInput, CreateMemoryInput};
+    use crate::tickets::{self, CreateTaskInput};
+    use crate::{EventBus, Identity, Workspace};
+    use ft_testkit::TestRepo;
+
+    fn fixture() -> (TestRepo, Workspace) {
+        let tr = TestRepo::new().expect("test repo");
+        let firetrail = tr.firetrail_dir();
+        std::fs::create_dir_all(&firetrail).expect("mkdir .firetrail");
+        std::fs::write(
+            firetrail.join("config.yml"),
+            "schema_version: 1\nidentity:\n  strict: false\n",
+        )
+        .expect("write config.yml");
+        let ws = Workspace::open(tr.root()).expect("open workspace");
+        (tr, ws)
+    }
+
+    fn alice() -> Identity {
+        Identity::new("alice@firetrail.test", "Alice")
+    }
+
+    fn bus() -> EventBus {
+        EventBus::new(64)
+    }
+
+    #[test]
+    fn board_excludes_memory_and_doc_kinds() {
+        let (_tr, ws) = fixture();
+        let ident = alice();
+        let events = bus();
+
+        // One ticket (Task, Open).
+        tickets::create_task(
+            &ws,
+            &ident,
+            CreateTaskInput {
+                title: "real task".into(),
+                description: None,
+                epic: None,
+                priority: None,
+                owner: None,
+                scope: None,
+                labels: vec![],
+                request_id: None,
+            },
+            &events,
+        )
+        .expect("create_task");
+
+        // One Memory record (Open after creation).
+        memory::create_memory(
+            &ws,
+            &ident,
+            CreateMemoryInput {
+                title: "some memory".into(),
+                body: "should not appear on board".into(),
+                tags: vec![],
+                risk_class: None,
+                scope: None,
+                request_id: None,
+            },
+            &events,
+        )
+        .expect("create_memory");
+
+        // One Decision record (Open after creation).
+        memory::create_decision(
+            &ws,
+            &ident,
+            CreateDecisionInput {
+                title: "use rust".into(),
+                context: "because it is fast".into(),
+                decision: "decided".into(),
+                consequences: None,
+                alternatives: vec![],
+                status: None,
+                risk_class: None,
+                scope: None,
+                request_id: None,
+            },
+            &events,
+        )
+        .expect("create_decision");
+
+        let out = board(&ws, &ident, BoardInput::default(), &events).unwrap();
+        let total = out.todo.len() + out.in_progress.len() + out.review.len() + out.done.len();
+        assert_eq!(
+            total, 1,
+            "only the ticket should appear, not memory/decision"
+        );
+        assert_eq!(out.todo.len(), 1, "the open task should be in todo");
     }
 }

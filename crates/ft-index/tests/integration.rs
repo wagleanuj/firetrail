@@ -15,7 +15,9 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use chrono::Utc;
-use ft_core::{Claim, Identity, Priority, Record, RecordBody, RecordId, Relation, Status};
+use ft_core::{
+    AcStatus, Claim, Identity, Priority, Record, RecordBody, RecordId, Relation, Status,
+};
 use ft_index::{
     Index, ListQuery, OrderBy, ReadyQuery, Storage, StorageError, StorageFilter, WalkDirection,
 };
@@ -604,8 +606,37 @@ fn list_limit_and_offset() {
     assert_eq!(got[1].title, "t02");
 }
 
-// ─── helpers ───────────────────────────────────────────────────────────────
+#[test]
+fn list_reports_criteria_counts() {
+    let (_d, mut idx, storage) = fresh_index();
 
+    // Build a task with 3 acceptance criteria, 1 of which is checked.
+    let mut task = make_task()
+        .title("ac task")
+        .acceptance_criterion("first")
+        .acceptance_criterion("second")
+        .acceptance_criterion("third")
+        .build();
+
+    // Mark the first AC as checked by mutating the body directly.
+    if let RecordBody::Task(ref mut t) = task.body {
+        t.acceptance_criteria[0].status = AcStatus::Checked;
+    }
+
+    storage.insert(task.clone());
+    idx.rebuild_from(&storage).unwrap();
+
+    let rows = idx.list(&ListQuery::default()).unwrap();
+    let found = rows
+        .iter()
+        .find(|r| r.id == task.envelope.id)
+        .expect("task must appear in list results");
+
+    assert_eq!(found.criteria_total, 3);
+    assert_eq!(found.criteria_met, 1);
+}
+
+// ─── helpers ───────────────────────────────────────────────────────────────
 /// Build a `blocked-by` [`Relation`] for injection through
 /// [`MemStorage::add_relation`]. The index then ingests it via
 /// `Storage::relations()` on the next `rebuild_from`/`refresh`.

@@ -56,7 +56,7 @@ pub use download::{
 pub use embedder::{Embedder, MockEmbedder, OnnxEmbedder};
 pub use error::EmbedError;
 pub use service::{
-    DocFreshness, DocFrontmatter, DriftIssue, DriftReport, EmbedService,
-    apply_doc_content, apply_doc_frontmatter, content_hash, cosine, doc_freshness, parse_doc_meta,
-    parse_frontmatter, record_text, record_text_with_root,
+    DocFreshness, DocFrontmatter, DriftIssue, DriftReport, EmbedService, apply_doc_content,
+    apply_doc_frontmatter, content_hash, cosine, doc_freshness, parse_doc_meta, parse_frontmatter,
+    record_text, record_text_with_root,
 };

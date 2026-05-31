@@ -38,6 +38,10 @@ pub struct IndexedRecord {
     pub blocks_count: u32,
     /// Parent record id (from `child-of` / `parent_epic` / `parent_task`).
     pub parent_id: Option<RecordId>,
+    /// Total acceptance criteria attached to this record.
+    pub criteria_total: u32,
+    /// Acceptance criteria with status `checked`.
+    pub criteria_met: u32,
 }
 
 /// One edge in a dependency walk result.

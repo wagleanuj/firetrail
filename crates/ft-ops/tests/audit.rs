@@ -6,9 +6,7 @@ use ft_ops::audit::{
 };
 use ft_ops::memory::{self, CreateMemoryInput};
 use ft_ops::tickets::{self, CreateEpicInput, CreateTaskInput};
-use ft_ops::trust::{
-    self, PromoteInput as TrustPromoteInput, ReviewInput as TrustReviewInput,
-};
+use ft_ops::trust::{self, PromoteInput as TrustPromoteInput, ReviewInput as TrustReviewInput};
 use ft_ops::{EventBus, Identity, Workspace};
 use ft_testkit::TestRepo;
 

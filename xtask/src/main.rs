@@ -44,13 +44,13 @@ use ft_ops::scope::{
     ListOutput as ScopeListOutput, OwnersInput, OwnersOutput, ScopeDetail, ScopeSummary,
     ShowInput as ScopeShowInput, ShowOutput as ScopeShowOutput,
 };
+use ft_ops::search::{GlobalSearchHit, GlobalSearchInput, GlobalSearchOutput, SearchKind};
 use ft_ops::tickets::{
     BoardCard, BoardInput, BoardOutput, ClaimInput, CloseInput, CreateBugInput, CreateEpicInput,
     CreateSubtaskInput, CreateTaskInput, LinkInput, ListInput, ListedTicket, ShowInput,
     TicketKindFilter, TicketPriority, TicketRelationKind, TicketStatusFilter, UnclaimInput,
     UpdateInput,
 };
-use ft_ops::search::{GlobalSearchHit, GlobalSearchInput, GlobalSearchOutput, SearchKind};
 use ft_ops::trust::{
     EvidenceKindInput, MergeInput, PromoteInput, ReasonInput, ReviewInput as TrustReviewInput,
     SupersedeInput,

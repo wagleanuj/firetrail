@@ -828,7 +828,10 @@ mod tests {
     #[test]
     fn parse_frontmatter_unknown_status_leaves_none() {
         let fm = super::parse_frontmatter("---\nstatus: bananas\n---\nbody\n");
-        assert_eq!(fm.status, None, "unknown status value is ignored, not an error");
+        assert_eq!(
+            fm.status, None,
+            "unknown status value is ignored, not an error"
+        );
     }
 
     #[test]
@@ -855,7 +858,11 @@ mod tests {
         ];
         for (raw, want) in cases {
             let md = format!("---\nstatus: {raw}\n---\n");
-            assert_eq!(super::parse_frontmatter(&md).status, Some(want), "status {raw}");
+            assert_eq!(
+                super::parse_frontmatter(&md).status,
+                Some(want),
+                "status {raw}"
+            );
         }
     }
 
@@ -900,7 +907,10 @@ mod tests {
         );
 
         // Frontmatter absent → nothing changes, returns false.
-        assert!(!super::apply_doc_frontmatter(&mut record, "# T\n\nNo frontmatter.\n"));
+        assert!(!super::apply_doc_frontmatter(
+            &mut record,
+            "# T\n\nNo frontmatter.\n"
+        ));
         let ft_core::RecordBody::Doc(doc) = &record.body else {
             panic!("expected Doc body");
         };

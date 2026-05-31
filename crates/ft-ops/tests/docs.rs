@@ -240,13 +240,31 @@ fn add_applies_frontmatter_and_auto_links() {
 
     // The DocumentedIn edge was created from `links:` — no explicit link call.
     let views = docs::docs_for_ticket(&ws, &id, task_id.clone(), &bus).expect("docs_for_ticket");
-    assert_eq!(views.len(), 1, "frontmatter link should make the doc reachable");
+    assert_eq!(
+        views.len(),
+        1,
+        "frontmatter link should make the doc reachable"
+    );
     assert_eq!(views[0].id, added.id);
-    assert_eq!(views[0].doc_type, "adr", "frontmatter doc_type overrides input");
+    assert_eq!(
+        views[0].doc_type, "adr",
+        "frontmatter doc_type overrides input"
+    );
 
     // Frontmatter status → trust, and scope → envelope.
-    let shown = tickets::show(&ws, &id, ShowInput { id: added.id.clone() }, &bus).expect("show");
-    assert_eq!(shown.record.envelope.owning_scope.as_deref(), Some("ft-embed"));
+    let shown = tickets::show(
+        &ws,
+        &id,
+        ShowInput {
+            id: added.id.clone(),
+        },
+        &bus,
+    )
+    .expect("show");
+    assert_eq!(
+        shown.record.envelope.owning_scope.as_deref(),
+        Some("ft-embed")
+    );
     let RecordBody::Doc(doc) = &shown.record.body else {
         panic!("expected a Doc record");
     };

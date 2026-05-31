@@ -685,7 +685,9 @@ SELECT r.id, r.kind, r.title, r.status, r.priority, r.owner,
        r.owning_scope, r.parent_id,
        c.claimed_by, c.claimed_at, c.claim_source, c.claim_expires_at,
        (SELECT COUNT(*) FROM relations WHERE from_id = r.id AND kind = 'blocked-by') AS bb,
-       (SELECT COUNT(*) FROM relations WHERE from_id = r.id AND kind = 'blocks') AS bk
+       (SELECT COUNT(*) FROM relations WHERE from_id = r.id AND kind = 'blocks') AS bk,
+       (SELECT COUNT(*) FROM acceptance_criteria WHERE record_id = r.id) AS ct,
+       (SELECT COUNT(*) FROM acceptance_criteria WHERE record_id = r.id AND status = 'checked') AS cm
 FROM records r
 LEFT JOIN claims c ON c.record_id = r.id
 WHERE r.id = ?1
@@ -700,7 +702,9 @@ fn build_list_sql(q: &ListQuery, count_only: bool) -> (String, Vec<String>) {
                 r.owning_scope, r.parent_id,
                 c.claimed_by, c.claimed_at, c.claim_source, c.claim_expires_at,
                 (SELECT COUNT(*) FROM relations WHERE from_id = r.id AND kind = 'blocked-by') AS bb,
-                (SELECT COUNT(*) FROM relations WHERE from_id = r.id AND kind = 'blocks') AS bk
+                (SELECT COUNT(*) FROM relations WHERE from_id = r.id AND kind = 'blocks') AS bk,
+                (SELECT COUNT(*) FROM acceptance_criteria WHERE record_id = r.id) AS ct,
+                (SELECT COUNT(*) FROM acceptance_criteria WHERE record_id = r.id AND status = 'checked') AS cm
          FROM records r
          LEFT JOIN claims c ON c.record_id = r.id"
             .to_string()
@@ -799,7 +803,9 @@ fn build_ready_sql(q: &ReadyQuery) -> (String, Vec<String>) {
                 r.owning_scope, r.parent_id,
                 c.claimed_by, c.claimed_at, c.claim_source, c.claim_expires_at,
                 (SELECT COUNT(*) FROM relations WHERE from_id = r.id AND kind = 'blocked-by') AS bb,
-                (SELECT COUNT(*) FROM relations WHERE from_id = r.id AND kind = 'blocks') AS bk
+                (SELECT COUNT(*) FROM relations WHERE from_id = r.id AND kind = 'blocks') AS bk,
+                (SELECT COUNT(*) FROM acceptance_criteria WHERE record_id = r.id) AS ct,
+                (SELECT COUNT(*) FROM acceptance_criteria WHERE record_id = r.id AND status = 'checked') AS cm
          FROM records r
          LEFT JOIN claims c ON c.record_id = r.id
          WHERE r.status NOT IN ('closed', 'deferred', 'archived')
@@ -939,6 +945,8 @@ fn row_to_indexed(row: &rusqlite::Row<'_>) -> rusqlite::Result<IndexedRecord> {
     let claim_expires_s: Option<String> = row.get(15)?;
     let bb: i64 = row.get(16)?;
     let bk: i64 = row.get(17)?;
+    let ct: i64 = row.get(18)?;
+    let cm: i64 = row.get(19)?;
 
     let map_err = |e: String| {
         rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, e.into())
@@ -990,6 +998,8 @@ fn row_to_indexed(row: &rusqlite::Row<'_>) -> rusqlite::Result<IndexedRecord> {
         blocked_by_count: u32::try_from(bb).unwrap_or(0),
         blocks_count: u32::try_from(bk).unwrap_or(0),
         parent_id,
+        criteria_total: u32::try_from(ct).unwrap_or(0),
+        criteria_met: u32::try_from(cm).unwrap_or(0),
     })
 }
 

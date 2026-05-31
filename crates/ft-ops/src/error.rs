@@ -93,9 +93,7 @@ impl From<WorkspaceError> for OpsError {
                 kind: entity,
                 id: path,
             },
-            WorkspaceError::Validation { field, reason } => {
-                OpsError::Validation { field, reason }
-            }
+            WorkspaceError::Validation { field, reason } => OpsError::Validation { field, reason },
             WorkspaceError::Internal(e) => OpsError::Internal(e),
         }
     }

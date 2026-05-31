@@ -81,7 +81,10 @@ async fn create_task(client: &reqwest::Client, addr: SocketAddr, title: &str) ->
         .unwrap();
     assert_eq!(resp.status(), reqwest::StatusCode::CREATED, "create_task");
     let body: serde_json::Value = resp.json().await.unwrap();
-    body["record"]["envelope"]["id"].as_str().unwrap().to_string()
+    body["record"]["envelope"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string()
 }
 
 async fn create_memory(client: &reqwest::Client, addr: SocketAddr, summary: &str) -> String {
@@ -94,7 +97,10 @@ async fn create_memory(client: &reqwest::Client, addr: SocketAddr, summary: &str
         .unwrap();
     assert_eq!(resp.status(), reqwest::StatusCode::CREATED, "create_memory");
     let body: serde_json::Value = resp.json().await.unwrap();
-    body["record"]["envelope"]["id"].as_str().unwrap().to_string()
+    body["record"]["envelope"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -139,7 +145,10 @@ async fn search_returns_hits_across_task_and_memory_kinds() {
     }
 
     let kinds: Vec<&str> = hits.iter().filter_map(|h| h["kind"].as_str()).collect();
-    assert!(kinds.contains(&"task"), "expected a task hit, kinds={kinds:?}");
+    assert!(
+        kinds.contains(&"task"),
+        "expected a task hit, kinds={kinds:?}"
+    );
     assert!(
         kinds.contains(&"gotcha"),
         "expected a gotcha (memory) hit, kinds={kinds:?}"

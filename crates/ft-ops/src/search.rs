@@ -15,10 +15,10 @@
 //! ft-ui (and any other adapter) calls this instead of reaching into
 //! `ft_search` directly, keeping the layering identical to the memory surface.
 
+use ft_core::RecordKind;
 use ft_embed::Embedder as _;
 use ft_embed::{DaemonStatus, MockEmbedder, daemon as embed_daemon};
 use ft_import::is_quarantined;
-use ft_core::RecordKind;
 use ft_search::{
     EMBEDDING_DIM, HitMode, IndexKind, SearchHit, SearchMode as CoreSearchMode, SearchQuery,
 };
@@ -232,8 +232,9 @@ pub fn search(
                         Some(v)
                     }
                     Err(e) => {
-                        warnings
-                            .push(format!("mock embedder failed ({e}); falling back to lexical"));
+                        warnings.push(format!(
+                            "mock embedder failed ({e}); falling back to lexical"
+                        ));
                         None
                     }
                 }

@@ -295,9 +295,9 @@ fn index_rebuild_dispatches_record_embeddings_non_fatally_without_daemon() {
     // the rebuild spawning a daemon or hard-failing.
     let warnings = v["data"]["warnings"].as_array().expect("warnings array");
     assert!(
-        warnings
-            .iter()
-            .any(|w| w.as_str().is_some_and(|s| s.contains("rebuild embedding skipped"))),
+        warnings.iter().any(|w| w
+            .as_str()
+            .is_some_and(|s| s.contains("rebuild embedding skipped"))),
         "expected a 'rebuild embedding skipped' warning, got {warnings:#?}"
     );
 
@@ -308,7 +308,10 @@ fn index_rebuild_dispatches_record_embeddings_non_fatally_without_daemon() {
         .as_array()
         .cloned()
         .unwrap_or_default();
-    assert!(!hits.is_empty(), "records must remain searchable after rebuild");
+    assert!(
+        !hits.is_empty(),
+        "records must remain searchable after rebuild"
+    );
 }
 
 #[test]

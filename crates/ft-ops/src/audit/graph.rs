@@ -189,8 +189,7 @@ pub fn graph(
         let from = e.from.as_str();
         let to = e.to.as_str();
         // Drop edges that would reference a node we could not admit.
-        if !admit(from, &mut node_ids, &mut truncated)
-            || !admit(to, &mut node_ids, &mut truncated)
+        if !admit(from, &mut node_ids, &mut truncated) || !admit(to, &mut node_ids, &mut truncated)
         {
             continue;
         }

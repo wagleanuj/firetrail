@@ -191,8 +191,8 @@ fn create_each_kind_lists_back() {
 
 #[test]
 fn create_incident_persists_optional_postmortem_fields() {
-    use ft_core::record::RecordBody;
     use ft_core::RecordId;
+    use ft_core::record::RecordBody;
 
     let (_tr, ws) = fixture();
     let id = alice();
@@ -262,7 +262,10 @@ fn create_incident_persists_optional_postmortem_fields() {
     assert_eq!(body.root_cause.as_deref(), Some("expired TLS cert"));
     assert_eq!(body.resolved_at, Some(resolved));
     assert_eq!(
-        body.findings.iter().map(RecordId::as_str).collect::<Vec<_>>(),
+        body.findings
+            .iter()
+            .map(RecordId::as_str)
+            .collect::<Vec<_>>(),
         vec![finding_id.as_str()]
     );
     assert_eq!(
@@ -301,8 +304,8 @@ fn create_incident_without_postmortem_fields_still_works() {
 
 #[test]
 fn create_decision_persists_alternatives_and_status() {
-    use ft_core::record::RecordBody;
     use ft_core::DecisionStatus;
+    use ft_core::record::RecordBody;
 
     let (_tr, ws) = fixture();
     let id = alice();
@@ -338,8 +341,8 @@ fn create_decision_persists_alternatives_and_status() {
 
 #[test]
 fn create_decision_without_alternatives_or_status_still_works() {
-    use ft_core::record::RecordBody;
     use ft_core::DecisionStatus;
+    use ft_core::record::RecordBody;
 
     let (_tr, ws) = fixture();
     let id = alice();

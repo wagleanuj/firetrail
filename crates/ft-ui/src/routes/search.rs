@@ -24,8 +24,8 @@ use axum::{
     response::IntoResponse,
     routing::get,
 };
-use ft_ops::search::{self, GlobalSearchInput, SearchKind};
 use ft_ops::memory::{SearchMode, TrustStateInput};
+use ft_ops::search::{self, GlobalSearchInput, SearchKind};
 use serde::Deserialize;
 
 use crate::error::AppError;

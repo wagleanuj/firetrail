@@ -53,8 +53,8 @@ pub use id::{
 pub use identity::Identity;
 pub use label::{HistoryEntry, Label, Transition};
 pub use record::{
-    Bug, Decision, Doc, Epic, Finding, Gotcha, Incident, Memory, Record, RecordBody,
-    RecordEnvelope, Runbook, RunbookStep, Subtask, Task,
+    Bug, ComponentRef, Decision, Doc, Epic, Finding, Gotcha, Incident, Memory, Record, RecordBody,
+    RecordEnvelope, RepoProfileBody, Runbook, RunbookStep, Subtask, Task,
 };
 pub use relation::Relation;
 pub use schema::{record_schema, record_schema_json, validate_record_json};

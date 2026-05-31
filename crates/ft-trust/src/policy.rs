@@ -80,7 +80,10 @@ impl StalePolicy {
             | RecordKind::Task
             | RecordKind::Subtask
             | RecordKind::Bug
-            | RecordKind::Doc => {}
+            | RecordKind::Doc
+            // RepoProfile carries trust but freshness is decision-based, not
+            // age-based — no stale-age rule (like Doc).
+            | RecordKind::RepoProfile => {}
         }
         self
     }
@@ -97,7 +100,8 @@ impl StalePolicy {
             | RecordKind::Task
             | RecordKind::Subtask
             | RecordKind::Bug
-            | RecordKind::Doc => None,
+            | RecordKind::Doc
+            | RecordKind::RepoProfile => None,
         }
     }
 }
@@ -163,6 +167,7 @@ fn body_trust(body: &RecordBody) -> Option<TrustState> {
         RecordBody::Gotcha(b) => Some(b.trust),
         RecordBody::Memory(b) => Some(b.trust),
         RecordBody::Doc(b) => Some(b.trust),
+        RecordBody::RepoProfile(b) => Some(b.trust),
         RecordBody::Epic(_) | RecordBody::Task(_) | RecordBody::Subtask(_) | RecordBody::Bug(_) => {
             None
         }
@@ -177,8 +182,8 @@ fn body_risk(body: &RecordBody) -> Option<RiskClass> {
         RecordBody::Decision(b) => b.risk_class,
         RecordBody::Gotcha(b) => b.risk_class,
         RecordBody::Memory(b) => b.risk_class,
-        // Docs carry trust but no risk classification.
-        RecordBody::Doc(_) => None,
+        // Docs and repo profiles carry trust but no risk classification.
+        RecordBody::Doc(_) | RecordBody::RepoProfile(_) => None,
         RecordBody::Epic(_) | RecordBody::Task(_) | RecordBody::Subtask(_) | RecordBody::Bug(_) => {
             None
         }

@@ -519,6 +519,13 @@ pub fn record_text(record: &Record) -> String {
             parts.push(&d.title);
             parts.push(&d.summary);
         }
+        // The profile is searchable by its title (envelope) plus any notes;
+        // commands/components are structured data, not prose.
+        RecordBody::RepoProfile(p) => {
+            if let Some(notes) = &p.notes {
+                parts.push(notes);
+            }
+        }
     }
     parts
         .into_iter()

@@ -715,6 +715,7 @@ fn trust_for_record(record: &Record) -> TrustState {
         RecordBody::Gotcha(b) => b.trust,
         RecordBody::Memory(b) => b.trust,
         RecordBody::Doc(b) => b.trust,
+        RecordBody::RepoProfile(b) => b.trust,
         RecordBody::Epic(_) | RecordBody::Task(_) | RecordBody::Subtask(_) | RecordBody::Bug(_) => {
             default_trust_for_kind(record.envelope.kind)
         }
@@ -771,7 +772,8 @@ fn default_trust_for_kind(kind: RecordKind) -> TrustState {
         | RecordKind::Decision
         | RecordKind::Gotcha
         | RecordKind::Memory
-        | RecordKind::Doc => TrustState::Draft,
+        | RecordKind::Doc
+        | RecordKind::RepoProfile => TrustState::Draft,
     }
 }
 
@@ -840,6 +842,17 @@ fn record_to_text(record: &Record) -> (String, String) {
             parts.join("\n")
         }
         RecordBody::Doc(d) => doc_index_body(d, None),
+        RecordBody::RepoProfile(p) => {
+            let mut parts = Vec::new();
+            if let Some(v) = &p.validate_command {
+                parts.push(v.clone());
+            }
+            if let Some(n) = &p.notes {
+                parts.push(n.clone());
+            }
+            parts.extend(p.components.iter().map(|c| c.name.clone()));
+            parts.join("\n")
+        }
     };
     (title, body)
 }

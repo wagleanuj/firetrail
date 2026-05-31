@@ -53,6 +53,7 @@ fn insert_record_row(db_path: &std::path::Path, record: &Record) {
         ft_core::RecordKind::Gotcha => "gotcha",
         ft_core::RecordKind::Memory => "memory",
         ft_core::RecordKind::Doc => "doc",
+        ft_core::RecordKind::RepoProfile => "repo_profile",
     };
     conn.execute(
         "INSERT OR REPLACE INTO records(id, kind, title, updated_at, owning_scope) \

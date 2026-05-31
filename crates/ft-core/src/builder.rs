@@ -9,7 +9,7 @@ use crate::id::{RecordId, RecordKind};
 use crate::identity::Identity;
 use crate::record::{
     Bug, Decision, Doc, Epic, Finding, Gotcha, Incident, Memory, Record, RecordBody,
-    RecordEnvelope, Runbook, Subtask, Task,
+    RecordEnvelope, RepoProfileBody, Runbook, Subtask, Task,
 };
 
 /// Builder for [`Record`] instances that validates as it constructs.
@@ -228,6 +228,12 @@ impl RecordBuilder {
         self.body(RecordBody::Doc(doc))
     }
 
+    /// Convenience: set the body to a `RepoProfile`.
+    #[must_use]
+    pub fn repo_profile(self, profile: RepoProfileBody) -> Self {
+        self.body(RecordBody::RepoProfile(profile))
+    }
+
     /// Finalize: validate, compute `state_hash`, and return the [`Record`].
     ///
     /// # Errors
@@ -296,6 +302,7 @@ fn default_body_for(kind: RecordKind) -> RecordBody {
         RecordKind::Gotcha => RecordBody::Gotcha(Gotcha::default()),
         RecordKind::Memory => RecordBody::Memory(Memory::default()),
         RecordKind::Doc => RecordBody::Doc(Doc::default()),
+        RecordKind::RepoProfile => RecordBody::RepoProfile(RepoProfileBody::default()),
         // Subtask requires `parent_task`; callers must supply a body explicitly.
         RecordKind::Subtask => {
             // Reached only if the caller forgot to set body; we return an
@@ -411,6 +418,17 @@ mod tests {
             RecordBody::Incident(b) => assert_eq!(b, inc),
             other => panic!("expected Incident body, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn builds_repo_profile_record() {
+        let r = RecordBuilder::new(RecordKind::RepoProfile, "Repo profile", alice())
+            .build()
+            .unwrap();
+        assert_eq!(r.envelope.kind, RecordKind::RepoProfile);
+        assert_eq!(r.body.kind(), RecordKind::RepoProfile);
+        assert_eq!(r.envelope.state_hash.len(), 64);
+        assert!(matches!(r.body, RecordBody::RepoProfile(_)));
     }
 
     #[test]

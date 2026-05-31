@@ -44,6 +44,10 @@ pub enum RecordKind {
     Memory,
     /// File-backed documentation pointer (design doc, ADR, runbook, etc.).
     Doc,
+    /// Singleton per-repo profile: validate/test/build/lint commands, tooling
+    /// facts, and a shallow component map. Populated by an agent-run bootstrap
+    /// conversation; firetrail only stores the decisions (ADR-0005).
+    RepoProfile,
 }
 
 impl RecordKind {
@@ -62,6 +66,7 @@ impl RecordKind {
             Self::Gotcha => "GOTCHA",
             Self::Memory => "MEM",
             Self::Doc => "DOC",
+            Self::RepoProfile => "PROFILE",
         }
     }
 
@@ -79,6 +84,7 @@ impl RecordKind {
             "GOTCHA" => Some(Self::Gotcha),
             "MEM" => Some(Self::Memory),
             "DOC" => Some(Self::Doc),
+            "PROFILE" => Some(Self::RepoProfile),
             _ => None,
         }
     }
@@ -451,6 +457,15 @@ mod tests {
     fn kind_extracted_from_id() {
         let id = RecordId::mint(RecordKind::Epic, &alice());
         assert_eq!(id.kind(), RecordKind::Epic);
+    }
+
+    #[test]
+    fn repo_profile_prefix_roundtrips() {
+        let id = RecordId::mint(RecordKind::RepoProfile, &alice());
+        assert!(id.as_str().starts_with("PROFILE-"), "got {}", id.as_str());
+        assert_eq!(id.kind(), RecordKind::RepoProfile);
+        let again = RecordId::from_string(id.as_str().to_string()).unwrap();
+        assert_eq!(again.kind(), RecordKind::RepoProfile);
     }
 
     #[test]

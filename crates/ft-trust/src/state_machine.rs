@@ -236,6 +236,7 @@ fn set_trust(body: &mut MemoryBody<'_>, to: TrustState) {
         MemoryBody::Gotcha(b) => b.trust = to,
         MemoryBody::Memory(b) => b.trust = to,
         MemoryBody::Doc(b) => b.trust = to,
+        MemoryBody::RepoProfile(b) => b.trust = to,
     }
 }
 
@@ -283,6 +284,19 @@ fn redact_body(body: &mut MemoryBody<'_>) {
         MemoryBody::Doc(b) => {
             b.title.clear();
             b.summary.clear();
+        }
+        // Redaction wipes the profile's content (commands, components, notes);
+        // trust/timestamps are metadata preserved by the caller.
+        MemoryBody::RepoProfile(b) => {
+            b.validate_command = None;
+            b.test_command = None;
+            b.build_command = None;
+            b.lint_command = None;
+            b.languages.clear();
+            b.package_managers.clear();
+            b.runtime = None;
+            b.components.clear();
+            b.notes = None;
         }
     }
 }

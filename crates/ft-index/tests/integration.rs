@@ -127,6 +127,7 @@ impl Storage for MemStorage {
             ft_core::RecordKind::Gotcha => "gotcha",
             ft_core::RecordKind::Memory => "memory",
             ft_core::RecordKind::Doc => "doc",
+            ft_core::RecordKind::RepoProfile => "repo_profile",
         };
         self.records_dir()
             .join(kind_str)

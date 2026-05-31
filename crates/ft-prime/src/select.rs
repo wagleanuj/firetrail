@@ -362,6 +362,14 @@ fn body_text(record: &Record) -> String {
                 )
             }
         }
+        RecordBody::RepoProfile(p) => {
+            p.notes
+                .clone()
+                .unwrap_or_else(|| match &p.validate_command {
+                    Some(v) => format!("Repo profile. Validate command: {v}"),
+                    None => "Repo profile (no validate command set).".to_string(),
+                })
+        }
     }
 }
 
@@ -377,6 +385,7 @@ pub(crate) fn record_trust(record: &Record) -> TrustState {
         RecordBody::Gotcha(g) => g.trust,
         RecordBody::Memory(m) => m.trust,
         RecordBody::Doc(d) => d.trust,
+        RecordBody::RepoProfile(p) => p.trust,
         RecordBody::Epic(_) | RecordBody::Task(_) | RecordBody::Subtask(_) | RecordBody::Bug(_) => {
             TrustState::Verified
         }

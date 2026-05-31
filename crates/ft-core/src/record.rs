@@ -424,6 +424,82 @@ impl Default for Doc {
     }
 }
 
+/// A shallow reference to a component/area of the repo: a name and the
+/// directory it lives in. Deliberately minimal — rich per-component
+/// architecture docs are separate `Doc` records.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+pub struct ComponentRef {
+    /// Human-readable component name (e.g. `ft-cli`).
+    pub name: String,
+    /// Repo-relative path to the component (e.g. `crates/ft-cli`).
+    pub path: String,
+    /// Optional one-line summary.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+}
+
+/// Singleton per-repo profile body.
+///
+/// Holds the lightweight, always-read facts firetrail needs about the host
+/// repo: the canonical validate command (consumed by the audit loop), the
+/// standard test/build/lint commands, language/tooling facts, and a shallow
+/// component map. The agent inspects the repo and decides these; firetrail
+/// only stores them (ADR-0005). Design:
+/// `docs/specs/2026-05-31-repo-profile-bootstrap-design.md`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct RepoProfileBody {
+    /// The canonical "prove a change is good" command. Consumed by the audit
+    /// loop. `None` until the agent/user establishes one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub validate_command: Option<String>,
+    /// Standard test command.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub test_command: Option<String>,
+    /// Standard build command.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build_command: Option<String>,
+    /// Standard lint command. (Formatting belongs inside `validate`/`lint`;
+    /// there is intentionally no separate format command.)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lint_command: Option<String>,
+    /// Primary language(s), e.g. `["rust", "typescript"]`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub languages: Vec<String>,
+    /// Package manager(s), e.g. `["cargo", "pnpm"]`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub package_managers: Vec<String>,
+    /// Optional runtime note, e.g. `"node 20"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<String>,
+    /// Shallow component map (names + paths only).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub components: Vec<ComponentRef>,
+    /// Free-form notes the agent/user wants to persist.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+    /// Trust state. The agent writes `Draft`; a human confirming moves it to
+    /// `Reviewed`/`Verified`. State machine lives in `ft-trust`.
+    #[serde(default = "default_trust")]
+    pub trust: TrustState,
+}
+
+impl Default for RepoProfileBody {
+    fn default() -> Self {
+        Self {
+            validate_command: None,
+            test_command: None,
+            build_command: None,
+            lint_command: None,
+            languages: Vec::new(),
+            package_managers: Vec::new(),
+            runtime: None,
+            components: Vec::new(),
+            notes: None,
+            trust: TrustState::Draft,
+        }
+    }
+}
+
 /// Default `trust` value for newly-deserialized memory bodies that omit the
 /// field (forward-compat with pre-M2 records on disk).
 fn default_trust() -> TrustState {
@@ -462,6 +538,8 @@ pub enum RecordBody {
     Memory(Memory),
     /// Doc body: file-backed long-form document (pointer to an external `.md`).
     Doc(Doc),
+    /// Repo profile body: singleton per-repo facts (commands, tooling, components).
+    RepoProfile(RepoProfileBody),
 }
 
 impl RecordBody {
@@ -481,6 +559,7 @@ impl RecordBody {
             Self::Gotcha(_) => RecordKind::Gotcha,
             Self::Memory(_) => RecordKind::Memory,
             Self::Doc(_) => RecordKind::Doc,
+            Self::RepoProfile(_) => RecordKind::RepoProfile,
         }
     }
 }
@@ -492,4 +571,44 @@ pub struct Record {
     pub envelope: RecordEnvelope,
     /// Kind-specific body.
     pub body: RecordBody,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::id::RecordKind;
+
+    fn sample_profile() -> RepoProfileBody {
+        RepoProfileBody {
+            validate_command: Some("cargo test && cargo clippy -- -D warnings".into()),
+            test_command: Some("cargo test".into()),
+            build_command: Some("cargo build".into()),
+            lint_command: Some("cargo clippy".into()),
+            languages: vec!["rust".into()],
+            package_managers: vec!["cargo".into()],
+            runtime: None,
+            components: vec![ComponentRef {
+                name: "ft-core".into(),
+                path: "crates/ft-core".into(),
+                summary: Some("record types".into()),
+            }],
+            notes: None,
+            trust: TrustState::Draft,
+        }
+    }
+
+    #[test]
+    fn repo_profile_body_kind_is_repo_profile() {
+        let body = RecordBody::RepoProfile(sample_profile());
+        assert_eq!(body.kind(), RecordKind::RepoProfile);
+    }
+
+    #[test]
+    fn repo_profile_body_roundtrips_and_tags_repo_profile() {
+        let body = RecordBody::RepoProfile(sample_profile());
+        let json = serde_json::to_value(&body).unwrap();
+        assert_eq!(json["kind"], "repo_profile");
+        let back: RecordBody = serde_json::from_value(json).unwrap();
+        assert_eq!(body, back);
+    }
 }

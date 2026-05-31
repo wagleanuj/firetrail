@@ -1027,6 +1027,7 @@ fn kind_to_str(k: RecordKind) -> &'static str {
         RecordKind::Gotcha => "gotcha",
         RecordKind::Memory => "memory",
         RecordKind::Doc => "doc",
+        RecordKind::RepoProfile => "repo_profile",
     }
 }
 
@@ -1043,6 +1044,7 @@ fn kind_from_str(s: &str) -> Result<RecordKind, String> {
         "gotcha" => RecordKind::Gotcha,
         "memory" => RecordKind::Memory,
         "doc" => RecordKind::Doc,
+        "repo_profile" => RecordKind::RepoProfile,
         other => return Err(format!("unknown kind `{other}`")),
     })
 }

@@ -30,6 +30,7 @@ pub(crate) fn record_kind_str(k: RecordKind) -> &'static str {
         RecordKind::Gotcha => "gotcha",
         RecordKind::Memory => "memory",
         RecordKind::Doc => "doc",
+        RecordKind::RepoProfile => "repo_profile",
     }
 }
 

@@ -65,6 +65,27 @@ fn draft_to_reviewed_succeeds_with_distinct_reviewer() {
 }
 
 #[test]
+fn repo_profile_carries_trust_and_transitions_draft_to_reviewed() {
+    use ft_core::{RecordBuilder, RecordKind};
+    let mut record = RecordBuilder::new(RecordKind::RepoProfile, "Repo profile", alice())
+        .build()
+        .unwrap();
+    let mut body =
+        MemoryBody::from_record_body(&mut record.body).expect("repo profile carries trust");
+    assert_eq!(body.trust(), TrustState::Draft);
+    assert_eq!(body.risk_class(), None);
+    let req = t(
+        TrustState::Draft,
+        TrustState::Reviewed,
+        bob(),
+        Origin::Human,
+    );
+    let applied = apply_transition(&mut body, &req).unwrap();
+    assert_eq!(applied.to, TrustState::Reviewed);
+    assert_eq!(body.trust(), TrustState::Reviewed);
+}
+
+#[test]
 fn reviewed_to_verified_requires_second_distinct_human_reviewer() {
     let req = t(
         TrustState::Reviewed,

@@ -229,6 +229,15 @@ preventing real damage — fix the cause, never bypass with `--force`.
 - **Never trust example syntax over `--help`.** Templates drift; the CLI
   is the source of truth. When in doubt: `firetrail <cmd> --help`.
 
+### Claude Code skills
+
+In Claude Code, situation-specific skills auto-activate to guide deeper
+firetrail workflows: `firetrail-bootstrap` (fresh-repo setup),
+`firetrail-epic-breakdown` (dependency wiring), `firetrail-knowledge`
+(capture / import / docs), and `firetrail-pr-safety` (pre-PR validation).
+The `firetrail` router skill is the always-on entry point. Other agents:
+this AGENTS.md block remains the canonical driver.
+
 ### Where the design lives
 
 - `docs/ARCHITECTURE.md` — system overview

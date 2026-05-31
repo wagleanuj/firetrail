@@ -19,6 +19,7 @@ use crate::sse::events_handler;
 
 pub mod audit;
 pub mod docs;
+pub mod epics;
 pub mod identity;
 pub mod memory;
 pub mod scope;
@@ -32,6 +33,7 @@ pub fn build(state: Arc<AppState>) -> Router {
         .route("/workspace", get(workspace_handler))
         .route("/heartbeat", post(heartbeat_handler))
         .route("/events", get(events_handler))
+        .nest("/epics", epics::router())
         .nest("/tickets", tickets::router())
         .nest("/docs", docs::router())
         .nest("/memory", memory::router())

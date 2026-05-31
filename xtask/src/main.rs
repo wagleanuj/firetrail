@@ -47,9 +47,9 @@ use ft_ops::scope::{
 use ft_ops::search::{GlobalSearchHit, GlobalSearchInput, GlobalSearchOutput, SearchKind};
 use ft_ops::tickets::{
     BoardCard, BoardInput, BoardOutput, ClaimInput, CloseInput, CreateBugInput, CreateEpicInput,
-    CreateSubtaskInput, CreateTaskInput, LinkInput, ListInput, ListedTicket, ShowInput,
-    TicketKindFilter, TicketPriority, TicketRelationKind, TicketStatusFilter, UnclaimInput,
-    UpdateInput,
+    CreateSubtaskInput, CreateTaskInput, EpicSummary, EpicsInput, EpicsOutput, LinkInput,
+    ListInput, ListedTicket, ShowInput, TicketKindFilter, TicketPriority, TicketRelationKind,
+    TicketStatusFilter, UnclaimInput, UpdateInput,
 };
 use ft_ops::trust::{
     EvidenceKindInput, MergeInput, PromoteInput, ReasonInput, ReviewInput as TrustReviewInput,
@@ -139,6 +139,10 @@ fn export_into(dir: &Path) -> Result<()> {
     BoardInput::export_all_to(dir).context("export BoardInput")?;
     BoardOutput::export_all_to(dir).context("export BoardOutput")?;
     BoardCard::export_all_to(dir).context("export BoardCard")?;
+    // Epics op (firetrail-6no5.10).
+    EpicsInput::export_all_to(dir).context("export EpicsInput")?;
+    EpicSummary::export_all_to(dir).context("export EpicSummary")?;
+    EpicsOutput::export_all_to(dir).context("export EpicsOutput")?;
     ClaimInput::export_all_to(dir).context("export ClaimInput")?;
     UnclaimInput::export_all_to(dir).context("export UnclaimInput")?;
     CloseInput::export_all_to(dir).context("export CloseInput")?;

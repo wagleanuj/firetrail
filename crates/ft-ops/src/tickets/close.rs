@@ -9,7 +9,7 @@ use crate::events::{Event, EventBus};
 use crate::identity::Identity;
 use crate::workspace::Workspace;
 
-use super::ctx::TicketCtx;
+use super::ctx::{TicketCtx, status_str};
 
 /// Input for [`close`].
 #[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
@@ -126,11 +126,4 @@ fn unchecked_criteria(body: &RecordBody) -> Vec<&AcceptanceCriterion> {
     acs.iter()
         .filter(|a| a.status != AcStatus::Checked)
         .collect()
-}
-
-fn status_str(s: Status) -> String {
-    serde_json::to_value(s)
-        .ok()
-        .and_then(|v| v.as_str().map(str::to_owned))
-        .unwrap_or_else(|| format!("{s:?}"))
 }

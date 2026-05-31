@@ -10,7 +10,7 @@ use crate::identity::Identity;
 use crate::workspace::Workspace;
 
 use super::create::TicketPriority;
-use super::ctx::TicketCtx;
+use super::ctx::{TicketCtx, status_str};
 use super::list::TicketStatusFilter;
 
 /// Input for [`update`].
@@ -183,11 +183,4 @@ fn ticket_status_to_core(s: TicketStatusFilter) -> Status {
         TicketStatusFilter::Deferred => Status::Deferred,
         TicketStatusFilter::Archived => Status::Archived,
     }
-}
-
-fn status_str(s: Status) -> String {
-    serde_json::to_value(s)
-        .ok()
-        .and_then(|v| v.as_str().map(str::to_owned))
-        .unwrap_or_else(|| format!("{s:?}"))
 }

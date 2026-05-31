@@ -12,15 +12,7 @@ use crate::identity::Identity;
 use crate::workspace::Workspace;
 
 use super::board::{BoardCard, card_from, resolve_epic};
-use super::ctx::TicketCtx;
-
-/// The four record kinds relevant to the ticket board / epics roll-up.
-const TICKET_KINDS: [RecordKind; 4] = [
-    RecordKind::Epic,
-    RecordKind::Task,
-    RecordKind::Subtask,
-    RecordKind::Bug,
-];
+use super::ctx::{TICKET_KINDS, TicketCtx, status_str};
 
 /// Input for [`epics`].
 #[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
@@ -69,21 +61,6 @@ pub struct EpicsOutput {
     pub epics: Vec<EpicSummary>,
     /// Maps epic canonical id → the [`BoardCard`]s for its children.
     pub children: BTreeMap<String, Vec<BoardCard>>,
-}
-
-/// Produce a lowercase status string from a [`Status`] value.
-fn status_str(s: Status) -> String {
-    match s {
-        Status::Open => "open",
-        Status::Ready => "ready",
-        Status::InProgress => "in_progress",
-        Status::Blocked => "blocked",
-        Status::Review => "review",
-        Status::Closed => "closed",
-        Status::Deferred => "deferred",
-        Status::Archived => "archived",
-    }
-    .to_string()
 }
 
 /// `epics` op — roll-up snapshot with child counts and a `ready_to_close` flag.

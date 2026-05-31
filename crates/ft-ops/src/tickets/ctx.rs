@@ -9,7 +9,8 @@ use std::io::{BufRead, BufReader, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 
 use ft_core::{
-    Identity as CoreIdentity, Record, RecordId, Relation, ResolveError, resolve_prefix, state_hash,
+    Identity as CoreIdentity, Record, RecordId, RecordKind, Relation, ResolveError, Status,
+    resolve_prefix, state_hash,
 };
 use ft_history::{HistoryDraft, HistoryEntryKind, append_history};
 use ft_identity::load_registry;
@@ -355,4 +356,23 @@ pub(crate) fn relation_kind_str(k: ft_core::RelationKind) -> String {
         .ok()
         .and_then(|v| v.as_str().map(str::to_owned))
         .unwrap_or_else(|| format!("{k:?}"))
+}
+
+/// The record kinds that belong on the ticket board / epics roll-up. Shared so
+/// `board` and `epics` never drift on what counts as a "ticket".
+pub(crate) const TICKET_KINDS: [RecordKind; 4] = [
+    RecordKind::Epic,
+    RecordKind::Task,
+    RecordKind::Subtask,
+    RecordKind::Bug,
+];
+
+/// Serialize a [`Status`] to its lowercase `snake_case` wire form
+/// (`"open"`, `"in_progress"`, `"closed"`, …). Shared by every op that puts a
+/// status onto the wire so they stay byte-identical.
+pub(crate) fn status_str(s: Status) -> String {
+    serde_json::to_value(s)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_owned))
+        .unwrap_or_else(|| format!("{s:?}"))
 }

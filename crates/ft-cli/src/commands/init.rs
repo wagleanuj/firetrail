@@ -9,7 +9,7 @@
 //! 5. Initialise the `SQLite` index.
 //! 6. Install git hooks (pre-commit, post-checkout, post-merge) via ft-git.
 //! 7. Append `.firetrail/index.db` and `.firetrail/cache/` to `.gitignore`.
-//! 8. Optionally write `AGENTS.md` and `.claude/skills/firetrail/SKILL.md`.
+//! 8. Optionally write `AGENTS.md` and the `.claude/skills/firetrail*` suite.
 //!
 //! The command is idempotent — re-running on an initialised workspace
 //! refreshes hooks and ensures defaults are present without clobbering user
@@ -235,7 +235,7 @@ fn run_walkthrough(resolved: &mut ResolvedInit, report: &mut InitReport) -> Resu
 
     // 5. AGENTS.md + claude skill.
     let write_agents = prompt::ask_yes_no(
-        "Write AGENTS.md and .claude/skills/firetrail/SKILL.md? (skipped if present)",
+        "Write AGENTS.md and the .claude/skills/firetrail* skill suite? (skipped if present)",
         true,
     )
     .map_err(|e| CliError::internal(COMMAND, format!("prompt: {e}")))?;
@@ -399,15 +399,15 @@ pub fn run(args: &InitArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliEr
         }
     }
 
-    // 7. AGENTS.md / CLAUDE.md / .claude/skills/firetrail/SKILL.md.
+    // 7. AGENTS.md / CLAUDE.md / the firetrail skill suite under .claude/skills/.
     //
     // AGENTS.md is the canonical agent driver. Its firetrail block is
     // wrapped in `<!-- firetrail:begin -->` / `<!-- firetrail:end -->`
     // markers and refreshed in place — user content outside the markers is
     // preserved verbatim. CLAUDE.md is emitted as a one-time pointer when
     // absent (we don't manage its contents — many repos already have a
-    // bespoke CLAUDE.md). SKILL.md is the Claude Code skill file; same
-    // managed-block semantics as AGENTS.md.
+    // bespoke CLAUDE.md). The firetrail skill suite under `.claude/skills/`
+    // is wholly firetrail-owned and overwritten on every init.
     if !resolved.no_agents {
         upsert_agents_file(
             &ws.root.join("AGENTS.md"),
@@ -422,22 +422,25 @@ pub fn run(args: &InitArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliEr
             "CLAUDE.md",
             &mut report,
         )?;
-        let skill_dir = ws.root.join(".claude/skills/firetrail");
-        std::fs::create_dir_all(&skill_dir).map_err(|e| CliError::internal(COMMAND, e))?;
-        // SKILL.md is wholly firetrail-owned (the skill metadata frontmatter
-        // mandates a fixed shape), so we overwrite on every init rather
-        // than using the marker-based merge.
-        let skill_path = skill_dir.join("SKILL.md");
-        let new_skill = default_skill_md();
-        let label = ".claude/skills/firetrail/SKILL.md";
-        match std::fs::read_to_string(&skill_path) {
-            Ok(existing) if existing == new_skill => {
-                report.preserved.push(label.to_string());
+        // The skill suite is wholly firetrail-owned (each SKILL.md frontmatter
+        // mandates a fixed shape), so we overwrite on every init rather than
+        // using the marker-based merge. Each entry lands at
+        // `.claude/skills/<relpath>`.
+        let skills_root = ws.root.join(".claude/skills");
+        for (relpath, body) in skill_templates() {
+            let dest = skills_root.join(relpath);
+            if let Some(parent) = dest.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| CliError::internal(COMMAND, e))?;
             }
-            _ => {
-                std::fs::write(&skill_path, new_skill)
-                    .map_err(|e| CliError::internal(COMMAND, e))?;
-                report.created.push(label.to_string());
+            let label = format!(".claude/skills/{relpath}");
+            match std::fs::read_to_string(&dest) {
+                Ok(existing) if existing == body => {
+                    report.preserved.push(label);
+                }
+                _ => {
+                    std::fs::write(&dest, body).map_err(|e| CliError::internal(COMMAND, e))?;
+                    report.created.push(label);
+                }
             }
         }
     }
@@ -741,9 +744,33 @@ fn default_claude_md() -> String {
         .to_string()
 }
 
-fn default_skill_md() -> String {
-    let body = include_str!("../../templates/SKILL.md");
-    body.to_string()
+/// The firetrail agent-skill suite, embedded at compile time. Each entry is
+/// `(relative path under `.claude/skills`, file body)`. `init` writes every
+/// entry verbatim (overwrite-on-reinit), mirroring the old single-SKILL.md
+/// behaviour but for the whole suite.
+fn skill_templates() -> [(&'static str, &'static str); 5] {
+    [
+        (
+            "firetrail/SKILL.md",
+            include_str!("../../templates/skills/firetrail/SKILL.md"),
+        ),
+        (
+            "firetrail-bootstrap/SKILL.md",
+            include_str!("../../templates/skills/firetrail-bootstrap/SKILL.md"),
+        ),
+        (
+            "firetrail-epic-breakdown/SKILL.md",
+            include_str!("../../templates/skills/firetrail-epic-breakdown/SKILL.md"),
+        ),
+        (
+            "firetrail-knowledge/SKILL.md",
+            include_str!("../../templates/skills/firetrail-knowledge/SKILL.md"),
+        ),
+        (
+            "firetrail-pr-safety/SKILL.md",
+            include_str!("../../templates/skills/firetrail-pr-safety/SKILL.md"),
+        ),
+    ]
 }
 
 fn default_hooks() -> [(HookName, &'static str); 3] {

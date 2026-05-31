@@ -427,9 +427,133 @@ fn init_fresh_writes_full_agents_claude_and_skill() {
         "skill frontmatter missing"
     );
     assert!(
-        skill.contains("firetrail check pr"),
-        "skill content missing"
+        skill.contains("firetrail-pr-safety"),
+        "router should route to pr-safety skill"
     );
+}
+
+#[test]
+fn init_writes_full_skill_suite() {
+    let tr = TestRepo::new().unwrap();
+    std::fs::remove_dir_all(tr.firetrail_dir()).unwrap();
+    let _ = std::fs::remove_file(tr.root().join("AGENTS.md"));
+    let _ = std::fs::remove_file(tr.root().join("CLAUDE.md"));
+
+    let out = run_firetrail(tr.root(), &["init", "--json"]);
+    assert!(out.success(), "init failed: {}", out.stderr);
+
+    let skills = tr.root().join(".claude/skills");
+    for (dir, name) in [
+        ("firetrail", "firetrail"),
+        ("firetrail-bootstrap", "firetrail-bootstrap"),
+        ("firetrail-epic-breakdown", "firetrail-epic-breakdown"),
+        ("firetrail-knowledge", "firetrail-knowledge"),
+        ("firetrail-pr-safety", "firetrail-pr-safety"),
+    ] {
+        let body = std::fs::read_to_string(skills.join(dir).join("SKILL.md"))
+            .unwrap_or_else(|e| panic!("missing skill {dir}: {e}"));
+        assert!(!body.trim().is_empty(), "skill {dir} is empty");
+        assert!(
+            body.contains(&format!("name: {name}")),
+            "skill {dir} missing frontmatter name"
+        );
+    }
+}
+
+#[test]
+fn init_no_agents_writes_no_skills() {
+    let tr = TestRepo::new().unwrap();
+    std::fs::remove_dir_all(tr.firetrail_dir()).unwrap();
+    let _ = std::fs::remove_file(tr.root().join("AGENTS.md"));
+    let _ = std::fs::remove_file(tr.root().join("CLAUDE.md"));
+
+    let out = run_firetrail(tr.root(), &["init", "--json", "--no-agents"]);
+    assert!(out.success(), "init failed: {}", out.stderr);
+
+    assert!(
+        !tr.root().join(".claude/skills").exists(),
+        "--no-agents must not write any skills"
+    );
+}
+
+#[test]
+fn skills_reference_only_real_subcommands() {
+    let tr = TestRepo::new().unwrap();
+    std::fs::remove_dir_all(tr.firetrail_dir()).unwrap();
+    let _ = std::fs::remove_file(tr.root().join("AGENTS.md"));
+    let _ = std::fs::remove_file(tr.root().join("CLAUDE.md"));
+    let out = run_firetrail(tr.root(), &["init", "--json"]);
+    assert!(out.success(), "init failed: {}", out.stderr);
+
+    // Real top-level subcommands, parsed from the `Commands:` block of help.
+    let help = run_firetrail(tr.root(), &["--help"]);
+    let mut cmds = std::collections::HashSet::new();
+    let mut in_cmds = false;
+    for line in help.stdout.lines() {
+        if line.trim_start().starts_with("Commands:") {
+            in_cmds = true;
+            continue;
+        }
+        if in_cmds {
+            if line.trim().is_empty() {
+                break;
+            }
+            // Indented "  name   description" — first token is the command.
+            if line.starts_with(' ') {
+                if let Some(tok) = line.trim_start().split_whitespace().next() {
+                    cmds.insert(tok.to_string());
+                }
+            }
+        }
+    }
+    assert!(cmds.contains("ready"), "help parse failed; got {cmds:?}");
+    assert!(cmds.contains("doc"), "help parse failed; got {cmds:?}");
+
+    // Scan each installed skill — only inside ``` code fences, where real
+    // command references live. `firetrail <token>` must name a real subcommand.
+    let skills = tr.root().join(".claude/skills");
+    for dir in [
+        "firetrail",
+        "firetrail-bootstrap",
+        "firetrail-epic-breakdown",
+        "firetrail-knowledge",
+        "firetrail-pr-safety",
+    ] {
+        let body = std::fs::read_to_string(skills.join(dir).join("SKILL.md")).unwrap();
+        let mut in_fence = false;
+        for line in body.lines() {
+            if line.trim_start().starts_with("```") {
+                in_fence = !in_fence;
+                continue;
+            }
+            if !in_fence {
+                continue;
+            }
+            let words: Vec<&str> = line.split_whitespace().collect();
+            for w in words.windows(2) {
+                // Match a bare `firetrail` token (code blocks are unbackticked).
+                if w[0] != "firetrail" {
+                    continue;
+                }
+                let next = w[1];
+                // Skip flags and placeholders (`<id>`).
+                if next.starts_with('-') || next.starts_with('<') {
+                    continue;
+                }
+                let tok: String = next
+                    .trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '-')
+                    .to_string();
+                if tok.is_empty() {
+                    continue;
+                }
+                assert!(
+                    cmds.contains(&tok),
+                    "skill `{dir}` references unknown subcommand `firetrail {tok}` \
+                     (line: {line:?})"
+                );
+            }
+        }
+    }
 }
 
 #[test]

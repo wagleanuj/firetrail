@@ -7,7 +7,6 @@
  * top of `/` via TanStack Router nested routes.
  */
 import { useState } from 'react'
-import { Link } from '@tanstack/react-router'
 import {
   DndContext,
   PointerSensor,
@@ -24,14 +23,15 @@ import { EmptyState as SharedEmptyState } from '@/components/ui/empty-state'
 import type { BoardCard } from '@/api/types/BoardCard'
 import type { BoardOutput } from '@/api/types/BoardOutput'
 import { Button } from '@/components/ui/button'
-import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PageHeader } from '@/components/page-header'
 import { cn } from '@/lib/utils'
 import { useBoardQuery } from './use-board-query'
 import { columnForStatus, useMoveCard } from './use-ticket-mutations'
+import { BoardCardBody } from './board-card'
+import type { BoardEpic } from '@/api/types/BoardEpic'
 
-type Column = keyof BoardOutput
+type Column = keyof Omit<BoardOutput, 'epics'>
 
 const COLUMNS: Array<{ key: Column; label: string }> = [
   { key: 'todo', label: 'Todo' },
@@ -39,6 +39,10 @@ const COLUMNS: Array<{ key: Column; label: string }> = [
   { key: 'review', label: 'Review' },
   { key: 'done', label: 'Done' },
 ]
+
+function buildEpicMap(epics: BoardEpic[]): Map<string, string> {
+  return new Map(epics.map((e) => [e.id, e.title]))
+}
 
 interface BoardProps {
   onCreateClick: () => void
@@ -62,6 +66,7 @@ export function Board({ onCreateClick, ready = false, onReadyChange }: BoardProp
   }
   if (!data) return null
 
+  const epicMap = buildEpicMap(data.epics ?? [])
   const totalCards = data.todo.length + data.in_progress.length + data.review.length + data.done.length
   if (totalCards === 0) {
     return <EmptyState onCreateClick={onCreateClick} />
@@ -119,6 +124,7 @@ export function Board({ onCreateClick, ready = false, onReadyChange }: BoardProp
               label={label}
               cards={data[key]}
               activeDrag={activeDrag}
+              epicMap={epicMap}
             />
           ))}
         </div>
@@ -132,9 +138,10 @@ interface DroppableColumnProps {
   label: string
   cards: BoardCard[]
   activeDrag: { id: string; from: Column } | null
+  epicMap: Map<string, string>
 }
 
-function DroppableColumn({ column, label, cards, activeDrag }: DroppableColumnProps) {
+function DroppableColumn({ column, label, cards, activeDrag, epicMap }: DroppableColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: column })
   return (
     <div
@@ -161,6 +168,7 @@ function DroppableColumn({ column, label, cards, activeDrag }: DroppableColumnPr
               card={card}
               column={column}
               dragging={activeDrag?.id === card.id}
+              epicMap={epicMap}
             />
           ))}
         </AnimatePresence>
@@ -173,9 +181,10 @@ interface DraggableCardProps {
   card: BoardCard
   column: Column
   dragging: boolean
+  epicMap: Map<string, string>
 }
 
-function DraggableCard({ card, column, dragging }: DraggableCardProps) {
+function DraggableCard({ card, column, dragging, epicMap }: DraggableCardProps) {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({
     id: card.id,
     data: { id: card.id, from: column },
@@ -186,7 +195,7 @@ function DraggableCard({ card, column, dragging }: DraggableCardProps) {
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
     : undefined
   const active = column === 'in_progress'
-  const work = workType(card.short_id)
+  const epicTitle = card.epic_id ? epicMap.get(card.epic_id) : undefined
   return (
     <motion.div
       ref={setNodeRef}
@@ -206,64 +215,9 @@ function DraggableCard({ card, column, dragging }: DraggableCardProps) {
         dragging && 'opacity-40',
       )}
     >
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          {work && (
-            <Badge variant={work.variant} className="px-1.5 py-0 text-[0.625rem] capitalize">
-              {work.label}
-            </Badge>
-          )}
-          <Link
-            to="/tickets/$id"
-            params={{ id: card.id }}
-            className="truncate text-xs font-mono text-muted-foreground hover:text-primary"
-            onPointerDown={(e) => e.stopPropagation()}
-          >
-            {card.short_id}
-          </Link>
-        </div>
-        <PriorityBadge priority={card.priority} />
-      </div>
-      <Link
-        to="/tickets/$id"
-        params={{ id: card.id }}
-        className="block text-sm font-medium leading-snug text-foreground hover:text-primary"
-        onPointerDown={(e) => e.stopPropagation()}
-      >
-        {card.title}
-      </Link>
-      {card.owner && (
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Avatar name={card.owner} />
-          <span className="truncate">{card.owner}</span>
-        </div>
-      )}
+      <BoardCardBody card={card} epicTitle={epicTitle} />
     </motion.div>
   )
-}
-
-/**
- * Derives the type-of-work pill from a card's short id, whose prefix encodes
- * the record kind (e.g. `task:aaaa`, `bug:…`, `epic:…`, `subtask:…`). Purely
- * presentational — no data is fetched or transformed here. Subtasks share the
- * `task` accent so the four design tokens stay legible.
- */
-function workType(shortId: string): { variant: BadgeProps['variant']; label: string } | null {
-  const tag = shortId.split(':', 1)[0]?.toLowerCase()
-  switch (tag) {
-    case 'feature':
-      return { variant: 'feature', label: 'Feature' }
-    case 'bug':
-      return { variant: 'bug', label: 'Bug' }
-    case 'epic':
-      return { variant: 'epic', label: 'Epic' }
-    case 'task':
-      return { variant: 'task', label: 'Task' }
-    case 'subtask':
-      return { variant: 'task', label: 'Subtask' }
-    default:
-      return null
-  }
 }
 
 export function PriorityBadge({ priority }: { priority: string }) {
@@ -281,15 +235,6 @@ export function PriorityBadge({ priority }: { priority: string }) {
       )}
     >
       {priority}
-    </span>
-  )
-}
-
-function Avatar({ name }: { name: string }) {
-  const initial = name.trim().charAt(0).toUpperCase() || '?'
-  return (
-    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/20 font-mono text-[0.65rem] font-semibold text-primary">
-      {initial}
     </span>
   )
 }

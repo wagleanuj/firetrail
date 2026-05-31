@@ -7,20 +7,45 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { setupServer } from 'msw/node'
 import { http, HttpResponse } from 'msw'
 import { Board } from './board'
 
 const board = {
   todo: [
-    { id: 'task:aaaa1111bbbb', short_id: 'task:aaaa', title: 'Wire kanban', priority: 'p1', owner: null },
+    {
+      id: 'TASK-aaaa1111bbbb2222',
+      short_id: 'TASK-aaaa1111',
+      title: 'Wire kanban',
+      kind: 'task',
+      priority: 'p1',
+      owner: null,
+      epic_id: null,
+      criteria_total: 0,
+      criteria_met: 0,
+      subtask_count: 0,
+      blocked_by_count: 0,
+    },
   ],
   in_progress: [
-    { id: 'task:cccc2222dddd', short_id: 'task:cccc', title: 'Add SSE filter', priority: 'p2', owner: 'anuj' },
+    {
+      id: 'TASK-cccc2222dddd3333',
+      short_id: 'TASK-cccc2222',
+      title: 'Add SSE filter',
+      kind: 'task',
+      priority: 'p2',
+      owner: 'anuj',
+      epic_id: null,
+      criteria_total: 0,
+      criteria_met: 0,
+      subtask_count: 0,
+      blocked_by_count: 0,
+    },
   ],
   review: [],
   done: [],
+  epics: [],
 }
 
 const server = setupServer(
@@ -46,7 +71,7 @@ class FakeES {
 }
 ;(globalThis as { EventSource?: unknown }).EventSource = FakeES
 
-function renderBoard() {
+async function renderBoard() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const rootRoute = createRootRoute({ component: () => <Board onCreateClick={() => undefined} /> })
   const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: '/' })
@@ -54,6 +79,7 @@ function renderBoard() {
     routeTree: rootRoute.addChildren([indexRoute]),
     history: createMemoryHistory({ initialEntries: ['/'] }),
   })
+  await router.load()
   return render(
     <QueryClientProvider client={qc}>
       <RouterProvider router={router} />
@@ -63,7 +89,7 @@ function renderBoard() {
 
 describe('<Board />', () => {
   it('renders four columns and pulls cards from the API', async () => {
-    renderBoard()
+    await renderBoard()
     await waitFor(() => {
       expect(screen.getByText('Wire kanban')).toBeInTheDocument()
     })
@@ -77,14 +103,10 @@ describe('<Board />', () => {
   it('shows the empty state when the board is empty', async () => {
     server.use(
       http.get('/api/tickets/board', () =>
-        HttpResponse.json({ todo: [], in_progress: [], review: [], done: [] }),
+        HttpResponse.json({ todo: [], in_progress: [], review: [], done: [], epics: [] }),
       ),
     )
-    renderBoard()
+    await renderBoard()
     expect(await screen.findByText(/no tickets yet/i)).toBeInTheDocument()
   })
 })
-
-// Silence "act" warnings from async tanstack-query state updates that race
-// the test cleanup.
-vi.spyOn(console, 'error').mockImplementation(() => {})

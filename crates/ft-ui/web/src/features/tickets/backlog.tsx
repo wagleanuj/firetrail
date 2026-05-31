@@ -5,7 +5,7 @@
 import * as React from 'react'
 import { Link } from '@tanstack/react-router'
 import { ListTodo, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
-import { Badge, type BadgeProps } from '@/components/ui/badge'
+import { Badge } from '@/components/ui/badge'
 import {
   Table,
   TableBody,
@@ -28,6 +28,7 @@ import { cn } from '@/lib/utils'
 import { useBoardQuery } from './use-board-query'
 import { useUpdateTicket } from './use-ticket-mutations'
 import type { BoardCard } from '@/api/types/BoardCard'
+import { KIND_VARIANT } from './ticket-kind'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -76,16 +77,6 @@ export function sortRows(
     }
     return cmp * sign
   })
-}
-
-// ─── Kind pill mapping ────────────────────────────────────────────────────────
-
-const KIND_VARIANT: Record<string, BadgeProps['variant']> = {
-  epic: 'epic',
-  task: 'task',
-  subtask: 'task',
-  bug: 'bug',
-  feature: 'feature',
 }
 
 // ─── Flatten board output ─────────────────────────────────────────────────────

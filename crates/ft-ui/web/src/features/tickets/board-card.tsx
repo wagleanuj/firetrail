@@ -5,18 +5,11 @@
  * purely concerned with rendering the card contents.
  */
 import { Link } from '@tanstack/react-router'
-import { Badge, type BadgeProps } from '@/components/ui/badge'
+import { Badge } from '@/components/ui/badge'
 import { epicColor, epicColorSoft } from './epic-color'
 import { PriorityBadge } from './board'
 import type { BoardCard } from '@/api/types/BoardCard'
-
-const KIND_VARIANT: Record<string, BadgeProps['variant']> = {
-  epic: 'epic',
-  task: 'task',
-  subtask: 'task',
-  bug: 'bug',
-  feature: 'feature',
-}
+import { KIND_VARIANT } from './ticket-kind'
 
 export function BoardCardBody({
   card,

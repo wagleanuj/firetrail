@@ -8,10 +8,12 @@
  *   - claim / unclaim / close actions
  *   - Tiptap description with explicit Edit / Save / Cancel
  *   - relations list + add-link modal
+ *   - epic breadcrumb (parent epic title linked to /tickets/$epicId)
+ *   - typed children section (title + type pill per child, not raw id)
  */
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Loader2, Pencil, Link2, Plus, AlertTriangle } from 'lucide-react'
+import { Loader2, Pencil, Link2, Plus, AlertTriangle, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -62,6 +64,90 @@ import {
 import { DescriptionEditor } from './description-editor'
 import { DocsPanel } from './docs-panel'
 import { PriorityBadge } from './board'
+import { KIND_VARIANT } from './ticket-kind'
+
+/**
+ * Fetches a related ticket by id and renders its title + type pill + link.
+ * Each relation id gets its OWN component instance so hooks are called at the
+ * component level — never inside a .map() in the parent (rules-of-hooks).
+ * Falls back to a short id while loading or if the fetch fails.
+ */
+function RelatedTicketRow({
+  id,
+  direction,
+  kind,
+}: {
+  id: string
+  direction: 'outbound' | 'inbound'
+  kind: string
+}) {
+  const { data, isLoading } = useTicketQuery(id)
+  const title = data?.record.envelope.title
+  const ticketKind = data?.record.envelope.kind
+  const shortId = id.slice(0, 16)
+
+  return (
+    <li className="flex items-center gap-2 rounded-md border border-border/50 bg-background/60 px-3 py-2 text-xs">
+      <Link2 className="h-3.5 w-3.5 shrink-0 text-primary" />
+      <span className="shrink-0 text-muted-foreground font-mono">
+        {direction === 'outbound' ? kind : `${kind} (in)`}
+      </span>
+      {ticketKind && (
+        <Badge
+          variant={KIND_VARIANT[ticketKind] ?? 'secondary'}
+          className="shrink-0 px-1.5 py-0 text-[0.625rem] capitalize"
+        >
+          {ticketKind}
+        </Badge>
+      )}
+      {isLoading ? (
+        <span className="ml-auto font-mono text-muted-foreground">{shortId}</span>
+      ) : title ? (
+        <Link
+          to="/tickets/$id"
+          params={{ id }}
+          className="ml-auto truncate font-medium text-foreground hover:text-primary hover:underline"
+        >
+          {title}
+        </Link>
+      ) : (
+        <span className="ml-auto font-mono text-muted-foreground">{shortId}</span>
+      )}
+    </li>
+  )
+}
+
+/**
+ * Epic breadcrumb shown at the top of the detail when the current ticket has
+ * a `child-of` relation pointing to an epic. Fetches the epic's title.
+ *
+ * Renders: ◇ <epic title link> › <current ticket title>
+ */
+function EpicBreadcrumb({ epicId, currentTitle }: { epicId: string; currentTitle: string }) {
+  const { data } = useTicketQuery(epicId)
+  const epicTitle = data?.record.envelope.title
+  const parentKind = data?.record.envelope.kind
+
+  // Only render when the parent is actually an epic (guards against non-epic child-of relations)
+  if (!epicTitle || parentKind !== 'epic') {
+    return null
+  }
+
+  return (
+    <nav className="flex items-center gap-1 text-xs text-muted-foreground" aria-label="breadcrumb">
+      <span className="text-[0.7rem]">◇</span>
+      <Link
+        to="/tickets/$id"
+        params={{ id: epicId }}
+        className="font-medium text-foreground hover:text-primary hover:underline"
+      >
+        {epicTitle}
+      </Link>
+      <ChevronRight className="h-3 w-3" />
+      <span className="truncate text-muted-foreground">{currentTitle}</span>
+    </nav>
+  )
+}
 
 const RELATION_KINDS: TicketRelationKind[] = [
   'blocks',
@@ -116,8 +202,19 @@ function DetailBody({ record, relations }: { record: RecordWire; relations: Rela
   const isClosed = env.status === 'closed' || env.status === 'deferred'
   const [forceClose, setForceClose] = useState(false)
 
+  // Find a parent epic: an outbound `child-of` relation from this ticket.
+  // We look for any `child-of` pointing away from the current ticket id.
+  const parentEpicId = relations.find(
+    (r) => r.kind === 'child-of' && r.from === env.id,
+  )?.to ?? null
+
   return (
     <div className="flex flex-col gap-6">
+      {/* Epic breadcrumb — only shown when this ticket has a parent epic */}
+      {parentEpicId && (
+        <EpicBreadcrumb epicId={parentEpicId} currentTitle={env.title} />
+      )}
+
       {/* Header */}
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
@@ -406,46 +503,74 @@ function DescriptionPanel({ id, initial }: { id: string; initial: string }) {
 function RelationsPanel({ id, relations }: { id: string; relations: Relation[] }) {
   const [open, setOpen] = useState(false)
   const visible = visibleRelations(relations)
+
+  // Separate children (outbound parent-of) from the rest.
+  // Also exclude the outbound child-of relation (parent epic) — it's shown in
+  // the breadcrumb at the top of the detail, so showing it again here would be
+  // a redundant raw-id row.
+  const childRelations = visible.filter((r) => r.kind === 'parent-of' && r.from === id)
+  const otherRelations = visible.filter(
+    (r) =>
+      !(r.kind === 'parent-of' && r.from === id) &&
+      !(r.kind === 'child-of' && r.from === id),
+  )
+
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <Label>Relations</Label>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          className="h-7 gap-1.5 text-xs"
-          onClick={() => setOpen(true)}
-        >
-          <Plus className="h-3 w-3" />
-          Add link
-        </Button>
-      </div>
-      {visible.length === 0 ? (
-        <p className="rounded-md border border-dashed border-border/60 px-3 py-3 text-sm text-muted-foreground">
-          No relations.
-        </p>
-      ) : (
-        <ul className="space-y-1">
-          {visible.map((r) => {
-            const outbound = r.from === id
-            const other = outbound ? r.to : r.from
-            return (
-              <li
+    <div className="space-y-4">
+      {/* Children section — only shown when there are child relations */}
+      {childRelations.length > 0 && (
+        <div className="space-y-2">
+          <Label>Children</Label>
+          <ul className="space-y-1">
+            {childRelations.map((r) => (
+              <RelatedTicketRow
                 key={`${r.from}-${r.to}-${r.kind}-${r.created_at}`}
-                className="flex items-center gap-2 rounded-md border border-border/50 bg-background/60 px-3 py-2 font-mono text-xs"
-              >
-                <Link2 className="h-3.5 w-3.5 text-primary" />
-                <span className="text-muted-foreground">
-                  {outbound ? r.kind : `${r.kind} (in)`}
-                </span>
-                <span className="ml-auto truncate">{other.slice(0, 16)}</span>
-              </li>
-            )
-          })}
-        </ul>
+                id={r.to}
+                direction="outbound"
+                kind={r.kind}
+              />
+            ))}
+          </ul>
+        </div>
       )}
-      <AddLinkDialog id={id} open={open} onOpenChange={setOpen} />
+
+      {/* General relations */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label>Relations</Label>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-7 gap-1.5 text-xs"
+            onClick={() => setOpen(true)}
+          >
+            <Plus className="h-3 w-3" />
+            Add link
+          </Button>
+        </div>
+        {otherRelations.length === 0 ? (
+          <p className="rounded-md border border-dashed border-border/60 px-3 py-3 text-sm text-muted-foreground">
+            No relations.
+          </p>
+        ) : (
+          <ul className="space-y-1">
+            {otherRelations.map((r) => {
+              const outbound = r.from === id
+              const otherId = outbound ? r.to : r.from
+              return (
+                <RelatedTicketRow
+                  key={`${r.from}-${r.to}-${r.kind}-${r.created_at}`}
+                  id={otherId}
+                  direction={outbound ? 'outbound' : 'inbound'}
+                  kind={r.kind}
+                />
+              )
+            })}
+          </ul>
+        )}
+        <AddLinkDialog id={id} open={open} onOpenChange={setOpen} />
+      </div>
     </div>
   )
 }

@@ -17,7 +17,7 @@ use super::ctx::TicketCtx;
 const MAX_EPIC_WALK_DEPTH: usize = 8;
 
 /// Wire string for a record kind. Explicit (not `Debug`) so renames fail to compile.
-fn record_kind_str(k: RecordKind) -> &'static str {
+pub(crate) fn record_kind_str(k: RecordKind) -> &'static str {
     match k {
         RecordKind::Epic => "epic",
         RecordKind::Task => "task",
@@ -173,7 +173,7 @@ pub fn board(
 /// Walk `parent_id` links from `start` until an [`RecordKind::Epic`] ancestor
 /// is found. The caller must not pass an Epic record (the call site in
 /// `build_board` guards this with an `if r.kind == RecordKind::Epic` check).
-fn resolve_epic<'a>(
+pub(crate) fn resolve_epic<'a>(
     start: &'a IndexedRecord,
     by_id: &std::collections::HashMap<&str, &'a IndexedRecord>,
 ) -> Option<String> {
@@ -187,6 +187,29 @@ fn resolve_epic<'a>(
         cur = by_id.get(parent.as_str())?;
     }
     None
+}
+
+/// Construct a [`BoardCard`] from an [`IndexedRecord`] plus the pre-resolved
+/// epic id and direct subtask count.  Shared between `build_board` and the
+/// `epics` op so the two never drift.
+pub(crate) fn card_from(
+    r: &IndexedRecord,
+    epic_id: Option<String>,
+    subtask_count: u32,
+) -> BoardCard {
+    BoardCard {
+        id: r.id.as_str().to_string(),
+        short_id: r.id.short(8).to_string(),
+        title: r.title.clone(),
+        kind: record_kind_str(r.kind).to_string(),
+        priority: format!("{:?}", r.priority).to_lowercase(),
+        owner: r.owner.as_ref().map(|o| o.as_str().to_string()),
+        epic_id,
+        criteria_total: r.criteria_total,
+        criteria_met: r.criteria_met,
+        subtask_count,
+        blocked_by_count: r.blocked_by_count,
+    }
 }
 
 fn build_board(rows: &[IndexedRecord]) -> BoardOutput {
@@ -221,19 +244,8 @@ fn build_board(rows: &[IndexedRecord]) -> BoardOutput {
         } else {
             resolve_epic(r, &by_id)
         };
-        let card = BoardCard {
-            id: r.id.as_str().to_string(),
-            short_id: r.id.short(8).to_string(),
-            title: r.title.clone(),
-            kind: record_kind_str(r.kind).to_string(),
-            priority: format!("{:?}", r.priority).to_lowercase(),
-            owner: r.owner.as_ref().map(|o| o.as_str().to_string()),
-            epic_id,
-            criteria_total: r.criteria_total,
-            criteria_met: r.criteria_met,
-            subtask_count: *subtasks.get(r.id.as_str()).unwrap_or(&0),
-            blocked_by_count: r.blocked_by_count,
-        };
+        let subtask_count = *subtasks.get(r.id.as_str()).unwrap_or(&0);
+        let card = card_from(r, epic_id, subtask_count);
         match r.status {
             Status::Open | Status::Ready => todo.push(card),
             Status::InProgress | Status::Blocked => in_progress.push(card),

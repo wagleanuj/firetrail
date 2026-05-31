@@ -24,6 +24,7 @@ mod claim;
 mod close;
 mod create;
 pub(crate) mod ctx;
+mod epics;
 mod link;
 mod list;
 mod reopen;
@@ -57,6 +58,7 @@ pub use create::{
     CreateBugInput, CreateEpicInput, CreateSubtaskInput, CreateTaskInput, CreatedTicket,
     TicketPriority, create_bug, create_epic, create_subtask, create_task,
 };
+pub use epics::{EpicSummary, EpicsInput, EpicsOutput, epics};
 pub use link::{LinkInput, LinkOutput, TicketRelationKind, link};
 pub use list::{ListInput, ListOutput, ListedTicket, TicketKindFilter, TicketStatusFilter, list};
 pub use reopen::{ReopenInput, ReopenOutput, reopen};

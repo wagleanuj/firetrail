@@ -46,8 +46,9 @@ use ft_ops::profile::{
 };
 use ft_ops::scope::{
     AliasEntry, AliasesInput, AliasesOutput, CodeOwnersRow, ListInput as ScopeListInput,
-    ListOutput as ScopeListOutput, OwnersInput, OwnersOutput, ScopeDetail, ScopeSummary,
-    ShowInput as ScopeShowInput, ShowOutput as ScopeShowOutput,
+    ListOutput as ScopeListOutput, OwnersInput, OwnersOutput, ScopeDetail, ScopeEditInput,
+    ScopeInput, ScopeMatchRow, ScopePreviewView, ScopeSummary, ScopeYamlView,
+    ShowInput as ScopeShowInput, ShowOutput as ScopeShowOutput, WriteOutput as ScopeWriteOutput,
 };
 use ft_ops::search::{GlobalSearchHit, GlobalSearchInput, GlobalSearchOutput, SearchKind};
 use ft_ops::tickets::{
@@ -212,6 +213,13 @@ fn export_into(dir: &Path) -> Result<()> {
     AliasEntry::export_all_to(dir).context("export AliasEntry")?;
     OwnersInput::export_all_to(dir).context("export OwnersInput")?;
     OwnersOutput::export_all_to(dir).context("export OwnersOutput")?;
+    // Scope write ops + preview (scope-authoring).
+    ScopeInput::export_all_to(dir).context("export ScopeInput")?;
+    ScopeEditInput::export_all_to(dir).context("export ScopeEditInput")?;
+    ScopeYamlView::export_all_to(dir).context("export ScopeYamlView")?;
+    ScopeWriteOutput::export_all_to(dir).context("export ScopeWriteOutput")?;
+    ScopeMatchRow::export_all_to(dir).context("export ScopeMatchRow")?;
+    ScopePreviewView::export_all_to(dir).context("export ScopePreviewView")?;
     // Identity ops (W3-A).
     IdentityListInput::export_all_to(dir).context("export identity ListInput")?;
     IdentityListOutput::export_all_to(dir).context("export identity ListOutput")?;

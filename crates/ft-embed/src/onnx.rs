@@ -1,4 +1,4 @@
-//! ONNX-backed embedder for `bge-small-en-v1.5` (and compatible BERT-style
+//! tract-backed embedder for `bge-small-en-v1.5` (and compatible BERT-style
 //! sentence-transformer models).
 //!
 //! This module is compiled only when the `onnx` cargo feature is enabled.
@@ -12,27 +12,28 @@
 //! 2. Build `input_ids`, `attention_mask`, `token_type_ids` as `i64`
 //!    tensors of shape `[1, seq_len]`. Sequences longer than the model's
 //!    max position (default `512`) are truncated by the tokenizer.
-//! 3. Run the ONNX `Session` and extract `last_hidden_state` (shape
+//! 3. Run the tract runnable plan and extract `last_hidden_state` (shape
 //!    `[1, seq_len, hidden_dim]`).
 //! 4. Mean-pool over `seq_len` masked by `attention_mask`.
 //! 5. L2-normalise.
+//!
+//! Inference is pure Rust (`tract-onnx`): there is no native ONNX Runtime
+//! library and no platform-specific prebuilt binary, so the build links on
+//! every target.
 //!
 //! ## Verification
 //!
 //! Default cargo builds compile-test this module but cannot exercise it
 //! end-to-end without a real ~33 MiB ONNX model file. The integration test
 //! `onnx_bge_small_round_trips` (in `tests/onnx_bge.rs`) is gated on the
-//! `FIRETRAIL_BGE_MODEL_DIR` env var and runs only when that directory
-//! contains both `model.onnx` and `tokenizer.json`.
+//! `onnx` feature + the LFS-bundled model and runs only with `--ignored`.
 
 #![cfg(feature = "onnx")]
 
 use std::path::Path;
-use std::sync::Mutex;
 
-use ort::session::{Session, builder::GraphOptimizationLevel};
-use ort::value::Tensor;
 use tokenizers::Tokenizer;
+use tract_onnx::prelude::*;
 
 use crate::embedder::Embedder;
 use crate::error::EmbedError;
@@ -43,15 +44,29 @@ use crate::error::EmbedError;
 pub const BGE_SMALL_EN_V15_ID: &str = "bge-small-en-v1.5";
 pub(crate) const BGE_SMALL_EN_V15_DIM: usize = 384;
 
-/// Hidden state of an ONNX-loaded embedder. Held by
+/// The three BERT inputs, in the order tract receives them positionally.
+/// `set_input_fact` / `run` use this index order, so input construction must
+/// match it exactly.
+const INPUT_ORDER: [&str; 3] = ["input_ids", "attention_mask", "token_type_ids"];
+
+/// Symbolic dimension names this ONNX export uses for its inputs. tract bakes
+/// these symbols into intermediate ops (e.g. the `Unsqueeze` that builds the
+/// extended attention mask asserts an output shape of
+/// `batch_size,1,sequence_length`). We must declare the input facts with the
+/// *same* symbols, or `into_optimized()` fails trying to unify a fresh symbol
+/// (or a concrete dim) against `batch_size`/`sequence_length`.
+const SYM_BATCH: &str = "batch_size";
+const SYM_SEQ: &str = "sequence_length";
+
+/// A loaded, optimized tract execution plan. `into_runnable()` returns the
+/// plan wrapped in an `Arc` (tract's `run` is defined on `&Arc<Self>`), so the
+/// alias keeps the `Arc`.
+type Plan = std::sync::Arc<TypedRunnableModel>;
+
+/// Hidden state of a tract-loaded embedder. Held by
 /// [`crate::embedder::OnnxEmbedder`] when the `onnx` feature is on.
 pub(crate) struct OnnxBackend {
-    // `Session::run` requires `&mut self`; the `Embedder` trait gives us
-    // `&self`. Serialise inference through a mutex — model evaluations are
-    // already CPU-bound and the daemon path is single-threaded by design
-    // (see ADR-0007). The mutex is held only for the duration of one
-    // inference call.
-    session: Mutex<Session>,
+    model: Plan,
     tokenizer: Tokenizer,
     model_id: String,
     model_version: String,
@@ -91,18 +106,41 @@ impl OnnxBackend {
             )));
         }
 
-        let session = Session::builder()
-            .map_err(|e| EmbedError::ModelUnavailable(format!("ort builder: {e}")))?
-            .with_optimization_level(GraphOptimizationLevel::Level1)
-            .map_err(|e| EmbedError::ModelUnavailable(format!("ort opt level: {e}")))?
-            .commit_from_file(&model_path)
-            .map_err(|e| EmbedError::ModelUnavailable(format!("ort load model: {e}")))?;
+        // Load the ONNX graph with type/shape inference.
+        let mut infer = tract_onnx::onnx()
+            .model_for_path(&model_path)
+            .map_err(|e| EmbedError::ModelUnavailable(format!("tract load model: {e}")))?;
+
+        // bge-small accepts a variable batch and sequence length. Declare each
+        // input as i64 `[batch_size, sequence_length]` reusing the export's own
+        // symbol names (see `SYM_BATCH`/`SYM_SEQ`) so the graph is optimized
+        // once and reused for any sequence length. Using a fresh symbol or a
+        // concrete dim here makes `into_optimized()` fail to unify against the
+        // symbols already baked into the graph's Unsqueeze/AddDims nodes.
+        let batch = infer.symbols.sym(SYM_BATCH);
+        let seq = infer.symbols.sym(SYM_SEQ);
+        for (i, name) in INPUT_ORDER.iter().enumerate() {
+            infer
+                .set_input_fact(
+                    i,
+                    InferenceFact::dt_shape(i64::datum_type(), tvec![batch.to_dim(), seq.to_dim()]),
+                )
+                .map_err(|e| {
+                    EmbedError::ModelUnavailable(format!("tract input fact for {name}: {e}"))
+                })?;
+        }
+
+        let model = infer
+            .into_optimized()
+            .map_err(|e| EmbedError::ModelUnavailable(format!("tract optimize: {e}")))?
+            .into_runnable()
+            .map_err(|e| EmbedError::ModelUnavailable(format!("tract runnable: {e}")))?;
 
         let tokenizer = Tokenizer::from_file(&tokenizer_path)
             .map_err(|e| EmbedError::ModelUnavailable(format!("load tokenizer.json: {e}")))?;
 
         Ok(Self {
-            session: Mutex::new(session),
+            model,
             tokenizer,
             model_id: model_id.into(),
             model_version: model_version.into(),
@@ -120,7 +158,7 @@ impl OnnxBackend {
         self.dim
     }
 
-    /// Tokenise → run session → mean-pool → L2-normalise.
+    /// Tokenise → run plan → mean-pool → L2-normalise.
     pub(crate) fn embed(&self, text: &str) -> Result<Vec<f32>, EmbedError> {
         let encoding = self
             .tokenizer
@@ -142,50 +180,46 @@ impl OnnxBackend {
             return Err(EmbedError::Inference("empty token sequence".into()));
         }
 
-        // bge-small-en-v1.5 expects rank-2 `[1, seq_len]` integer tensors.
-        // ort 2.0's `(shape, vec)` form avoids pulling ndarray into the
-        // dependency graph.
-        #[allow(clippy::cast_possible_wrap)]
-        let shape = [1_i64, seq_len as i64];
-
         let mask_for_pool = mask.clone();
 
-        let inputs = ort::inputs![
-            "input_ids" => Tensor::<i64>::from_array((shape, ids))
-                .map_err(|e| EmbedError::Inference(format!("tensor input_ids: {e}")))?,
-            "attention_mask" => Tensor::<i64>::from_array((shape, mask))
-                .map_err(|e| EmbedError::Inference(format!("tensor attention_mask: {e}")))?,
-            "token_type_ids" => Tensor::<i64>::from_array((shape, type_ids))
-                .map_err(|e| EmbedError::Inference(format!("tensor token_type_ids: {e}")))?,
-        ];
+        // Build the three rank-2 `[1, seq_len]` i64 input tensors in
+        // `INPUT_ORDER`. `tract_ndarray` is re-exported by tract-onnx, so no
+        // separate ndarray dependency is needed.
+        let to_tensor = |v: Vec<i64>| -> Result<Tensor, EmbedError> {
+            tract_ndarray::Array2::from_shape_vec((1, seq_len), v)
+                .map(Tensor::from)
+                .map_err(|e| EmbedError::Inference(format!("build input tensor: {e}")))
+        };
+        let inputs = tvec!(
+            to_tensor(ids)?.into(),
+            to_tensor(mask)?.into(),
+            to_tensor(type_ids)?.into(),
+        );
 
-        let mut session = self
-            .session
-            .lock()
-            .map_err(|e| EmbedError::Inference(format!("session mutex poisoned: {e}")))?;
-        let outputs = session
+        let outputs = self
+            .model
             .run(inputs)
-            .map_err(|e| EmbedError::Inference(format!("session.run: {e}")))?;
+            .map_err(|e| EmbedError::Inference(format!("tract run: {e}")))?;
 
-        let last_hidden = outputs
-            .get("last_hidden_state")
-            .ok_or_else(|| EmbedError::Inference("missing last_hidden_state output".into()))?;
-        let (out_shape, data) = last_hidden
-            .try_extract_tensor::<f32>()
+        // last_hidden_state is the first model output: shape [1, seq_len, D].
+        // `outputs[0]` is a `TValue`; deref reaches the underlying `Tensor`,
+        // which exposes `to_array_view`.
+        let view = (*outputs[0])
+            .to_plain_array_view::<f32>()
             .map_err(|e| EmbedError::Inference(format!("extract last_hidden_state: {e}")))?;
+        let out_shape = view.shape();
+        let data = view
+            .as_slice()
+            .ok_or_else(|| EmbedError::Inference("last_hidden_state is not contiguous".into()))?;
 
         // Expected shape: [1, seq_len, hidden_dim].
         if out_shape.len() != 3 || out_shape[0] != 1 {
             return Err(EmbedError::Inference(format!(
-                "unexpected last_hidden_state shape {:?}; want [1, T, D]",
-                &out_shape[..]
+                "unexpected last_hidden_state shape {out_shape:?}; want [1, T, D]"
             )));
         }
-        let t = usize::try_from(out_shape[1])
-            .map_err(|_| EmbedError::Inference(format!("seq_len {} out of range", out_shape[1])))?;
-        let d = usize::try_from(out_shape[2]).map_err(|_| {
-            EmbedError::Inference(format!("hidden_dim {} out of range", out_shape[2]))
-        })?;
+        let t = out_shape[1];
+        let d = out_shape[2];
         if d != self.dim {
             return Err(EmbedError::DimensionMismatch {
                 expected: self.dim,

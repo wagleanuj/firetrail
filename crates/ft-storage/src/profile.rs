@@ -89,6 +89,46 @@ pub fn profile_set(
     }
 }
 
+/// Read the **base** repo profile (`owning_scope == None`), or `None`.
+///
+/// In a monorepo the base is the repo-wide profile that per-scope profiles
+/// inherit from. Deterministic on the degenerate >1-base state: smallest id.
+///
+/// # Errors
+/// Any error from [`Storage::list`] / [`Storage::read`].
+pub fn profile_get_base(storage: &dyn Storage) -> Result<Option<Record>, StorageError> {
+    let mut bases: Vec<Record> = profile_records(storage)?
+        .into_iter()
+        .filter(|r| r.envelope.owning_scope.is_none())
+        .collect();
+    bases.sort_by(|a, b| a.envelope.id.as_str().cmp(b.envelope.id.as_str()));
+    Ok(bases.into_iter().next())
+}
+
+/// Read the per-scope profile delta for `scope_id` (`owning_scope == Some`), or
+/// `None`. Deterministic on duplicates: smallest id.
+///
+/// # Errors
+/// Any error from [`Storage::list`] / [`Storage::read`].
+pub fn profile_get_for_scope(
+    storage: &dyn Storage,
+    scope_id: &str,
+) -> Result<Option<Record>, StorageError> {
+    let mut hits: Vec<Record> = profile_records(storage)?
+        .into_iter()
+        .filter(|r| r.envelope.owning_scope.as_deref() == Some(scope_id))
+        .collect();
+    hits.sort_by(|a, b| a.envelope.id.as_str().cmp(b.envelope.id.as_str()));
+    Ok(hits.into_iter().next())
+}
+
+/// Read every `RepoProfile` record (base + all scopes), id-sorted.
+fn profile_records(storage: &dyn Storage) -> Result<Vec<Record>, StorageError> {
+    let mut ids = storage.list(&StorageFilter::default().kind(RecordKind::RepoProfile))?;
+    ids.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+    ids.into_iter().map(|id| storage.read(&id)).collect()
+}
+
 /// Title given to a freshly-created repo profile record.
 const PROFILE_TITLE: &str = "Repo profile";
 
@@ -121,6 +161,46 @@ mod tests {
             notes: Some("initial".into()),
             trust: TrustState::Draft,
         }
+    }
+
+    fn scope_record(scope: &str, validate: &str) -> Record {
+        let body = RepoProfileBody {
+            validate_command: Some(validate.into()),
+            ..Default::default()
+        };
+        RecordBuilder::new(RecordKind::RepoProfile, "Repo profile", make_identity())
+            .owning_scope(scope)
+            .repo_profile(body)
+            .build()
+            .unwrap()
+    }
+
+    #[test]
+    fn base_get_ignores_scope_records() {
+        let tr = TestRepo::new().unwrap();
+        let s = open(&tr);
+        profile_set(&s, sample_body(), &make_identity()).unwrap(); // base
+        s.write(&scope_record("apps/checkout", "pnpm test"))
+            .unwrap();
+
+        let base = profile_get_base(&s).unwrap().expect("base present");
+        assert_eq!(base.envelope.owning_scope, None);
+    }
+
+    #[test]
+    fn scope_get_matches_owning_scope() {
+        let tr = TestRepo::new().unwrap();
+        let s = open(&tr);
+        s.write(&scope_record("apps/checkout", "pnpm test"))
+            .unwrap();
+        s.write(&scope_record("libs/ui", "pnpm --filter ui test"))
+            .unwrap();
+
+        let got = profile_get_for_scope(&s, "apps/checkout")
+            .unwrap()
+            .expect("present");
+        assert_eq!(got.envelope.owning_scope.as_deref(), Some("apps/checkout"));
+        assert!(profile_get_for_scope(&s, "nope").unwrap().is_none());
     }
 
     #[test]

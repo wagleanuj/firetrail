@@ -1,13 +1,16 @@
 //! `/api/profile` HTTP surface — the `RepoProfile` read/edit panel.
 //!
-//! | Method | Path                              | Op                                  | Returns        |
-//! |--------|-----------------------------------|-------------------------------------|----------------|
-//! | GET    | `/api/profile`                    | [`ft_ops::profile::get`]            | `ProfileView`  |
-//! | PUT    | `/api/profile`                    | [`ft_ops::profile::update`]         | `ProfileView`  |
-//! | POST   | `/api/profile/components`         | [`ft_ops::profile::add_component`]  | `ProfileView`  |
-//! | DELETE | `/api/profile/components/:name`   | [`ft_ops::profile::remove_component`] | `ProfileView`|
+//! | Method | Path                              | Op                                  | Returns           |
+//! |--------|-----------------------------------|-------------------------------------|-------------------|
+//! | GET    | `/api/profile[?scope=&resolved=]` | [`ft_ops::profile::get`] / [`ft_ops::profile::get_for_scope`] | `ProfileView`     |
+//! | PUT    | `/api/profile[?scope=]`           | [`ft_ops::profile::update`] / [`ft_ops::profile::update_for_scope`] | `ProfileView`     |
+//! | GET    | `/api/profile/resolve?paths=`     | [`ft_ops::profile::validate_plan`]  | `ValidatePlanView`|
+//! | POST   | `/api/profile/components`         | [`ft_ops::profile::add_component`]  | `ProfileView`     |
+//! | DELETE | `/api/profile/components/:name`   | [`ft_ops::profile::remove_component`] | `ProfileView`   |
 //!
-//! `GET` returns **404** ([`AppError`] → `not_found`) when no profile exists.
+//! `?scope=<id>` selects the per-scope delta record; `&resolved=1` returns the
+//! base-merged view. `GET` returns **404** ([`AppError`] → `not_found`) when no
+//! profile (or scope delta) exists.
 //! Every write resolves the workspace identity, applies partial-update
 //! semantics (the same as `firetrail profile set`), and leaves the body in
 //! `Draft` — confirmation (Draft → Reviewed → Verified) goes through the
@@ -17,11 +20,12 @@
 //! matching [`ft_ops::Event::ProfileUpdated`] envelope carries it back to SSE
 //! subscribers.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{get, post},
@@ -40,11 +44,36 @@ use super::tickets::REQUEST_ID_HEADER;
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/", get(get_handler).put(put_handler))
+        .route("/resolve", get(resolve_handler))
         .route("/components", post(add_component_handler))
         .route(
             "/components/:name",
             axum::routing::delete(remove_component_handler),
         )
+}
+
+/// Query string for `GET`/`PUT /api/profile` — selects a per-scope delta.
+///
+/// `scope` selects the per-scope record (`owning_scope`); `resolved=1` returns
+/// the base-merged view (read-only; ignored on `PUT`). Absent `scope` keeps
+/// today's base singleton behaviour byte-for-byte.
+#[derive(Debug, Default, Deserialize)]
+pub struct ProfileQuery {
+    /// Per-scope delta id; `None` selects the base profile.
+    #[serde(default)]
+    pub scope: Option<String>,
+    /// When truthy, return the base-merged (resolved) view on a scoped GET.
+    #[serde(default, deserialize_with = "de_truthy")]
+    pub resolved: bool,
+}
+
+/// Deserialize `resolved=1` / `resolved=true` (and absent) into a bool.
+fn de_truthy<'de, D>(de: D) -> Result<bool, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw = Option::<String>::deserialize(de)?;
+    Ok(matches!(raw.as_deref(), Some("1" | "true" | "yes" | "on")))
 }
 
 fn request_id(headers: &HeaderMap) -> Option<String> {
@@ -55,18 +84,60 @@ fn request_id(headers: &HeaderMap) -> Option<String> {
         .map(str::to_owned)
 }
 
-/// `GET /api/profile` — the current profile, or 404 when none exists.
+/// `GET /api/profile[?scope=&resolved=1]` — the current profile, or 404 when
+/// none exists.
+///
+/// With no `scope`, returns the base singleton (404 when absent). With `scope`,
+/// returns that scope's stored delta (404 when no delta), or — with
+/// `resolved=1` — the base-merged view.
 #[tracing::instrument(skip_all)]
 pub async fn get_handler(
     State(state): State<Arc<AppState>>,
+    Query(q): Query<ProfileQuery>,
 ) -> Result<impl IntoResponse, AppError> {
     let identity = resolve_identity(&state.workspace)?;
-    match profile::get(&state.workspace, &identity, &state.events)? {
+    let view = match q.scope.as_deref() {
+        Some(scope) => profile::get_for_scope(
+            &state.workspace,
+            &identity,
+            scope,
+            q.resolved,
+            &state.events,
+        )?,
+        None => profile::get(&state.workspace, &identity, &state.events)?,
+    };
+    match view {
         Some(view) => Ok((StatusCode::OK, Json(view))),
         None => Err(AppError::Ops(ft_ops::OpsError::not_found(
             "profile", "<none>",
         ))),
     }
+}
+
+/// Query string for `GET /api/profile/resolve` — the changed paths to resolve.
+#[derive(Debug, Deserialize)]
+pub struct ResolveQuery {
+    /// Comma-separated repo-relative paths.
+    pub paths: String,
+}
+
+/// `GET /api/profile/resolve?paths=a,b,c` — the distinct validate commands the
+/// changeset requires, as a [`ft_ops::profile::ValidatePlanView`].
+#[tracing::instrument(skip_all)]
+pub async fn resolve_handler(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<ResolveQuery>,
+) -> Result<impl IntoResponse, AppError> {
+    let identity = resolve_identity(&state.workspace)?;
+    let paths: Vec<PathBuf> = q
+        .paths
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .collect();
+    let plan = profile::validate_plan(&state.workspace, &identity, &paths, &state.events)?;
+    Ok((StatusCode::OK, Json(plan)))
 }
 
 /// JSON body for `PUT /api/profile`.
@@ -104,10 +175,14 @@ pub struct UpdateProfileBody {
     pub notes: Option<Option<String>>,
 }
 
-/// `PUT /api/profile` — partial update; creates the profile if absent.
+/// `PUT /api/profile[?scope=]` — partial update; creates the record if absent.
+///
+/// With `scope`, writes the per-scope delta (`owning_scope`); otherwise the base
+/// singleton. `resolved` is ignored on a write.
 #[tracing::instrument(skip_all)]
 pub async fn put_handler(
     State(state): State<Arc<AppState>>,
+    Query(q): Query<ProfileQuery>,
     headers: HeaderMap,
     body: Option<Json<UpdateProfileBody>>,
 ) -> Result<impl IntoResponse, AppError> {
@@ -124,7 +199,12 @@ pub async fn put_handler(
         notes: body.notes,
         request_id: request_id(&headers),
     };
-    let view = profile::update(&state.workspace, &identity, input, &state.events)?;
+    let view = match q.scope.as_deref() {
+        Some(scope) => {
+            profile::update_for_scope(&state.workspace, &identity, scope, input, &state.events)?
+        }
+        None => profile::update(&state.workspace, &identity, input, &state.events)?,
+    };
     Ok((StatusCode::OK, Json(view)))
 }
 

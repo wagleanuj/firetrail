@@ -24,6 +24,11 @@ fn fixture_workspace() -> TestRepo {
         format!("email: {TEST_IDENTITY}\n"),
     )
     .expect("write identity.yml");
+    std::fs::write(
+        firetrail.join("scopes.yaml"),
+        "scopes:\n  - id: apps/checkout\n    applies_to: [\"apps/checkout/**\"]\n",
+    )
+    .expect("write scopes.yaml");
     tr
 }
 
@@ -171,6 +176,113 @@ async fn component_add_and_delete() {
         .await
         .unwrap();
     assert_eq!(resp.status(), reqwest::StatusCode::NOT_FOUND);
+}
+
+// ── Scope-aware routes (Phase 5.2) ───────────────────────────────────────────
+
+#[tokio::test]
+async fn get_scope_is_404_when_delta_absent() {
+    let (addr, _state, client, _tr) = boot().await;
+    let resp = client
+        .get(format!("http://{addr}/api/profile?scope=apps/checkout"))
+        .header("Host", addr.to_string())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn put_scope_partial_updates_delta_then_resolved_merges() {
+    let (addr, _state, client, _tr) = boot().await;
+
+    // Seed the base profile (validate only).
+    client
+        .put(format!("http://{addr}/api/profile"))
+        .header("Host", addr.to_string())
+        .json(&serde_json::json!({ "validateCommand": "just ci" }))
+        .send()
+        .await
+        .unwrap();
+
+    // PUT ?scope= writes the per-scope delta (test only).
+    let resp = client
+        .put(format!("http://{addr}/api/profile?scope=apps/checkout"))
+        .header("Host", addr.to_string())
+        .json(&serde_json::json!({ "testCommand": "pnpm test" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["test_command"], "pnpm test");
+
+    // GET ?scope= (raw delta): validate not inherited.
+    let resp = client
+        .get(format!("http://{addr}/api/profile?scope=apps/checkout"))
+        .header("Host", addr.to_string())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["test_command"], "pnpm test");
+    assert!(body["validate_command"].is_null(), "raw delta: no inherit");
+
+    // GET ?scope=&resolved=1 (merged): validate inherited from base.
+    let resp = client
+        .get(format!(
+            "http://{addr}/api/profile?scope=apps/checkout&resolved=1"
+        ))
+        .header("Host", addr.to_string())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["validate_command"], "just ci");
+    assert_eq!(body["test_command"], "pnpm test");
+}
+
+#[tokio::test]
+async fn resolve_returns_a_validate_plan() {
+    let (addr, _state, client, _tr) = boot().await;
+
+    // Base validate + scope override.
+    client
+        .put(format!("http://{addr}/api/profile"))
+        .header("Host", addr.to_string())
+        .json(&serde_json::json!({ "validateCommand": "just ci" }))
+        .send()
+        .await
+        .unwrap();
+    client
+        .put(format!("http://{addr}/api/profile?scope=apps/checkout"))
+        .header("Host", addr.to_string())
+        .json(&serde_json::json!({ "validateCommand": "pnpm --filter checkout test" }))
+        .send()
+        .await
+        .unwrap();
+
+    let resp = client
+        .get(format!(
+            "http://{addr}/api/profile/resolve?paths=apps/checkout/a.ts,apps/checkout/b.ts,README.md"
+        ))
+        .header("Host", addr.to_string())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    let entries = body["entries"].as_array().expect("entries array");
+    assert_eq!(entries.len(), 2);
+    assert_eq!(body["unresolved"], 0);
+    let checkout = entries
+        .iter()
+        .find(|e| e["command"].as_str().unwrap().contains("checkout"))
+        .expect("checkout entry");
+    assert_eq!(checkout["fileCount"], 2);
+    assert_eq!(checkout["scopes"][0], "apps/checkout");
 }
 
 #[tokio::test]

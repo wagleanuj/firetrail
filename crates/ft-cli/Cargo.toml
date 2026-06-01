@@ -40,6 +40,7 @@ ft-history = { path = "../ft-history", version = "0.1.0" }
 ft-search = { path = "../ft-search", version = "0.1.0" }
 ft-prime = { path = "../ft-prime", version = "0.1.0" }
 ft-pr = { path = "../ft-pr", version = "0.1.0" }
+ft-ops = { path = "../ft-ops", version = "0.1.0" }
 ft-import = { path = "../ft-import", version = "0.1.0" }
 ft-embed = { path = "../ft-embed", version = "0.1.0" }
 ft-workspace = { path = "../ft-workspace", version = "0.1.0" }

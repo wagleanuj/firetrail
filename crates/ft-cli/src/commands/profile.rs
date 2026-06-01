@@ -17,7 +17,8 @@
 use ft_core::{
     ComponentRef, Record, RecordBody, RecordBuilder, RecordKind, RepoProfileBody, TrustState,
 };
-use ft_storage::profile_get;
+use ft_scope::ScopeRegistry;
+use ft_storage::{profile_get, profile_get_base, profile_get_for_scope};
 use serde::Serialize;
 
 use crate::cli::{
@@ -172,17 +173,97 @@ fn persist(
     }
 }
 
+/// Validate that `scope_id` is a declared scope in `.firetrail/scopes.yaml`.
+///
+/// Loads the [`ScopeRegistry`] for the workspace and errors with
+/// [`CliError::user`] when the id is not a known scope — so a scoped
+/// `set` / `show` / `component` never writes against a typo'd or dangling
+/// scope.
+fn require_scope(ctx: &WorkCtx, command: &'static str, scope_id: &str) -> Result<(), CliError> {
+    let registry = ScopeRegistry::load(&ctx.ws.root)
+        .map_err(|e| CliError::internal(command, format!("load scope registry: {e}")))?;
+    if registry.get(scope_id).is_none() {
+        return Err(CliError::user(
+            command,
+            format!("unknown scope `{scope_id}`; declare it in `.firetrail/scopes.yaml` first"),
+        ));
+    }
+    Ok(())
+}
+
+/// Persist `body` as the per-scope delta for `scope_id` — update the existing
+/// scoped record in place, or create a fresh `Draft` scoped record stamped with
+/// `owning_scope = Some(scope_id)`. Mirrors [`persist`] but keyed on the scope.
+fn persist_scope(
+    ctx: &mut WorkCtx,
+    command: &'static str,
+    scope_id: &str,
+    existing: Option<Record>,
+    mut body: RepoProfileBody,
+) -> Result<Record, CliError> {
+    body.trust = TrustState::Draft;
+    if let Some(mut record) = existing {
+        record.body = RecordBody::RepoProfile(body);
+        record.envelope.updated_at = chrono::Utc::now();
+        ctx.save_record(&mut record)?;
+        Ok(record)
+    } else {
+        let actor = ctx.actor()?;
+        let mut record = RecordBuilder::new(RecordKind::RepoProfile, PROFILE_TITLE, actor)
+            .owning_scope(scope_id)
+            .repo_profile(body)
+            .build()
+            .map_err(|e| CliError::internal(command, format!("build profile: {e}")))?;
+        ctx.save_record(&mut record)?;
+        Ok(record)
+    }
+}
+
 /// `firetrail profile show` — print the current profile; error if absent.
-pub fn show(_args: &ProfileShowArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
+///
+/// With `--scope <id>` the per-scope delta is shown instead of the base. Adding
+/// `--resolved` renders the merged view (base ⊕ delta). Without `--scope` the
+/// behaviour is byte-identical to before (the singleton base profile).
+pub fn show(args: &ProfileShowArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
     let ctx = WorkCtx::open(SHOW, global.workspace.as_deref())?;
-    let Some(record) = profile_get(&ctx.storage)
-        .map_err(|e| CliError::internal(SHOW, format!("read profile: {e}")))?
+
+    let Some(scope_id) = args.scope.as_deref() else {
+        // Base path — unchanged from the singleton surface.
+        let Some(record) = profile_get(&ctx.storage)
+            .map_err(|e| CliError::internal(SHOW, format!("read profile: {e}")))?
+        else {
+            return Err(CliError::NotFound {
+                command: SHOW.to_string(),
+                what: "repo profile".to_string(),
+            });
+        };
+        return Ok(CommandOutcome::Profile(ProfileOutcome::new(
+            SHOW,
+            record,
+            ctx.warnings.clone(),
+        )));
+    };
+
+    require_scope(&ctx, SHOW, scope_id)?;
+    let Some(mut record) = profile_get_for_scope(&ctx.storage, scope_id)
+        .map_err(|e| CliError::internal(SHOW, format!("read scope profile: {e}")))?
     else {
         return Err(CliError::NotFound {
             command: SHOW.to_string(),
-            what: "repo profile".to_string(),
+            what: format!("repo profile for scope `{scope_id}`"),
         });
     };
+
+    if args.resolved {
+        let base_body = profile_get_base(&ctx.storage)
+            .map_err(|e| CliError::internal(SHOW, format!("read base profile: {e}")))?
+            .map(|r| body_or_default(Some(&r)))
+            .unwrap_or_default();
+        let delta_body = body_or_default(Some(&record));
+        record.body =
+            RecordBody::RepoProfile(ft_ops::profile::resolve::merge(&base_body, &delta_body));
+    }
+
     Ok(CommandOutcome::Profile(ProfileOutcome::new(
         SHOW,
         record,
@@ -193,8 +274,17 @@ pub fn show(_args: &ProfileShowArgs, global: &GlobalOpts) -> Result<CommandOutco
 /// `firetrail profile set` — create-if-absent, else partial update in place.
 pub fn set(args: &ProfileSetArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
     let mut ctx = WorkCtx::open(SET, global.workspace.as_deref())?;
-    let existing = profile_get(&ctx.storage)
-        .map_err(|e| CliError::internal(SET, format!("read profile: {e}")))?;
+
+    // Read the record being edited: the per-scope delta when `--scope` is given
+    // (validated first), else the singleton base.
+    let existing = if let Some(scope_id) = args.scope.as_deref() {
+        require_scope(&ctx, SET, scope_id)?;
+        profile_get_for_scope(&ctx.storage, scope_id)
+            .map_err(|e| CliError::internal(SET, format!("read scope profile: {e}")))?
+    } else {
+        profile_get(&ctx.storage)
+            .map_err(|e| CliError::internal(SET, format!("read profile: {e}")))?
+    };
     let mut body = body_or_default(existing.as_ref());
 
     // Option flags overwrite when Some; otherwise the stored value is kept.
@@ -224,7 +314,10 @@ pub fn set(args: &ProfileSetArgs, global: &GlobalOpts) -> Result<CommandOutcome,
         body.package_managers.clone_from(&args.package_managers);
     }
 
-    let record = persist(&mut ctx, SET, existing, body)?;
+    let record = match args.scope.as_deref() {
+        Some(scope_id) => persist_scope(&mut ctx, SET, scope_id, existing, body)?,
+        None => persist(&mut ctx, SET, existing, body)?,
+    };
     Ok(CommandOutcome::Profile(ProfileOutcome::new(
         SET,
         record,
@@ -238,8 +331,14 @@ pub fn component_add(
     global: &GlobalOpts,
 ) -> Result<CommandOutcome, CliError> {
     let mut ctx = WorkCtx::open(COMPONENT_ADD, global.workspace.as_deref())?;
-    let existing = profile_get(&ctx.storage)
-        .map_err(|e| CliError::internal(COMPONENT_ADD, format!("read profile: {e}")))?;
+    let existing = if let Some(scope_id) = args.scope.as_deref() {
+        require_scope(&ctx, COMPONENT_ADD, scope_id)?;
+        profile_get_for_scope(&ctx.storage, scope_id)
+            .map_err(|e| CliError::internal(COMPONENT_ADD, format!("read scope profile: {e}")))?
+    } else {
+        profile_get(&ctx.storage)
+            .map_err(|e| CliError::internal(COMPONENT_ADD, format!("read profile: {e}")))?
+    };
     let mut body = body_or_default(existing.as_ref());
 
     let new_ref = ComponentRef {
@@ -255,7 +354,10 @@ pub fn component_add(
         body.components.push(new_ref);
     }
 
-    let record = persist(&mut ctx, COMPONENT_ADD, existing, body)?;
+    let record = match args.scope.as_deref() {
+        Some(scope_id) => persist_scope(&mut ctx, COMPONENT_ADD, scope_id, existing, body)?,
+        None => persist(&mut ctx, COMPONENT_ADD, existing, body)?,
+    };
     Ok(CommandOutcome::Profile(ProfileOutcome::new(
         COMPONENT_ADD,
         record,
@@ -269,8 +371,14 @@ pub fn component_rm(
     global: &GlobalOpts,
 ) -> Result<CommandOutcome, CliError> {
     let mut ctx = WorkCtx::open(COMPONENT_RM, global.workspace.as_deref())?;
-    let existing = profile_get(&ctx.storage)
-        .map_err(|e| CliError::internal(COMPONENT_RM, format!("read profile: {e}")))?;
+    let existing = if let Some(scope_id) = args.scope.as_deref() {
+        require_scope(&ctx, COMPONENT_RM, scope_id)?;
+        profile_get_for_scope(&ctx.storage, scope_id)
+            .map_err(|e| CliError::internal(COMPONENT_RM, format!("read scope profile: {e}")))?
+    } else {
+        profile_get(&ctx.storage)
+            .map_err(|e| CliError::internal(COMPONENT_RM, format!("read profile: {e}")))?
+    };
     let Some(_) = existing.as_ref() else {
         return Err(CliError::NotFound {
             command: COMPONENT_RM.to_string(),
@@ -288,7 +396,10 @@ pub fn component_rm(
         ));
     }
 
-    let record = persist(&mut ctx, COMPONENT_RM, existing, body)?;
+    let record = match args.scope.as_deref() {
+        Some(scope_id) => persist_scope(&mut ctx, COMPONENT_RM, scope_id, existing, body)?,
+        None => persist(&mut ctx, COMPONENT_RM, existing, body)?,
+    };
     Ok(CommandOutcome::Profile(ProfileOutcome::new(
         COMPONENT_RM,
         record,

@@ -969,6 +969,7 @@ dependencies = [
  "ft-identity",
  "ft-import",
  "ft-index",
+ "ft-ops",
  "ft-pr",
  "ft-prime",
  "ft-scope",

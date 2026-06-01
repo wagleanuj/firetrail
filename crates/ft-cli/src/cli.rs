@@ -413,10 +413,17 @@ pub enum ProfileCmd {
 
 /// `firetrail profile show` args.
 ///
-/// `--json` is handled by the global `--json` / `--format` options; this
-/// struct carries no fields of its own but keeps the subcommand shape uniform.
+/// `--json` is handled by the global `--json` / `--format` options.
 #[derive(Debug, Args)]
-pub struct ProfileShowArgs {}
+pub struct ProfileShowArgs {
+    /// Scope id to show the per-scope delta for (default: the base profile).
+    #[arg(long)]
+    pub scope: Option<String>,
+    /// With `--scope`, render the resolved view (base ⊕ delta) instead of the
+    /// stored delta.
+    #[arg(long)]
+    pub resolved: bool,
+}
 
 /// `firetrail profile set` args — partial update.
 ///
@@ -425,6 +432,9 @@ pub struct ProfileShowArgs {}
 /// value is given (otherwise the stored vec is preserved).
 #[derive(Debug, Args)]
 pub struct ProfileSetArgs {
+    /// Scope id to write a per-scope delta for (default: the base profile).
+    #[arg(long)]
+    pub scope: Option<String>,
     /// Canonical "prove a change is good" command (consumed by the audit loop).
     #[arg(long)]
     pub validate: Option<String>,
@@ -470,6 +480,9 @@ pub struct ProfileComponentAddArgs {
     /// Optional one-line summary.
     #[arg(long)]
     pub summary: Option<String>,
+    /// Scope id to edit the per-scope delta's component map (default: base).
+    #[arg(long)]
+    pub scope: Option<String>,
 }
 
 /// `firetrail profile component rm <name>` args.
@@ -477,6 +490,9 @@ pub struct ProfileComponentAddArgs {
 pub struct ProfileComponentRmArgs {
     /// Name of the component to remove.
     pub name: String,
+    /// Scope id to edit the per-scope delta's component map (default: base).
+    #[arg(long)]
+    pub scope: Option<String>,
 }
 
 /// Identity kind selector.

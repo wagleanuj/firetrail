@@ -21,6 +21,16 @@ fn doctor_check<'a>(v: &'a serde_json::Value, id: &str) -> Option<&'a serde_json
         .find(|c| c["id"] == id)
 }
 
+/// Write a `.firetrail/scopes.yaml` declaring the given `(id, glob)` scopes.
+fn write_scopes(root: &std::path::Path, scopes: &[(&str, &str)]) {
+    use std::fmt::Write as _;
+    let mut yaml = String::from("scopes:\n");
+    for (id, glob) in scopes {
+        let _ = write!(yaml, "  - id: {id}\n    applies_to: [\"{glob}\"]\n");
+    }
+    std::fs::write(root.join(".firetrail/scopes.yaml"), yaml).unwrap();
+}
+
 #[test]
 fn profile_set_creates_then_partial_update_in_place() {
     let tr = fresh_repo();
@@ -170,6 +180,134 @@ fn profile_component_add_then_rm() {
     // rm of an unknown component errors.
     let missing = run_firetrail(tr.root(), &["--json", "profile", "component", "rm", "nope"]);
     assert!(!missing.success(), "rm of unknown component should fail");
+}
+
+#[test]
+fn profile_set_scope_writes_owning_scope_only_when_scope_exists() {
+    let tr = fresh_repo();
+    write_scopes(tr.root(), &[("apps/checkout", "apps/checkout/**")]);
+
+    let out = run_firetrail(
+        tr.root(),
+        &[
+            "--json",
+            "profile",
+            "set",
+            "--scope",
+            "apps/checkout",
+            "--test",
+            "pnpm test",
+        ],
+    );
+    let v = parse_json(&out);
+    assert!(out.success(), "scoped set should succeed: {}", out.stderr);
+    assert_eq!(
+        v["data"]["record"]["envelope"]["owning_scope"], "apps/checkout",
+        "owning_scope stamped"
+    );
+    let body = profile_body(&out);
+    assert_eq!(body["test_command"], "pnpm test");
+}
+
+#[test]
+fn profile_set_unknown_scope_errors() {
+    let tr = fresh_repo();
+    write_scopes(tr.root(), &[("apps/checkout", "apps/checkout/**")]);
+
+    let out = run_firetrail(
+        tr.root(),
+        &[
+            "--json",
+            "profile",
+            "set",
+            "--scope",
+            "nope",
+            "--test",
+            "pnpm test",
+        ],
+    );
+    assert!(!out.success(), "unknown scope must error");
+}
+
+#[test]
+fn profile_show_scope_and_resolved() {
+    let tr = fresh_repo();
+    write_scopes(tr.root(), &[("apps/checkout", "apps/checkout/**")]);
+
+    // Base profile with validate + test.
+    run_firetrail(
+        tr.root(),
+        &[
+            "--json",
+            "profile",
+            "set",
+            "--validate",
+            "just ci",
+            "--test",
+            "cargo test",
+        ],
+    );
+    // Scope delta overrides only test.
+    run_firetrail(
+        tr.root(),
+        &[
+            "--json",
+            "profile",
+            "set",
+            "--scope",
+            "apps/checkout",
+            "--test",
+            "pnpm test",
+        ],
+    );
+
+    // show --scope prints the stored delta (test only; validate absent).
+    let delta = run_firetrail(
+        tr.root(),
+        &["--json", "profile", "show", "--scope", "apps/checkout"],
+    );
+    let dbody = profile_body(&delta);
+    assert_eq!(dbody["test_command"], "pnpm test");
+    assert!(
+        dbody["validate_command"].is_null(),
+        "delta does not carry base validate"
+    );
+
+    // show --resolved --scope merges base ⊕ delta.
+    let resolved = run_firetrail(
+        tr.root(),
+        &[
+            "--json",
+            "profile",
+            "show",
+            "--scope",
+            "apps/checkout",
+            "--resolved",
+        ],
+    );
+    let rbody = profile_body(&resolved);
+    assert_eq!(rbody["validate_command"], "just ci", "inherited from base");
+    assert_eq!(rbody["test_command"], "pnpm test", "overridden by delta");
+}
+
+#[test]
+fn profile_no_scopes_yaml_zero_overhead() {
+    // A repo with NO scopes.yaml and no --scope behaves exactly as before.
+    let tr = fresh_repo();
+    let set = run_firetrail(
+        tr.root(),
+        &["--json", "profile", "set", "--validate", "just ci"],
+    );
+    let sbody = profile_body(&set);
+    assert_eq!(sbody["validate_command"], "just ci");
+    assert!(
+        parse_json(&set)["data"]["record"]["envelope"]["owning_scope"].is_null(),
+        "base record has no owning_scope"
+    );
+
+    let show = run_firetrail(tr.root(), &["--json", "profile", "show"]);
+    let shown = profile_body(&show);
+    assert_eq!(shown["validate_command"], "just ci");
 }
 
 #[test]

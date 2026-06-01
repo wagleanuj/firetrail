@@ -179,19 +179,21 @@ scope**. Check what exists:
 firetrail scope list      # the scopes declared in .firetrail/scopes.yaml
 ```
 
-If the packages aren't declared yet, author `.firetrail/scopes.yaml` first (it's
-hand-edited — there is no `scope add` command). Declare **broad patterns first,
-narrow exceptions last**: resolution is **last-declared-wins** (the same rule as
-CODEOWNERS), so a catch-all belongs at the *top*.
+If the packages aren't declared yet, add them with `firetrail scope add`. Each
+`add` appends the scope to `.firetrail/scopes.yaml`, so declare **broad scopes
+first, narrow exceptions last**: resolution is **last-declared-wins** (the same
+rule as CODEOWNERS), so a catch-all belongs *first*.
 
-```yaml
-# .firetrail/scopes.yaml
-scopes:
-  - id: apps/checkout
-    applies_to: ["apps/checkout/**"]
-  - id: libs/ui
-    applies_to: ["libs/ui/**"]
 ```
+firetrail scope add apps/checkout --applies-to "apps/checkout/**"
+firetrail scope add libs/ui       --applies-to "libs/ui/**"
+```
+
+Pass `--applies-to` more than once for multiple globs, plus optional `--name`,
+`--alias`, and `--codeowners <path>`. To change a scope later use
+`firetrail scope edit <id> …`, `firetrail scope rm <id>`, or
+`firetrail scope reorder <id>…` (the reorder takes the full ordered id list —
+remember last-declared-wins).
 
 **Set the base to the common case, then override only the deltas.** A scope
 profile is a *sparse* delta: it sets only what differs; every unset field

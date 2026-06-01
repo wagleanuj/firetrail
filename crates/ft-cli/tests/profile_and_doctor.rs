@@ -504,6 +504,86 @@ fn doctor_strict_fails_when_validate_set_but_still_draft() {
     );
 }
 
+/// Regression (firetrail-jr02): the base validate/trust tiers must read the
+/// **base** profile (`owning_scope == None`), never a per-scope delta that
+/// happens to sort first by record id. A base with no validate + a scope WITH
+/// validate must still warn `profile.validate` and fail `--strict`.
+#[test]
+fn doctor_base_checks_ignore_scope_profiles() {
+    let tr = fresh_repo();
+    write_scopes(tr.root(), &[("apps/checkout", "apps/checkout/**")]);
+    // Base profile: no validate command (languages only).
+    run_firetrail(
+        tr.root(),
+        &["--json", "profile", "set", "--language", "rust"],
+    );
+    // Scope profile WITH a validate command (must not be mistaken for the base).
+    run_firetrail(
+        tr.root(),
+        &[
+            "--json",
+            "profile",
+            "set",
+            "--scope",
+            "apps/checkout",
+            "--validate",
+            "pnpm test",
+        ],
+    );
+    // The base still has no validate → profile.validate warns, deterministically.
+    let v = parse_json(&run_firetrail(tr.root(), &["--json", "doctor"]));
+    let validate = doctor_check(&v, "profile.validate").expect("profile.validate check");
+    assert_eq!(validate["status"], "warn", "base has no validate command");
+    // And --strict fails on the missing base validate.
+    let doc = run_firetrail(tr.root(), &["--json", "doctor", "--strict"]);
+    assert!(
+        !doc.success(),
+        "--strict must fail: base has no validate command"
+    );
+}
+
+/// Regression (firetrail-jr02): a healthy monorepo (one base + several scope
+/// profiles) must NOT trip the `profile.singleton` warning — only multiple
+/// **base** records are degenerate.
+#[test]
+fn doctor_no_singleton_warning_for_base_plus_scopes() {
+    let tr = fresh_repo();
+    write_scopes(
+        tr.root(),
+        &[
+            ("apps/checkout", "apps/checkout/**"),
+            ("libs/ui", "libs/ui/**"),
+        ],
+    );
+    run_firetrail(
+        tr.root(),
+        &["--json", "profile", "set", "--validate", "just ci"],
+    );
+    run_firetrail(
+        tr.root(),
+        &[
+            "--json",
+            "profile",
+            "set",
+            "--scope",
+            "apps/checkout",
+            "--test",
+            "pnpm test",
+        ],
+    );
+    run_firetrail(
+        tr.root(),
+        &[
+            "--json", "profile", "set", "--scope", "libs/ui", "--test", "vitest",
+        ],
+    );
+    let v = parse_json(&run_firetrail(tr.root(), &["--json", "doctor"]));
+    assert!(
+        doctor_check(&v, "profile.singleton").is_none(),
+        "base + scope profiles must not warn profile.singleton"
+    );
+}
+
 // ─── Phase 4 — per-scope coverage checks ────────────────────────────────────
 
 /// No `scopes.yaml` ⇒ none of the per-scope checks fire (standalone repos see

@@ -254,7 +254,7 @@ fn check_profile(ws: &workspace::Workspace, checks: &mut Vec<CheckResult>) -> Ve
         return violations;
     };
 
-    let ids = match storage.list(&StorageFilter::default().kind(RecordKind::RepoProfile)) {
+    let mut ids = match storage.list(&StorageFilter::default().kind(RecordKind::RepoProfile)) {
         Ok(v) => v,
         Err(e) => {
             checks.push(CheckResult::warn(
@@ -267,7 +267,37 @@ fn check_profile(ws: &workspace::Workspace, checks: &mut Vec<CheckResult>) -> Ve
         }
     };
 
-    if ids.is_empty() {
+    // The base/validate/trust tiers concern the **base** profile
+    // (`owning_scope == None`); per-scope deltas are audited separately by
+    // `check_profile_scopes`. Single pass over the (id-sorted) records: keep the
+    // smallest-id base — matching `profile_get_base`'s determinism — and count
+    // bases for the singleton invariant. A monorepo with a base plus N scope
+    // profiles is healthy, not a "too many singletons" warning.
+    ids.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+    let mut base: Option<ft_core::Record> = None;
+    let mut base_count = 0usize;
+    for id in &ids {
+        let rec = match storage.read(id) {
+            Ok(rec) => rec,
+            Err(e) => {
+                checks.push(CheckResult::warn(
+                    "profile.present",
+                    "Repo profile",
+                    format!("could not read repo profile {id}: {e}"),
+                    "inspect `.firetrail/records/repo_profile/`",
+                ));
+                return violations;
+            }
+        };
+        if rec.envelope.owning_scope.is_none() {
+            base_count += 1;
+            if base.is_none() {
+                base = Some(rec);
+            }
+        }
+    }
+
+    let Some(base_record) = base else {
         checks.push(CheckResult::warn(
             "profile.present",
             "Repo profile",
@@ -276,48 +306,27 @@ fn check_profile(ws: &workspace::Workspace, checks: &mut Vec<CheckResult>) -> Ve
         ));
         violations.push("no repo profile".to_string());
         return violations;
-    }
+    };
 
-    // Degenerate: more than one RepoProfile record exists.
-    if ids.len() > 1 {
+    // Degenerate: more than one **base** RepoProfile record exists.
+    if base_count > 1 {
         checks.push(CheckResult::warn(
             "profile.singleton",
             "Repo profile",
-            format!(
-                "{} repo profile records found (expected exactly 1)",
-                ids.len()
-            ),
-            "remove the extra `repo_profile` record(s); the profile is a singleton",
+            format!("{base_count} base repo profile records found (expected exactly 1)"),
+            "remove the extra base `repo_profile` record(s); the base profile is a singleton",
         ));
     }
 
-    // Read the singleton (smallest id, matching profile_get's determinism).
-    let mut sorted = ids;
-    sorted.sort_by(|a, b| a.as_str().cmp(b.as_str()));
-    let id = &sorted[0];
-    let body = match storage.read(id) {
-        Ok(rec) => {
-            if let RecordBody::RepoProfile(b) = rec.body {
-                b
-            } else {
-                checks.push(CheckResult::warn(
-                    "profile.present",
-                    "Repo profile",
-                    format!("{id} is not a repo profile record"),
-                    "inspect `.firetrail/records/repo_profile/`",
-                ));
-                return violations;
-            }
-        }
-        Err(e) => {
-            checks.push(CheckResult::warn(
-                "profile.present",
-                "Repo profile",
-                format!("could not read repo profile {id}: {e}"),
-                "inspect `.firetrail/records/repo_profile/`",
-            ));
-            return violations;
-        }
+    let id = base_record.envelope.id.clone();
+    let RecordBody::RepoProfile(body) = base_record.body else {
+        checks.push(CheckResult::warn(
+            "profile.present",
+            "Repo profile",
+            format!("{id} is not a repo profile record"),
+            "inspect `.firetrail/records/repo_profile/`",
+        ));
+        return violations;
     };
 
     let has_validate = body

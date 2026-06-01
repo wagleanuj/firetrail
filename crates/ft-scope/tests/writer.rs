@@ -235,6 +235,32 @@ fn validate_rejects_empty_applies_to() {
 }
 
 #[test]
+fn validate_rejects_blank_applies_to_pattern() {
+    // A blank/whitespace-only pattern is "no pattern" — must not persist a
+    // useless `['']` scope. Covers both an all-blank list and a blank mixed in.
+    for patterns in [
+        vec![String::new()],
+        vec!["   ".to_string()],
+        vec!["apps/a/**".to_string(), String::new()],
+    ] {
+        let file = ScopesFile {
+            scopes: vec![ScopeYaml {
+                id: "apps/a".to_string(),
+                applies_to: patterns.clone(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let err = validate(&file).unwrap_err();
+        let rejected = matches!(&err, ScopeError::EmptyAppliesTo { id } if id.as_str() == "apps/a");
+        assert!(
+            rejected,
+            "blank pattern {patterns:?} should reject as EmptyAppliesTo, got {err:?}"
+        );
+    }
+}
+
+#[test]
 fn save_rejects_invalid_model() {
     let repo = TestRepo::new().unwrap();
     let file = ScopesFile {

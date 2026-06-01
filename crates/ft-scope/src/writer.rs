@@ -187,6 +187,13 @@ pub fn validate(file: &ScopesFile) -> Result<(), ScopeError> {
         }
 
         for pat in &scope.applies_to {
+            // A blank/whitespace-only pattern is "no pattern" — reject it like an
+            // empty `applies_to` rather than persisting a useless `['']` scope.
+            if pat.trim().is_empty() {
+                return Err(ScopeError::EmptyAppliesTo {
+                    id: scope.id.clone(),
+                });
+            }
             Glob::new(pat).map_err(|source| ScopeError::InvalidGlob {
                 scope_id: scope.id.clone(),
                 pattern: pat.clone(),

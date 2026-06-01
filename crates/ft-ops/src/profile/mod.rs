@@ -18,6 +18,8 @@
 //! convention lives in [`ft_storage::profile_get`]; here we drive it through
 //! [`TicketCtx`] so the index + history stay current.
 
+pub mod resolve;
+
 use ft_core::{ComponentRef, Record, RecordBody, RecordBuilder, RecordKind, RepoProfileBody};
 use serde::{Deserialize, Serialize};
 

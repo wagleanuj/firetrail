@@ -20,6 +20,7 @@ pub mod audit;
 pub mod docs;
 pub mod error;
 pub mod events;
+pub mod files;
 pub mod identity;
 pub mod identity_ops;
 pub mod memory;

@@ -503,3 +503,167 @@ fn doctor_strict_fails_when_validate_set_but_still_draft() {
         "--strict must fail while profile is unconfirmed"
     );
 }
+
+// ─── Phase 4 — per-scope coverage checks ────────────────────────────────────
+
+/// No `scopes.yaml` ⇒ none of the per-scope checks fire (standalone repos see
+/// zero behavior change).
+#[test]
+fn doctor_no_scopes_yaml_emits_no_scope_checks() {
+    let tr = fresh_repo();
+    run_firetrail(
+        tr.root(),
+        &["--json", "profile", "set", "--validate", "just ci"],
+    );
+    let v = parse_json(&run_firetrail(tr.root(), &["--json", "doctor"]));
+    for id in [
+        "profile.scope.dangling",
+        "profile.scope.duplicate",
+        "scope.glob.empty",
+        "scope.order.shadow",
+    ] {
+        assert!(
+            doctor_check(&v, id).is_none(),
+            "{id} must not fire without scopes.yaml"
+        );
+    }
+}
+
+/// A profile record whose `owning_scope` is not declared in `scopes.yaml`
+/// warns as `profile.scope.dangling`.
+#[test]
+fn doctor_warns_on_dangling_scope_profile() {
+    let tr = fresh_repo();
+    // Two scopes so we can write a scoped profile, then drop one to dangle it.
+    write_scopes(
+        tr.root(),
+        &[
+            ("apps/checkout", "apps/checkout/**"),
+            ("libs/ui", "libs/ui/**"),
+        ],
+    );
+    run_firetrail(
+        tr.root(),
+        &[
+            "--json", "profile", "set", "--scope", "libs/ui", "--test", "vitest",
+        ],
+    );
+    // Drop libs/ui from scopes.yaml → its profile record is now dangling.
+    write_scopes(tr.root(), &[("apps/checkout", "apps/checkout/**")]);
+
+    let v = parse_json(&run_firetrail(tr.root(), &["--json", "doctor"]));
+    let dangling = doctor_check(&v, "profile.scope.dangling").expect("dangling check");
+    assert_eq!(dangling["status"], "warn");
+    assert!(
+        dangling["message"].as_str().unwrap().contains("libs/ui"),
+        "names the dangling scope"
+    );
+}
+
+/// Two profile records sharing an `owning_scope` warn as
+/// `profile.scope.duplicate`.
+#[test]
+fn doctor_warns_on_duplicate_scope_profiles() {
+    let tr = fresh_repo();
+    write_scopes(tr.root(), &[("apps/checkout", "apps/checkout/**")]);
+    run_firetrail(
+        tr.root(),
+        &[
+            "--json",
+            "profile",
+            "set",
+            "--scope",
+            "apps/checkout",
+            "--test",
+            "pnpm test",
+        ],
+    );
+    // Hand-write a second record with the same owning_scope by copying the
+    // first record file under a new name (upsert keys on owning_scope, so the
+    // CLI alone can't produce this — it's the degenerate state doctor flags).
+    let dir = tr.root().join(".firetrail/records/repo_profile");
+    let first = std::fs::read_dir(&dir)
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .find(|p| p.extension().is_some_and(|x| x == "json"))
+        .expect("a profile file");
+    let bytes = std::fs::read(&first).unwrap();
+    std::fs::write(dir.join("dup-clone.json"), bytes).unwrap();
+
+    let v = parse_json(&run_firetrail(tr.root(), &["--json", "doctor"]));
+    let dup = doctor_check(&v, "profile.scope.duplicate").expect("duplicate check");
+    assert_eq!(dup["status"], "warn");
+    assert!(
+        dup["message"].as_str().unwrap().contains("apps/checkout"),
+        "names the duplicated scope"
+    );
+}
+
+/// A scope glob matching zero tracked files warns as `scope.glob.empty`.
+#[test]
+fn doctor_warns_on_empty_glob() {
+    let tr = fresh_repo();
+    // checkout matches a real file; ghost matches nothing tracked.
+    write_scopes(
+        tr.root(),
+        &[("checkout", "apps/checkout/**"), ("ghost", "apps/ghost/**")],
+    );
+    std::fs::create_dir_all(tr.root().join("apps/checkout")).unwrap();
+    std::fs::write(tr.root().join("apps/checkout/a.ts"), b"x").unwrap();
+    tr.commit_all("seed checkout file").unwrap();
+
+    let v = parse_json(&run_firetrail(tr.root(), &["--json", "doctor"]));
+    let empty = doctor_check(&v, "scope.glob.empty").expect("empty-glob check");
+    assert_eq!(empty["status"], "warn");
+    assert!(
+        empty["message"].as_str().unwrap().contains("ghost"),
+        "names the empty scope/glob"
+    );
+}
+
+/// A broad scope declared AFTER a narrower one shadows it → `scope.order.shadow`.
+#[test]
+fn doctor_warns_on_shadowing_scope_order() {
+    let tr = fresh_repo();
+    // narrow `checkout` first, broad `all` (**) last → all shadows checkout.
+    write_scopes(
+        tr.root(),
+        &[("checkout", "apps/checkout/**"), ("all", "**")],
+    );
+    std::fs::create_dir_all(tr.root().join("apps/checkout")).unwrap();
+    std::fs::write(tr.root().join("apps/checkout/a.ts"), b"x").unwrap();
+    std::fs::write(tr.root().join("README.md"), b"x").unwrap();
+    tr.commit_all("seed files").unwrap();
+
+    let v = parse_json(&run_firetrail(tr.root(), &["--json", "doctor"]));
+    let shadow = doctor_check(&v, "scope.order.shadow").expect("shadow check");
+    assert_eq!(shadow["status"], "warn");
+    let msg = shadow["message"].as_str().unwrap();
+    assert!(
+        msg.contains("checkout") && msg.contains("all"),
+        "names both scopes: {msg}"
+    );
+}
+
+/// The narrow-before-broad ordering that does NOT shadow (broad first) must
+/// not fire `scope.order.shadow`.
+#[test]
+fn doctor_no_shadow_when_broad_declared_first() {
+    let tr = fresh_repo();
+    // broad `all` first, narrow `checkout` last → no shadowing.
+    write_scopes(
+        tr.root(),
+        &[("all", "**"), ("checkout", "apps/checkout/**")],
+    );
+    std::fs::create_dir_all(tr.root().join("apps/checkout")).unwrap();
+    std::fs::write(tr.root().join("apps/checkout/a.ts"), b"x").unwrap();
+    std::fs::write(tr.root().join("README.md"), b"x").unwrap();
+    tr.commit_all("seed files").unwrap();
+
+    let v = parse_json(&run_firetrail(tr.root(), &["--json", "doctor"]));
+    assert!(
+        doctor_check(&v, "scope.order.shadow").is_none(),
+        "broad-first ordering must not shadow"
+    );
+}

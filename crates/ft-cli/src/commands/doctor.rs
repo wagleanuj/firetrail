@@ -201,6 +201,10 @@ pub fn run(args: &DoctorArgs, global: &GlobalOpts) -> Result<CommandOutcome, Cli
     // failing tiers a `--strict` run must turn into a non-zero exit.
     let strict_violations = check_profile(&ws, &mut checks);
 
+    // Per-scope profile coverage (firetrail-jr02, Phase 4). Only fires when a
+    // `scopes.yaml` is present — standalone repos see zero behavior change.
+    check_profile_scopes(&ws, &mut checks);
+
     let clean = checks.iter().all(|c| c.status == CheckStatus::Ok);
     let _ = global;
 
@@ -351,6 +355,178 @@ fn check_profile(ws: &workspace::Workspace, checks: &mut Vec<CheckResult>) -> Ve
     }
 
     violations
+}
+
+/// Per-scope `RepoProfile` coverage checks (firetrail-jr02, design §5).
+///
+/// All of these only fire when a `scopes.yaml` declares at least one scope —
+/// a standalone repo (no scopes file) gets an empty registry and produces no
+/// `profile.scope.*` / `scope.*` checks, so doctor output is byte-identical to
+/// the pre-Phase-4 behavior.
+///
+/// Severity model: every check here is a `Warn` (advisory). The returned
+/// violation list carries the Phase-4.2 `--strict` coverage gate — for each
+/// ENABLED scope whose resolved (base ⊕ delta) profile has no validate
+/// command, one violation string so `doctor --strict` exits non-zero.
+fn check_profile_scopes(ws: &workspace::Workspace, checks: &mut Vec<CheckResult>) {
+    use ft_scope::ScopeRegistry;
+
+    // A malformed scopes.yaml is already reported by `check_scope_registry`.
+    let Ok(registry) = ScopeRegistry::load(&ws.root) else {
+        return;
+    };
+    // Zero-overhead guard: no scopes ⇒ no per-scope checks at all.
+    if registry.is_empty() {
+        return;
+    }
+
+    let Ok(storage) = EmbeddedStorage::open(&ws.root) else {
+        return;
+    };
+
+    check_scope_profile_bindings(&storage, &registry, checks);
+    check_scope_glob_coverage(&ws.root, &registry, checks);
+}
+
+/// `profile.scope.dangling` + `profile.scope.duplicate` (design §5).
+fn check_scope_profile_bindings(
+    storage: &EmbeddedStorage,
+    registry: &ft_scope::ScopeRegistry,
+    checks: &mut Vec<CheckResult>,
+) {
+    use std::collections::BTreeMap;
+
+    use ft_storage::profile_list;
+
+    let records = profile_list(storage).unwrap_or_default();
+    let mut by_scope: BTreeMap<String, usize> = BTreeMap::new();
+    let mut dangling: Vec<String> = Vec::new();
+    for rec in &records {
+        let Some(scope_id) = rec.envelope.owning_scope.as_deref() else {
+            continue;
+        };
+        *by_scope.entry(scope_id.to_string()).or_default() += 1;
+        if registry.get(scope_id).is_none() && !dangling.iter().any(|s| s == scope_id) {
+            dangling.push(scope_id.to_string());
+        }
+    }
+
+    if !dangling.is_empty() {
+        checks.push(CheckResult::warn(
+            "profile.scope.dangling",
+            "Profile scope binding",
+            format!(
+                "{} profile(s) bound to scope(s) absent from scopes.yaml: {}",
+                dangling.len(),
+                dangling.join(", ")
+            ),
+            "declare the scope in `.firetrail/scopes.yaml` or remove the stray profile record",
+        ));
+    }
+
+    let duplicates: Vec<String> = by_scope
+        .iter()
+        .filter(|&(_, &n)| n > 1)
+        .map(|(id, _)| id.clone())
+        .collect();
+    if !duplicates.is_empty() {
+        checks.push(CheckResult::warn(
+            "profile.scope.duplicate",
+            "Profile scope uniqueness",
+            format!(
+                "multiple profile records share an owning_scope: {}",
+                duplicates.join(", ")
+            ),
+            "remove the duplicate `repo_profile` record(s); each scope owns at most one",
+        ));
+    }
+}
+
+/// `scope.glob.empty` + `scope.order.shadow` (design §5).
+///
+/// Both need the set of tracked files, enumerated via the same git tree walk
+/// the CLI uses elsewhere (`Repo::list_files_at_ref`). When git can't be read
+/// (no repo / no commit yet) both checks are skipped — they are advisory and
+/// require a populated tree.
+fn check_scope_glob_coverage(
+    root: &Path,
+    registry: &ft_scope::ScopeRegistry,
+    checks: &mut Vec<CheckResult>,
+) {
+    use std::collections::BTreeSet;
+
+    let Some(files) = tracked_files(root) else {
+        return;
+    };
+
+    // Per-scope matched-file index sets, in declaration order.
+    let matched: Vec<(String, Vec<usize>)> = registry
+        .scopes()
+        .iter()
+        .map(|scope| {
+            let hits: Vec<usize> = files
+                .iter()
+                .enumerate()
+                .filter(|(_, p)| scope.matches_path(p))
+                .map(|(i, _)| i)
+                .collect();
+            (scope.id.clone(), hits)
+        })
+        .collect();
+
+    let empty: Vec<String> = matched
+        .iter()
+        .filter(|(_, hits)| hits.is_empty())
+        .map(|(id, _)| id.clone())
+        .collect();
+    if !empty.is_empty() {
+        checks.push(CheckResult::warn(
+            "scope.glob.empty",
+            "Scope glob coverage",
+            format!(
+                "{} scope(s) match zero tracked files: {}",
+                empty.len(),
+                empty.join(", ")
+            ),
+            "fix the `applies_to` glob(s) or remove the unused scope(s)",
+        ));
+    }
+
+    // Shadowing: a broad scope B declared AFTER a narrower scope A, where A's
+    // matched files are a strict subset of B's. Last-declared-wins means B
+    // always wins everywhere A would have, so A never governs a file. Only
+    // emit when A is non-empty (an empty A is the glob.empty case).
+    let mut shadows: Vec<String> = Vec::new();
+    for (a_idx, (a_id, a_hits)) in matched.iter().enumerate() {
+        if a_hits.is_empty() {
+            continue;
+        }
+        let a_set: BTreeSet<usize> = a_hits.iter().copied().collect();
+        for (b_id, b_hits) in matched.iter().skip(a_idx + 1) {
+            let b_set: BTreeSet<usize> = b_hits.iter().copied().collect();
+            if a_set.is_subset(&b_set) && b_set.len() > a_set.len() {
+                shadows.push(format!("`{b_id}` shadows `{a_id}`"));
+            }
+        }
+    }
+    if !shadows.is_empty() {
+        checks.push(CheckResult::warn(
+            "scope.order.shadow",
+            "Scope declaration order",
+            format!(
+                "later-declared broad scope(s) shadow earlier narrower scope(s): {}",
+                shadows.join("; ")
+            ),
+            "declare narrower scopes AFTER broader ones (last-declared-wins)",
+        ));
+    }
+}
+
+/// Tracked files at `HEAD`, repo-relative. `None` when the repo / `HEAD`
+/// can't be read (uninitialized repo or no commit yet).
+fn tracked_files(root: &Path) -> Option<Vec<std::path::PathBuf>> {
+    let repo = Repo::open(root).ok()?;
+    repo.list_files_at_ref("HEAD", "**").ok()
 }
 
 fn check_config(ws: &workspace::Workspace, checks: &mut Vec<CheckResult>) {

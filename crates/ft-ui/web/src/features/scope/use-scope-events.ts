@@ -7,7 +7,7 @@ import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Event as ScopeEvent } from '@/api/types/Event'
 import { useEvents } from '@/api/hooks/useEvents'
-import { scopeListKey, scopeAliasesKey } from './use-scope-query'
+import { scopeListKey, scopeAliasesKey, scopePreviewKey } from './use-scope-query'
 
 export function useScopeEvents(enabled = true) {
   const queryClient = useQueryClient()
@@ -18,6 +18,7 @@ export function useScopeEvents(enabled = true) {
     if (!last.kind.startsWith('scope_')) return
     queryClient.invalidateQueries({ queryKey: scopeListKey })
     queryClient.invalidateQueries({ queryKey: scopeAliasesKey })
+    queryClient.invalidateQueries({ queryKey: scopePreviewKey })
     queryClient.invalidateQueries({ queryKey: ['scope'] })
   }, [last, queryClient])
 }

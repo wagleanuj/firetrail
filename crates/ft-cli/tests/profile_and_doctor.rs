@@ -227,6 +227,16 @@ fn profile_set_unknown_scope_errors() {
         ],
     );
     assert!(!out.success(), "unknown scope must error");
+    // Harden: it must fail *because* the scope is unknown — not for some other
+    // reason — and name the offending id, so a future regression that errors
+    // for the wrong cause is caught.
+    let combined = format!("{}{}", out.stdout, out.stderr);
+    assert!(
+        combined.contains("unknown scope") && combined.contains("nope"),
+        "expected an 'unknown scope `nope`' error; got stdout={} stderr={}",
+        out.stdout,
+        out.stderr
+    );
 }
 
 #[test]

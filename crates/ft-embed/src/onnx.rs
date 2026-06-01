@@ -26,7 +26,9 @@
 //! Default cargo builds compile-test this module but cannot exercise it
 //! end-to-end without a real ~33 MiB ONNX model file. The integration test
 //! `onnx_bge_small_round_trips` (in `tests/onnx_bge.rs`) is gated on the
-//! `onnx` feature + the LFS-bundled model and runs only with `--ignored`.
+//! `onnx` feature + the LFS-bundled model and runs only with `--ignored`. That
+//! test also honors the `FIRETRAIL_BGE_MODEL_DIR` env var to override the
+//! model location.
 
 #![cfg(feature = "onnx")]
 
@@ -110,6 +112,43 @@ impl OnnxBackend {
         let mut infer = tract_onnx::onnx()
             .model_for_path(&model_path)
             .map_err(|e| EmbedError::ModelUnavailable(format!("tract load model: {e}")))?;
+
+        // Defend the positional input binding below. `set_input_fact` and `run`
+        // bind by index, but every input is an i64 `[1, seq_len]` tensor, so a
+        // model re-exported with permuted inputs would bind wrong *silently*.
+        // Assert the graph's actual input names match `INPUT_ORDER`. The source
+        // node of each input outlet carries the ONNX input name.
+        let input_outlets = infer
+            .input_outlets()
+            .map_err(|e| EmbedError::ModelUnavailable(format!("tract input outlets: {e}")))?
+            .to_vec();
+        if input_outlets.len() != INPUT_ORDER.len() {
+            return Err(EmbedError::ModelUnavailable(format!(
+                "expected {} model inputs {INPUT_ORDER:?}, found {}",
+                INPUT_ORDER.len(),
+                input_outlets.len()
+            )));
+        }
+        for (i, outlet) in input_outlets.iter().enumerate() {
+            let actual = infer.node(outlet.node).name.as_str();
+            if actual != INPUT_ORDER[i] {
+                return Err(EmbedError::ModelUnavailable(format!(
+                    "model input {i} is named {actual:?}; expected {:?} \
+                     (inputs must be in order {INPUT_ORDER:?})",
+                    INPUT_ORDER[i]
+                )));
+            }
+        }
+
+        // Pin the model output to just `last_hidden_state` before optimizing.
+        // Some bge exports also emit `pooler_output`, so we must not trust that
+        // `outputs[0]` is the hidden state. Selecting it by name makes
+        // `outputs[0]` correct by construction and prunes the unused branch.
+        infer
+            .select_outputs_by_name(["last_hidden_state"])
+            .map_err(|e| {
+                EmbedError::ModelUnavailable(format!("tract select last_hidden_state output: {e}"))
+            })?;
 
         // bge-small accepts a variable batch and sequence length. Declare each
         // input as i64 `[batch_size, sequence_length]` reusing the export's own
@@ -201,10 +240,14 @@ impl OnnxBackend {
             .run(inputs)
             .map_err(|e| EmbedError::Inference(format!("tract run: {e}")))?;
 
-        // last_hidden_state is the first model output: shape [1, seq_len, D].
-        // `outputs[0]` is a `TValue`; deref reaches the underlying `Tensor`,
-        // which exposes `to_array_view`.
-        let view = (*outputs[0])
+        // `last_hidden_state` is the sole model output: load_from_dir pinned it
+        // by name before optimizing, so it is `outputs[0]` by construction
+        // (shape [1, seq_len, D]). The output is a `TValue`; deref reaches the
+        // underlying `Tensor`, which exposes `to_array_view`.
+        let last_hidden_state = outputs
+            .first()
+            .ok_or_else(|| EmbedError::Inference("model produced no outputs".into()))?;
+        let view = (**last_hidden_state)
             .to_plain_array_view::<f32>()
             .map_err(|e| EmbedError::Inference(format!("extract last_hidden_state: {e}")))?;
         let out_shape = view.shape();

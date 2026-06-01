@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, useNavigate, Outlet } from '@tanstack/react-router'
 import { z } from 'zod'
 import { Board } from '@/features/tickets/board'
 import { CreateDialog } from '@/features/tickets/create-dialog'
@@ -12,12 +12,18 @@ const searchSchema = z.object({
   epics: z.array(z.string()).optional(),
 })
 
-export const Route = createFileRoute('/')({
+/**
+ * Pathless layout shared by the board (`/`) and the ticket drawer
+ * (`/tickets/:id`). The `<Board>` lives here so it stays mounted while the
+ * drawer opens and closes over it — opening a ticket renders only the child
+ * route's `<Sheet>` into `<Outlet>`, the board behind it never remounts.
+ */
+export const Route = createFileRoute('/_board')({
   validateSearch: searchSchema,
-  component: HomePage,
+  component: BoardLayout,
 })
 
-function HomePage() {
+function BoardLayout() {
   const search = Route.useSearch()
   const navigate = useNavigate({ from: '/' })
   const [createOpen, setCreateOpen] = useState(false)
@@ -45,6 +51,8 @@ function HomePage() {
         }}
       />
       <CreateDialog open={createOpen} onOpenChange={setCreateOpen} />
+      {/* Child routes (the ticket drawer) render on top of the board. */}
+      <Outlet />
     </FeatureErrorBoundary>
   )
 }

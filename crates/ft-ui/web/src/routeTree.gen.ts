@@ -11,13 +11,13 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as BacklogRouteImport } from './routes/backlog'
-import { Route as IndexRouteImport } from './routes/index'
+import { Route as BoardRouteImport } from './routes/_board'
 import { Route as ScopeIndexRouteImport } from './routes/scope/index'
 import { Route as MemoryIndexRouteImport } from './routes/memory/index'
 import { Route as IdentityIndexRouteImport } from './routes/identity/index'
 import { Route as EpicsIndexRouteImport } from './routes/epics/index'
 import { Route as AuditIndexRouteImport } from './routes/audit/index'
-import { Route as TicketsIdRouteImport } from './routes/tickets/$id'
+import { Route as BoardIndexRouteImport } from './routes/_board/index'
 import { Route as ScopeIdRouteImport } from './routes/scope/$id'
 import { Route as MemorySearchRouteImport } from './routes/memory/search'
 import { Route as MemorySalvageRouteImport } from './routes/memory/salvage'
@@ -29,6 +29,7 @@ import { Route as AuditGraphRouteImport } from './routes/audit/graph'
 import { Route as AuditDiffRouteImport } from './routes/audit/diff'
 import { Route as AuditReviewRecordIdRouteImport } from './routes/audit/review.$recordId'
 import { Route as AuditCriteriaRecordIdRouteImport } from './routes/audit/criteria.$recordId'
+import { Route as BoardTicketsIdRouteImport } from './routes/_board/tickets/$id'
 
 const ProfileRoute = ProfileRouteImport.update({
   id: '/profile',
@@ -40,9 +41,8 @@ const BacklogRoute = BacklogRouteImport.update({
   path: '/backlog',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const BoardRoute = BoardRouteImport.update({
+  id: '/_board',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ScopeIndexRoute = ScopeIndexRouteImport.update({
@@ -70,10 +70,10 @@ const AuditIndexRoute = AuditIndexRouteImport.update({
   path: '/audit/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const TicketsIdRoute = TicketsIdRouteImport.update({
-  id: '/tickets/$id',
-  path: '/tickets/$id',
-  getParentRoute: () => rootRouteImport,
+const BoardIndexRoute = BoardIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => BoardRoute,
 } as any)
 const ScopeIdRoute = ScopeIdRouteImport.update({
   id: '/scope/$id',
@@ -130,9 +130,14 @@ const AuditCriteriaRecordIdRoute = AuditCriteriaRecordIdRouteImport.update({
   path: '/audit/criteria/$recordId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BoardTicketsIdRoute = BoardTicketsIdRouteImport.update({
+  id: '/tickets/$id',
+  path: '/tickets/$id',
+  getParentRoute: () => BoardRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
+  '/': typeof BoardIndexRoute
   '/backlog': typeof BacklogRoute
   '/profile': typeof ProfileRoute
   '/audit/diff': typeof AuditDiffRoute
@@ -144,17 +149,16 @@ export interface FileRoutesByFullPath {
   '/memory/salvage': typeof MemorySalvageRoute
   '/memory/search': typeof MemorySearchRoute
   '/scope/$id': typeof ScopeIdRoute
-  '/tickets/$id': typeof TicketsIdRoute
   '/audit/': typeof AuditIndexRoute
   '/epics/': typeof EpicsIndexRoute
   '/identity/': typeof IdentityIndexRoute
   '/memory/': typeof MemoryIndexRoute
   '/scope/': typeof ScopeIndexRoute
+  '/tickets/$id': typeof BoardTicketsIdRoute
   '/audit/criteria/$recordId': typeof AuditCriteriaRecordIdRoute
   '/audit/review/$recordId': typeof AuditReviewRecordIdRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
   '/backlog': typeof BacklogRoute
   '/profile': typeof ProfileRoute
   '/audit/diff': typeof AuditDiffRoute
@@ -166,18 +170,19 @@ export interface FileRoutesByTo {
   '/memory/salvage': typeof MemorySalvageRoute
   '/memory/search': typeof MemorySearchRoute
   '/scope/$id': typeof ScopeIdRoute
-  '/tickets/$id': typeof TicketsIdRoute
+  '/': typeof BoardIndexRoute
   '/audit': typeof AuditIndexRoute
   '/epics': typeof EpicsIndexRoute
   '/identity': typeof IdentityIndexRoute
   '/memory': typeof MemoryIndexRoute
   '/scope': typeof ScopeIndexRoute
+  '/tickets/$id': typeof BoardTicketsIdRoute
   '/audit/criteria/$recordId': typeof AuditCriteriaRecordIdRoute
   '/audit/review/$recordId': typeof AuditReviewRecordIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
+  '/_board': typeof BoardRouteWithChildren
   '/backlog': typeof BacklogRoute
   '/profile': typeof ProfileRoute
   '/audit/diff': typeof AuditDiffRoute
@@ -189,12 +194,13 @@ export interface FileRoutesById {
   '/memory/salvage': typeof MemorySalvageRoute
   '/memory/search': typeof MemorySearchRoute
   '/scope/$id': typeof ScopeIdRoute
-  '/tickets/$id': typeof TicketsIdRoute
+  '/_board/': typeof BoardIndexRoute
   '/audit/': typeof AuditIndexRoute
   '/epics/': typeof EpicsIndexRoute
   '/identity/': typeof IdentityIndexRoute
   '/memory/': typeof MemoryIndexRoute
   '/scope/': typeof ScopeIndexRoute
+  '/_board/tickets/$id': typeof BoardTicketsIdRoute
   '/audit/criteria/$recordId': typeof AuditCriteriaRecordIdRoute
   '/audit/review/$recordId': typeof AuditReviewRecordIdRoute
 }
@@ -213,17 +219,16 @@ export interface FileRouteTypes {
     | '/memory/salvage'
     | '/memory/search'
     | '/scope/$id'
-    | '/tickets/$id'
     | '/audit/'
     | '/epics/'
     | '/identity/'
     | '/memory/'
     | '/scope/'
+    | '/tickets/$id'
     | '/audit/criteria/$recordId'
     | '/audit/review/$recordId'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/'
     | '/backlog'
     | '/profile'
     | '/audit/diff'
@@ -235,17 +240,18 @@ export interface FileRouteTypes {
     | '/memory/salvage'
     | '/memory/search'
     | '/scope/$id'
-    | '/tickets/$id'
+    | '/'
     | '/audit'
     | '/epics'
     | '/identity'
     | '/memory'
     | '/scope'
+    | '/tickets/$id'
     | '/audit/criteria/$recordId'
     | '/audit/review/$recordId'
   id:
     | '__root__'
-    | '/'
+    | '/_board'
     | '/backlog'
     | '/profile'
     | '/audit/diff'
@@ -257,18 +263,19 @@ export interface FileRouteTypes {
     | '/memory/salvage'
     | '/memory/search'
     | '/scope/$id'
-    | '/tickets/$id'
+    | '/_board/'
     | '/audit/'
     | '/epics/'
     | '/identity/'
     | '/memory/'
     | '/scope/'
+    | '/_board/tickets/$id'
     | '/audit/criteria/$recordId'
     | '/audit/review/$recordId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
+  BoardRoute: typeof BoardRouteWithChildren
   BacklogRoute: typeof BacklogRoute
   ProfileRoute: typeof ProfileRoute
   AuditDiffRoute: typeof AuditDiffRoute
@@ -280,7 +287,6 @@ export interface RootRouteChildren {
   MemorySalvageRoute: typeof MemorySalvageRoute
   MemorySearchRoute: typeof MemorySearchRoute
   ScopeIdRoute: typeof ScopeIdRoute
-  TicketsIdRoute: typeof TicketsIdRoute
   AuditIndexRoute: typeof AuditIndexRoute
   EpicsIndexRoute: typeof EpicsIndexRoute
   IdentityIndexRoute: typeof IdentityIndexRoute
@@ -306,11 +312,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BacklogRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
+    '/_board': {
+      id: '/_board'
+      path: ''
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+      preLoaderRoute: typeof BoardRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/scope/': {
@@ -348,12 +354,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuditIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/tickets/$id': {
-      id: '/tickets/$id'
-      path: '/tickets/$id'
-      fullPath: '/tickets/$id'
-      preLoaderRoute: typeof TicketsIdRouteImport
-      parentRoute: typeof rootRouteImport
+    '/_board/': {
+      id: '/_board/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof BoardIndexRouteImport
+      parentRoute: typeof BoardRoute
     }
     '/scope/$id': {
       id: '/scope/$id'
@@ -432,11 +438,30 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuditCriteriaRecordIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_board/tickets/$id': {
+      id: '/_board/tickets/$id'
+      path: '/tickets/$id'
+      fullPath: '/tickets/$id'
+      preLoaderRoute: typeof BoardTicketsIdRouteImport
+      parentRoute: typeof BoardRoute
+    }
   }
 }
 
+interface BoardRouteChildren {
+  BoardIndexRoute: typeof BoardIndexRoute
+  BoardTicketsIdRoute: typeof BoardTicketsIdRoute
+}
+
+const BoardRouteChildren: BoardRouteChildren = {
+  BoardIndexRoute: BoardIndexRoute,
+  BoardTicketsIdRoute: BoardTicketsIdRoute,
+}
+
+const BoardRouteWithChildren = BoardRoute._addFileChildren(BoardRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
+  BoardRoute: BoardRouteWithChildren,
   BacklogRoute: BacklogRoute,
   ProfileRoute: ProfileRoute,
   AuditDiffRoute: AuditDiffRoute,
@@ -448,7 +473,6 @@ const rootRouteChildren: RootRouteChildren = {
   MemorySalvageRoute: MemorySalvageRoute,
   MemorySearchRoute: MemorySearchRoute,
   ScopeIdRoute: ScopeIdRoute,
-  TicketsIdRoute: TicketsIdRoute,
   AuditIndexRoute: AuditIndexRoute,
   EpicsIndexRoute: EpicsIndexRoute,
   IdentityIndexRoute: IdentityIndexRoute,

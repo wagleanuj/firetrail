@@ -14,6 +14,7 @@ import { apiFetch, ApiError } from '@/api/client'
 import type { ProfileView } from '@/api/types/ProfileView'
 import type { ScopeListOutput } from '@/api/types/ScopeListOutput'
 import type { ScopeSummary } from '@/api/types/ScopeSummary'
+import type { ValidatePlanView } from '@/api/types/ValidatePlanView'
 
 /**
  * Which profile to fetch: the base singleton, or a per-scope delta — and, for a
@@ -106,5 +107,33 @@ export function addComponent(
 export function removeComponent(name: string): Promise<ProfileView> {
   return apiFetch<ProfileView>(`/api/profile/components/${encodeURIComponent(name)}`, {
     method: 'DELETE',
+  })
+}
+
+/**
+ * What to resolve a validate plan against: an explicit set of changed paths, or
+ * the repo's staged diff. Mirrors the `paths=` / `staged=1` query forms of
+ * `GET /api/profile/resolve`.
+ */
+export type ResolveInput = { paths: string[] } | { staged: true }
+
+/** Build the `/api/profile/resolve` query string for a resolve input. */
+function resolveQuery(input: ResolveInput): string {
+  const params = new URLSearchParams()
+  if ('staged' in input) {
+    params.set('staged', '1')
+  } else {
+    params.set('paths', input.paths.join(','))
+  }
+  return `?${params.toString()}`
+}
+
+/**
+ * GET /api/profile/resolve?paths=a,b,c | ?staged=1 — the distinct validate
+ * commands a changeset requires, with provenance and unresolved count.
+ */
+export function resolveValidatePlan(input: ResolveInput): Promise<ValidatePlanView> {
+  return apiFetch<ValidatePlanView>(`/api/profile/resolve${resolveQuery(input)}`, {
+    withRequestId: false,
   })
 }

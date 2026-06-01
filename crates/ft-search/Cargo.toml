@@ -26,14 +26,14 @@ chrono = { workspace = true }
 tracing = { workspace = true }
 rusqlite = { workspace = true, features = ["load_extension"] }
 sqlite-vec = { workspace = true, optional = true }
-ft-vec = { path = "../ft-vec", version = "0.1.0", optional = true }
-ft-core = { path = "../ft-core", version = "0.1.0" }
-ft-storage = { path = "../ft-storage", version = "0.1.0" }
-ft-index = { path = "../ft-index", version = "0.1.0" }
-ft-scope = { path = "../ft-scope", version = "0.1.0" }
-ft-identity = { path = "../ft-identity", version = "0.1.0" }
+ft-vec = { path = "../ft-vec", version = "0.2.0", optional = true }
+ft-core = { path = "../ft-core", version = "0.2.0" }
+ft-storage = { path = "../ft-storage", version = "0.2.0" }
+ft-index = { path = "../ft-index", version = "0.2.0" }
+ft-scope = { path = "../ft-scope", version = "0.2.0" }
+ft-identity = { path = "../ft-identity", version = "0.2.0" }
 
 [dev-dependencies]
 serde_json = { workspace = true }
 tempfile = { workspace = true }
-ft-testkit = { path = "../ft-testkit", version = "0.1.0" }
+ft-testkit = { path = "../ft-testkit", version = "0.2.0" }

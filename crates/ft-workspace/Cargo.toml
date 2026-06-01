@@ -15,7 +15,7 @@ workspace = true
 # ft-ops already depend on ft-embed, so re-using `ft_embed::repo_cache_dir` here
 # adds no new coupling at the consumer level while avoiding duplication of the
 # repo-hash cache-dir derivation. See `runtime_dir` for the rationale comment.
-ft-embed = { path = "../ft-embed", version = "0.1.0" }
+ft-embed = { path = "../ft-embed", version = "0.2.0" }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 

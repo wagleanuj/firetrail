@@ -16,8 +16,8 @@ workspace = true
 # Build with `--no-default-features` for a hermetic, ONNX-free build (the
 # `MockEmbedder` fallback still works without a model on disk).
 default = ["onnx"]
-# Enable the real ONNX-backed embedder (`bge-small-en-v1.5`) via `ort`.
-onnx = ["dep:ort", "dep:tokenizers"]
+# Enable the real ONNX-backed embedder (`bge-small-en-v1.5`) via pure-Rust tract.
+onnx = ["dep:tract-onnx", "dep:tokenizers"]
 
 [dependencies]
 ft-core = { path = "../ft-core", version = "0.2.0" }
@@ -32,7 +32,7 @@ sha2 = { workspace = true }
 chrono = { workspace = true }
 tracing = { workspace = true }
 fs2 = { workspace = true }
-ort = { workspace = true, optional = true }
+tract-onnx = { workspace = true, optional = true }
 tokenizers = { workspace = true, optional = true }
 
 [dev-dependencies]

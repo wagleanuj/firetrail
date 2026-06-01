@@ -82,8 +82,10 @@ insta = "1.40"
 tempfile = "3.13"
 assert_cmd = "2.0"
 
-# ML runtime (ONNX), added in M3
-ort = "2.0.0-rc.5"
+# ML runtime: pure-Rust ONNX inference (Sonos tract). Replaced `ort` (native
+# ONNX Runtime) in firetrail-huvf so the ONNX build links on every target,
+# including x86_64-apple-darwin, with no native library or glibc floor.
+tract-onnx = "0.23"
 # BERT-style tokenizer for bge-small-en-v1.5 (M3 ONNX path).
 tokenizers = { version = "0.20", default-features = false, features = ["onig"] }
 

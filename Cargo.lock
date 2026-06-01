@@ -1263,6 +1263,7 @@ dependencies = [
  "base64 0.22.1",
  "clap",
  "cookie",
+ "ft-git",
  "ft-identity",
  "ft-ops",
  "ft-testkit",

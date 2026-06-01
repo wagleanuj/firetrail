@@ -286,6 +286,73 @@ async fn resolve_returns_a_validate_plan() {
 }
 
 #[tokio::test]
+async fn resolve_staged_resolves_the_staged_diff() {
+    let (addr, _state, client, tr) = boot().await;
+
+    // Base validate + scope override (same shape as resolve_returns_a_validate_plan).
+    client
+        .put(format!("http://{addr}/api/profile"))
+        .header("Host", addr.to_string())
+        .json(&serde_json::json!({ "validateCommand": "just ci" }))
+        .send()
+        .await
+        .unwrap();
+    client
+        .put(format!("http://{addr}/api/profile?scope=apps/checkout"))
+        .header("Host", addr.to_string())
+        .json(&serde_json::json!({ "validateCommand": "pnpm --filter checkout test" }))
+        .send()
+        .await
+        .unwrap();
+
+    // Stage a file under the apps/checkout scope.
+    let root = tr.root();
+    std::fs::create_dir_all(root.join("apps/checkout")).expect("mkdir");
+    std::fs::write(root.join("apps/checkout/a.ts"), b"export const a = 1;\n").expect("write");
+    tr.run("git", &["add", "apps/checkout/a.ts"])
+        .expect("git add");
+
+    // ?staged=1 ignores ?paths and resolves the staged diff.
+    let resp = client
+        .get(format!("http://{addr}/api/profile/resolve?staged=1"))
+        .header("Host", addr.to_string())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    let entries = body["entries"].as_array().expect("entries array");
+    assert_eq!(entries.len(), 1, "only the checkout command applies");
+    assert_eq!(entries[0]["command"], "pnpm --filter checkout test");
+    assert_eq!(entries[0]["fileCount"], 1);
+    assert_eq!(entries[0]["scopes"][0], "apps/checkout");
+    assert_eq!(body["unresolved"], 0);
+}
+
+#[tokio::test]
+async fn resolve_paths_still_works_without_staged() {
+    let (addr, _state, client, _tr) = boot().await;
+    client
+        .put(format!("http://{addr}/api/profile"))
+        .header("Host", addr.to_string())
+        .json(&serde_json::json!({ "validateCommand": "just ci" }))
+        .send()
+        .await
+        .unwrap();
+    let resp = client
+        .get(format!("http://{addr}/api/profile/resolve?paths=README.md"))
+        .header("Host", addr.to_string())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    let entries = body["entries"].as_array().expect("entries array");
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0]["command"], "just ci");
+}
+
+#[tokio::test]
 async fn auth_failure_without_cookie_returns_forbidden() {
     let tr = fixture_workspace();
     let (addr, _state) = spawn_server(tr.root()).await;

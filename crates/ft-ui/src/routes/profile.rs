@@ -114,28 +114,48 @@ pub async fn get_handler(
     }
 }
 
-/// Query string for `GET /api/profile/resolve` — the changed paths to resolve.
-#[derive(Debug, Deserialize)]
+/// Query string for `GET /api/profile/resolve` — the changeset to resolve.
+///
+/// Either an explicit `paths=` list, or `staged=1` to resolve the current
+/// staged diff (the "resolve staged diff" button). When `staged` is truthy the
+/// `paths` query is ignored; when both are absent the plan is empty.
+#[derive(Debug, Default, Deserialize)]
 pub struct ResolveQuery {
     /// Comma-separated repo-relative paths.
-    pub paths: String,
+    #[serde(default)]
+    pub paths: Option<String>,
+    /// When truthy, resolve the staged diff instead of `paths`.
+    #[serde(default, deserialize_with = "de_truthy")]
+    pub staged: bool,
 }
 
-/// `GET /api/profile/resolve?paths=a,b,c` — the distinct validate commands the
-/// changeset requires, as a [`ft_ops::profile::ValidatePlanView`].
+/// `GET /api/profile/resolve?paths=a,b,c` (or `?staged=1`) — the distinct
+/// validate commands the changeset requires, as a
+/// [`ft_ops::profile::ValidatePlanView`].
+///
+/// With `staged=1` the staged diff (`git status` staged entries) is resolved
+/// and `paths` is ignored; otherwise the explicit `paths` list is used.
 #[tracing::instrument(skip_all)]
 pub async fn resolve_handler(
     State(state): State<Arc<AppState>>,
     Query(q): Query<ResolveQuery>,
 ) -> Result<impl IntoResponse, AppError> {
     let identity = resolve_identity(&state.workspace)?;
-    let paths: Vec<PathBuf> = q
-        .paths
-        .split(',')
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(PathBuf::from)
-        .collect();
+    let paths: Vec<PathBuf> = if q.staged {
+        ft_git::Repo::open(&state.workspace.root)
+            .and_then(|repo| repo.status())
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("read staged diff: {e}")))?
+            .staged
+    } else {
+        q.paths
+            .as_deref()
+            .unwrap_or_default()
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(PathBuf::from)
+            .collect()
+    };
     let plan = profile::validate_plan(&state.workspace, &identity, &paths, &state.events)?;
     Ok((StatusCode::OK, Json(plan)))
 }

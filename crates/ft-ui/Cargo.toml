@@ -19,6 +19,7 @@ features = ["bundled-ui"]
 [dependencies]
 ft-ops = { path = "../ft-ops", features = ["ts-rs"] }
 ft-identity = { path = "../ft-identity", version = "0.1.0" }
+ft-git = { path = "../ft-git", version = "0.1.0" }
 
 tokio = { workspace = true, features = ["full"] }
 tokio-stream = { version = "0.1", features = ["sync"] }

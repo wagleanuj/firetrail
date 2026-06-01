@@ -24,11 +24,13 @@ pub mod codeowners;
 pub mod conflict;
 pub mod error;
 pub mod registry;
+pub mod writer;
 
 pub use codeowners::CodeOwnersEntry;
 pub use conflict::{ConflictingDecision, DecisionOccurrence, detect_conflicting_decisions};
 pub use error::ScopeError;
-pub use registry::{SCOPES_FILE, Scope, ScopeRegistry};
+pub use registry::{SCOPES_FILE, Scope, ScopeRegistry, ScopeYaml, ScopesFile};
+pub use writer::{HEADER, load_file, remove_scope, reorder, save_file, upsert_scope, validate};
 
 use std::path::Path;
 

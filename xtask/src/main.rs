@@ -39,7 +39,10 @@ use ft_ops::memory::{
     SearchOutput, SeverityInput, ShowInput as MemoryShowInput, SimilarInput, StaleInput,
     TrustStateInput,
 };
-use ft_ops::profile::{AddComponentInput, ComponentView, ProfileView, UpdateProfileInput};
+use ft_ops::profile::{
+    AddComponentInput, ComponentView, ProfileView, UpdateProfileInput, ValidateEntryView,
+    ValidatePlanView,
+};
 use ft_ops::scope::{
     AliasEntry, AliasesInput, AliasesOutput, CodeOwnersRow, ListInput as ScopeListInput,
     ListOutput as ScopeListOutput, OwnersInput, OwnersOutput, ScopeDetail, ScopeSummary,
@@ -262,6 +265,9 @@ fn export_into(dir: &Path) -> Result<()> {
     ComponentView::export_all_to(dir).context("export ComponentView")?;
     UpdateProfileInput::export_all_to(dir).context("export UpdateProfileInput")?;
     AddComponentInput::export_all_to(dir).context("export AddComponentInput")?;
+    // Per-scope resolve plan (per-scope profiles epic).
+    ValidatePlanView::export_all_to(dir).context("export ValidatePlanView")?;
+    ValidateEntryView::export_all_to(dir).context("export ValidateEntryView")?;
     Ok(())
 }
 

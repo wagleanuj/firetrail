@@ -171,6 +171,8 @@ pub enum CommandOutcome {
     Profile(profile::ProfileOutcome),
     /// `firetrail profile list`.
     ProfileList(profile::ProfileListOutcome),
+    /// `firetrail profile resolve`.
+    ProfileResolve(profile::ProfileResolveOutcome),
     /// `firetrail daemon {start,stop,status}`.
     Daemon(daemon_cmd::DaemonOutcome),
     /// `firetrail ui`.
@@ -233,6 +235,7 @@ impl CommandOutcome {
             Self::Doc(d) => d.command,
             Self::Profile(p) => p.command,
             Self::ProfileList(p) => p.command,
+            Self::ProfileResolve(p) => p.command,
             Self::Daemon(d) => d.command,
             Self::Ui(_) => "ui",
             Self::IdentityRegister(r) => r.command,
@@ -283,6 +286,7 @@ impl CommandOutcome {
             Self::Doc(d) => d.markdown(),
             Self::Profile(p) => p.markdown(),
             Self::ProfileList(p) => p.markdown(),
+            Self::ProfileResolve(p) => p.markdown(),
             Self::Daemon(d) => d.markdown(),
             Self::Ui(u) => u.markdown(),
             Self::IdentityRegister(r) => r.markdown(),
@@ -333,6 +337,7 @@ impl CommandOutcome {
             Self::Doc(d) => d.quiet_line(),
             Self::Profile(p) => p.quiet_line(),
             Self::ProfileList(p) => p.quiet_line(),
+            Self::ProfileResolve(p) => p.quiet_line(),
             Self::Daemon(d) => d.quiet_line(),
             Self::Ui(u) => u.quiet_line(),
             Self::IdentityRegister(r) => r.quiet_line(),
@@ -385,6 +390,7 @@ impl CommandOutcome {
             Self::Doc(d) => serde_json::to_value(d).unwrap_or(Value::Null),
             Self::Profile(p) => p.json_data(),
             Self::ProfileList(p) => p.json_data(),
+            Self::ProfileResolve(p) => p.json_data(),
             Self::Daemon(d) => serde_json::to_value(d).unwrap_or(Value::Null),
             Self::Ui(u) => serde_json::to_value(u).unwrap_or(Value::Null),
             Self::IdentityRegister(r) => serde_json::to_value(r).unwrap_or(Value::Null),
@@ -435,6 +441,7 @@ impl CommandOutcome {
             Self::Doc(d) => d.warnings.clone(),
             Self::Profile(p) => p.warnings.clone(),
             Self::ProfileList(p) => p.warnings.clone(),
+            Self::ProfileResolve(p) => p.warnings.clone(),
             Self::Daemon(d) => d.warnings.clone(),
             Self::Ui(u) => u.warnings.clone(),
             Self::IdentityRegister(r) => r.warnings.clone(),

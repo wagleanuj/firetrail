@@ -22,8 +22,8 @@ use ft_storage::{profile_get, profile_get_base, profile_get_for_scope, profile_l
 use serde::Serialize;
 
 use crate::cli::{
-    GlobalOpts, ProfileComponentAddArgs, ProfileComponentRmArgs, ProfileListArgs, ProfileSetArgs,
-    ProfileShowArgs,
+    GlobalOpts, ProfileComponentAddArgs, ProfileComponentRmArgs, ProfileListArgs,
+    ProfileResolveArgs, ProfileSetArgs, ProfileShowArgs,
 };
 use crate::commands::CommandOutcome;
 use crate::context::WorkCtx;
@@ -32,6 +32,7 @@ use crate::error::CliError;
 const SHOW: &str = "profile show";
 const SET: &str = "profile set";
 const LIST: &str = "profile list";
+const RESOLVE: &str = "profile resolve";
 const COMPONENT_ADD: &str = "profile component add";
 const COMPONENT_RM: &str = "profile component rm";
 
@@ -262,6 +263,151 @@ pub fn list(_args: &ProfileListArgs, global: &GlobalOpts) -> Result<CommandOutco
         profiles,
         warnings: ctx.warnings.clone(),
     }))
+}
+
+/// One distinct validate command in a resolve plan (serializable mirror of
+/// [`ft_ops::profile::resolve::ValidateEntry`]).
+#[derive(Debug, Clone, Serialize)]
+pub struct ResolveEntry {
+    /// The validate command to run.
+    pub command: String,
+    /// Scope ids (sorted, unique) that resolved to this command. Empty = base.
+    pub scopes: Vec<String>,
+    /// How many changed files resolved to this command.
+    pub file_count: usize,
+}
+
+/// Outcome of `firetrail profile resolve` — a serializable [`ValidatePlan`].
+#[derive(Debug, Clone, Serialize)]
+pub struct ProfileResolveOutcome {
+    /// Stable command name.
+    #[serde(skip)]
+    pub command: &'static str,
+    /// Distinct validate commands, ordered by command string.
+    pub entries: Vec<ResolveEntry>,
+    /// Changed files whose resolved profile has no validate command.
+    pub unresolved: usize,
+    /// Total number of changed paths considered.
+    pub path_count: usize,
+    /// Non-fatal warnings to surface in the JSON envelope.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub warnings: Vec<String>,
+}
+
+impl ProfileResolveOutcome {
+    /// Markdown table of the distinct commands + unresolved count.
+    #[must_use]
+    pub fn markdown(&self) -> String {
+        use std::fmt::Write as _;
+        let mut s = format!(
+            "# validate plan\n\n{} path(s), {} distinct command(s), {} unresolved\n\n",
+            self.path_count,
+            self.entries.len(),
+            self.unresolved
+        );
+        if !self.entries.is_empty() {
+            s.push_str("| Command | Scopes | Files |\n|---|---|---|\n");
+            for e in &self.entries {
+                let scopes = if e.scopes.is_empty() {
+                    BASE_SCOPE_LABEL.to_string()
+                } else {
+                    e.scopes.join(", ")
+                };
+                let _ = writeln!(s, "| `{}` | {} | {} |", e.command, scopes, e.file_count);
+            }
+        }
+        s
+    }
+
+    /// One-line summary for `--quiet`.
+    #[must_use]
+    pub fn quiet_line(&self) -> String {
+        format!(
+            "profile resolve: {} command(s), {} unresolved",
+            self.entries.len(),
+            self.unresolved
+        )
+    }
+
+    /// JSON payload.
+    #[must_use]
+    pub fn json_data(&self) -> serde_json::Value {
+        serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
+    }
+}
+
+/// `firetrail profile resolve` — resolve a changeset to its distinct validate
+/// commands. Paths come from explicit `--paths`, the staged git diff
+/// (`--staged`), or the diff against a ref (`--base <ref>`).
+pub fn resolve(args: &ProfileResolveArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
+    let ctx = WorkCtx::open(RESOLVE, global.workspace.as_deref())?;
+    let paths = gather_paths(&ctx, args)?;
+
+    let reg = ScopeRegistry::load(&ctx.ws.root)
+        .map_err(|e| CliError::internal(RESOLVE, format!("load scope registry: {e}")))?;
+    let base = profile_get_base(&ctx.storage)
+        .map_err(|e| CliError::internal(RESOLVE, format!("read base profile: {e}")))?
+        .map(|r| body_or_default(Some(&r)))
+        .unwrap_or_default();
+
+    let plan = ft_ops::profile::resolve::validate_plan(&reg, &base, &paths, |id| {
+        profile_get_for_scope(&ctx.storage, id)
+            .ok()
+            .flatten()
+            .and_then(|r| match r.body {
+                RecordBody::RepoProfile(b) => Some(b),
+                _ => None,
+            })
+    });
+
+    let entries = plan
+        .entries
+        .into_iter()
+        .map(|e| ResolveEntry {
+            command: e.command,
+            scopes: e.scopes,
+            file_count: e.file_count,
+        })
+        .collect();
+
+    Ok(CommandOutcome::ProfileResolve(ProfileResolveOutcome {
+        command: RESOLVE,
+        entries,
+        unresolved: plan.unresolved,
+        path_count: paths.len(),
+        warnings: ctx.warnings.clone(),
+    }))
+}
+
+/// Gather the changed paths for `resolve`: explicit `--paths`, the staged git
+/// diff (`--staged`), or the diff between `--base <ref>` and HEAD.
+fn gather_paths(
+    ctx: &WorkCtx,
+    args: &ProfileResolveArgs,
+) -> Result<Vec<std::path::PathBuf>, CliError> {
+    if !args.paths.is_empty() {
+        return Ok(args.paths.clone());
+    }
+    if args.staged {
+        let git = ft_git::Repo::open(&ctx.ws.root)
+            .map_err(|e| CliError::internal(RESOLVE, format!("open git: {e}")))?;
+        let status = git
+            .status()
+            .map_err(|e| CliError::internal(RESOLVE, format!("git status: {e}")))?;
+        return Ok(status.staged);
+    }
+    if let Some(base) = &args.base {
+        let git = ft_git::Repo::open(&ctx.ws.root)
+            .map_err(|e| CliError::internal(RESOLVE, format!("open git: {e}")))?;
+        let entries = git
+            .diff(base, "HEAD", None)
+            .map_err(|e| CliError::internal(RESOLVE, format!("git diff {base}..HEAD: {e}")))?;
+        return Ok(entries.into_iter().map(|e| e.path).collect());
+    }
+    Err(CliError::user(
+        RESOLVE,
+        "no paths to resolve; pass --paths, --staged, or --base <ref>".to_string(),
+    ))
 }
 
 /// Validate that `scope_id` is a declared scope in `.firetrail/scopes.yaml`.

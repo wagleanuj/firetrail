@@ -408,6 +408,8 @@ pub enum ProfileCmd {
     Set(ProfileSetArgs),
     /// List the base profile + every per-scope delta (one row each).
     List(ProfileListArgs),
+    /// Resolve a changeset to the distinct validate commands it requires.
+    Resolve(ProfileResolveArgs),
     /// Manage the shallow component map.
     #[command(subcommand)]
     Component(ProfileComponentCmd),
@@ -418,6 +420,23 @@ pub enum ProfileCmd {
 /// `--json` is handled by the global `--json` / `--format` options.
 #[derive(Debug, Args)]
 pub struct ProfileListArgs {}
+
+/// `firetrail profile resolve` args — resolve a changeset to validate commands.
+///
+/// Exactly one source of paths: explicit `--paths`, the staged git diff
+/// (`--staged`), or the diff against a ref (`--base <ref>`).
+#[derive(Debug, Args)]
+pub struct ProfileResolveArgs {
+    /// Explicit repo-relative path(s) to resolve (repeatable).
+    #[arg(long = "paths", value_name = "PATH")]
+    pub paths: Vec<std::path::PathBuf>,
+    /// Resolve the staged git diff instead of explicit paths.
+    #[arg(long, conflicts_with_all = ["paths", "base"])]
+    pub staged: bool,
+    /// Resolve the diff between `<ref>` and HEAD.
+    #[arg(long, value_name = "REF", conflicts_with = "paths")]
+    pub base: Option<String>,
+}
 
 /// `firetrail profile show` args.
 ///

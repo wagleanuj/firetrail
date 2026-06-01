@@ -370,6 +370,77 @@ fn profile_list_shows_base_and_scopes() {
 }
 
 #[test]
+fn profile_resolve_paths_json_plan() {
+    let tr = fresh_repo();
+    write_scopes(tr.root(), &[("checkout", "apps/checkout/**")]);
+    // Base validate + a scope delta with its own validate.
+    run_firetrail(
+        tr.root(),
+        &["--json", "profile", "set", "--validate", "just ci"],
+    );
+    run_firetrail(
+        tr.root(),
+        &[
+            "--json",
+            "profile",
+            "set",
+            "--scope",
+            "checkout",
+            "--validate",
+            "pnpm --filter checkout test",
+        ],
+    );
+
+    let out = run_firetrail(
+        tr.root(),
+        &[
+            "--json",
+            "profile",
+            "resolve",
+            "--paths",
+            "apps/checkout/a.ts",
+            "--paths",
+            "apps/checkout/b.ts",
+            "--paths",
+            "README.md",
+        ],
+    );
+    assert!(out.success(), "resolve failed: {}", out.stderr);
+    let v = parse_json(&out);
+    let entries = v["data"]["entries"].as_array().expect("entries array");
+    // Two distinct commands: checkout's (2 files) + base's (1 file).
+    assert_eq!(entries.len(), 2);
+    let checkout = entries
+        .iter()
+        .find(|e| e["command"].as_str().unwrap().contains("checkout"))
+        .expect("checkout entry");
+    assert_eq!(checkout["file_count"], 2);
+    assert_eq!(checkout["scopes"], serde_json::json!(["checkout"]));
+    let base = entries
+        .iter()
+        .find(|e| e["command"] == "just ci")
+        .expect("base entry");
+    assert_eq!(base["file_count"], 1);
+    assert_eq!(v["data"]["unresolved"], 0);
+}
+
+#[test]
+fn profile_resolve_unresolved_counts_missing_validate() {
+    let tr = fresh_repo();
+    // No base validate, no scopes — every path is unresolved.
+    let out = run_firetrail(
+        tr.root(),
+        &[
+            "--json", "profile", "resolve", "--paths", "src/a.rs", "--paths", "src/b.rs",
+        ],
+    );
+    assert!(out.success(), "resolve failed: {}", out.stderr);
+    let v = parse_json(&out);
+    assert_eq!(v["data"]["entries"].as_array().unwrap().len(), 0);
+    assert_eq!(v["data"]["unresolved"], 2);
+}
+
+#[test]
 fn doctor_warns_when_no_profile() {
     let tr = fresh_repo();
     let doc = run_firetrail(tr.root(), &["--json", "doctor"]);

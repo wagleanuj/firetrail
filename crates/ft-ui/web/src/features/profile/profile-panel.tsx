@@ -29,6 +29,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
 import { FilePathCombobox } from '@/components/ui/autocomplete'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
@@ -44,6 +45,7 @@ import { ApiError, toastApiError } from '@/api/error'
 import { useEvents } from '@/api/hooks/useEvents'
 import type { Event as AppEvent } from '@/api/types/Event'
 import type { ProfileView } from '@/api/types/ProfileView'
+import type { ValidatePlanView } from '@/api/types/ValidatePlanView'
 import { TrustBadge } from '@/features/trust/trust-badge'
 import { postPromote, postReview } from '@/features/trust/api'
 import {
@@ -51,6 +53,7 @@ import {
   useAddComponent,
   useProfileQuery,
   useRemoveComponent,
+  useResolve,
   useScopesQuery,
   useUpdateProfile,
 } from './use-profile-query'
@@ -59,15 +62,63 @@ import type { ProfilePatch, ProfileSelector } from './api'
 /** The base profile (no scope selected). */
 const BASE = '__base__'
 
+/** Whether a resolved field's value came from this scope's delta or the base. */
+type FieldOrigin = 'inherited' | 'overridden'
+
 /**
  * The active scope selector, shared with the inline editors so each `Save`
  * writes to the right record (base vs. a per-scope delta). A resolved view is
  * read-only — its editors are disabled.
+ *
+ * On the read-only resolved scope view, `origins` maps each command/tooling
+ * field to whether the selected scope overrides it or inherits it from base
+ * (computed from the raw per-scope delta in `ProfilePanel`). It is `null`
+ * everywhere else, so no badges render on the base or non-resolved views.
  */
-const SelectorContext = createContext<{ selector: ProfileSelector; readOnly: boolean }>({
+const SelectorContext = createContext<{
+  selector: ProfileSelector
+  readOnly: boolean
+  origins: Partial<Record<keyof ProfilePatch, FieldOrigin>> | null
+}>({
   selector: {},
   readOnly: false,
+  origins: null,
 })
+
+/**
+ * A raw per-scope delta has a meaningful override for a field when the delta
+ * carries a non-null / non-empty value for it. Maps `ProfilePatch` keys (what
+ * the editors use) onto the `ProfileView` wire fields.
+ */
+function computeOrigins(
+  delta: ProfileView | null,
+): Partial<Record<keyof ProfilePatch, FieldOrigin>> {
+  const has = (v: string | null | undefined) => (v != null && v !== '' ? 'overridden' : 'inherited')
+  const hasList = (v: string[] | undefined) => (v && v.length > 0 ? 'overridden' : 'inherited')
+  return {
+    validateCommand: has(delta?.validate_command),
+    testCommand: has(delta?.test_command),
+    buildCommand: has(delta?.build_command),
+    lintCommand: has(delta?.lint_command),
+    runtime: has(delta?.runtime),
+    notes: has(delta?.notes),
+    languages: hasList(delta?.languages),
+    packageManagers: hasList(delta?.package_managers),
+  }
+}
+
+/** Small badge marking a resolved read-only field as inherited / overridden. */
+function OriginBadge({ origin, field }: { origin: FieldOrigin; field: keyof ProfilePatch }) {
+  return (
+    <Badge
+      variant={origin === 'overridden' ? 'secondary' : 'outline'}
+      className="h-5 px-2 text-[0.65rem] font-medium normal-case"
+      data-testid={`profile-field-origin-${field}`}
+    >
+      {origin === 'overridden' ? 'overridden' : 'inherited'}
+    </Badge>
+  )
+}
 
 export function ProfilePanel() {
   const qc = useQueryClient()
@@ -80,6 +131,11 @@ export function ProfilePanel() {
 
   const { data: scopes = [] } = useScopesQuery()
   const { data, isLoading, error } = useProfileQuery(selector)
+
+  // On the read-only resolved scope view, also fetch the raw (un-merged) delta
+  // so each field can show whether this scope overrides or inherits it.
+  const rawDeltaQuery = useProfileQuery(readOnly ? { scope: scopeSel } : {})
+  const origins = readOnly ? computeOrigins(rawDeltaQuery.data ?? null) : null
 
   // Re-fetch when another client edits the profile (any selector under the key).
   const { last } = useEvents<AppEvent>({})
@@ -118,8 +174,8 @@ export function ProfilePanel() {
           Failed to load profile: {(error as Error).message}
         </p>
       ) : (
-        <SelectorContext.Provider value={{ selector, readOnly }}>
-          <ProfileBody profile={data ?? null} showScopeTrust={!isBase} />
+        <SelectorContext.Provider value={{ selector, readOnly, origins }}>
+          <ProfileBody profile={data ?? null} showScopeTrust={!isBase} showResolve={isBase} />
         </SelectorContext.Provider>
       )}
     </div>
@@ -184,9 +240,11 @@ function ScopeSwitcher({
 function ProfileBody({
   profile,
   showScopeTrust,
+  showResolve,
 }: {
   profile: ProfileView | null
   showScopeTrust: boolean
+  showResolve: boolean
 }) {
   return (
     <div className="space-y-6">
@@ -266,6 +324,184 @@ function ProfileBody({
           />
         </CardContent>
       </Card>
+
+      {showResolve && <ResolveCard />}
+    </div>
+  )
+}
+
+/**
+ * Repo-wide "what would I have to run?" card: enter the changed paths (or use
+ * the staged diff) and resolve them into the distinct validate commands the
+ * audit loop would run, with per-command scope provenance and file counts.
+ */
+function ResolveCard() {
+  const [paths, setPaths] = useState<string[]>([])
+  const [draft, setDraft] = useState('')
+  const resolve = useResolve()
+
+  function addPath() {
+    const p = draft.trim()
+    if (!p || paths.includes(p)) {
+      setDraft('')
+      return
+    }
+    setPaths((prev) => [...prev, p])
+    setDraft('')
+  }
+
+  function removePath(p: string) {
+    setPaths((prev) => prev.filter((x) => x !== p))
+  }
+
+  const plan = resolve.data ?? null
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Terminal className="h-4 w-4" />
+          Resolve a change
+        </CardTitle>
+        <CardDescription>
+          Enter the changed paths (or use the staged diff) to see the distinct validate commands the
+          audit loop would run, and which scope each comes from.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {paths.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {paths.map((p) => (
+              <span
+                key={p}
+                className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-0.5 font-mono text-xs text-foreground"
+                data-testid="profile-resolve-chip"
+              >
+                {p}
+                <button
+                  type="button"
+                  aria-label={`Remove ${p}`}
+                  className="text-muted-foreground hover:text-destructive"
+                  onClick={() => removePath(p)}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="flex items-end gap-2">
+          <div className="flex-1">
+            <FilePathCombobox
+              dirs={false}
+              value={draft}
+              onValueChange={(v) => {
+                // Adding on select: a combobox option commits the full path.
+                setDraft(v)
+              }}
+              placeholder="path (e.g. crates/ft-cli/src/main.rs)"
+              className="font-mono text-xs"
+              data-testid="profile-resolve-path-input"
+            />
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="gap-1"
+            onClick={addPath}
+            disabled={draft.trim() === ''}
+            data-testid="profile-resolve-add"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add
+          </Button>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => resolve.mutate({ paths })}
+            disabled={paths.length === 0 || resolve.isPending}
+            data-testid="profile-resolve-run"
+          >
+            {resolve.isPending && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
+            Resolve
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => resolve.mutate({ staged: true })}
+            disabled={resolve.isPending}
+            data-testid="profile-resolve-staged"
+          >
+            Use staged diff
+          </Button>
+        </div>
+
+        {plan && <ResolvePlan plan={plan} />}
+      </CardContent>
+    </Card>
+  )
+}
+
+function ResolvePlan({ plan }: { plan: ValidatePlanView }) {
+  if (plan.entries.length === 0 && plan.unresolved === 0) {
+    return (
+      <p
+        className="rounded-md border border-dashed border-border/60 px-3 py-3 text-sm text-muted-foreground"
+        data-testid="profile-resolve-empty"
+      >
+        Nothing to validate — these paths don&rsquo;t map to any validate command.
+      </p>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      <ul className="space-y-2">
+        {plan.entries.map((e) => (
+          <li
+            key={e.command}
+            className="space-y-1.5 rounded-md border border-border/50 bg-background/60 px-3 py-2"
+            data-testid="profile-resolve-entry"
+          >
+            <div className="font-mono text-xs text-foreground">{e.command}</div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {e.scopes.length === 0 ? (
+                <Badge variant="outline" className="h-5 px-2 text-[0.65rem] normal-case">
+                  base
+                </Badge>
+              ) : (
+                e.scopes.map((s) => (
+                  <Badge
+                    key={s}
+                    variant="secondary"
+                    className="h-5 px-2 font-mono text-[0.65rem] normal-case"
+                  >
+                    {s}
+                  </Badge>
+                ))
+              )}
+              <span className="ml-auto text-xs text-muted-foreground">
+                {e.fileCount} file{e.fileCount === 1 ? '' : 's'}
+              </span>
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      {plan.unresolved > 0 && (
+        <p
+          className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+          data-testid="profile-resolve-unresolved"
+        >
+          {plan.unresolved} file{plan.unresolved === 1 ? '' : 's'} have no validate command.
+        </p>
+      )}
     </div>
   )
 }
@@ -371,7 +607,7 @@ function EditableField({
   multiline?: boolean
   hideLabel?: boolean
 }) {
-  const { selector, readOnly } = useContext(SelectorContext)
+  const { selector, readOnly, origins } = useContext(SelectorContext)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value ?? '')
   const update = useUpdateProfile(selector)
@@ -383,10 +619,14 @@ function EditableField({
 
   // A resolved (merged) view is read-only — edits would be ambiguous.
   if (readOnly) {
+    const origin = origins?.[field]
     return (
       <div className="space-y-1.5">
         {!hideLabel && (
-          <Label className="text-xs uppercase tracking-wide text-muted-foreground">{label}</Label>
+          <div className="flex items-center gap-2">
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground">{label}</Label>
+            {origin && <OriginBadge origin={origin} field={field} />}
+          </div>
         )}
         <div
           className={
@@ -492,7 +732,7 @@ function EditableListField({
   value: string[]
   field: 'languages' | 'packageManagers'
 }) {
-  const { selector, readOnly } = useContext(SelectorContext)
+  const { selector, readOnly, origins } = useContext(SelectorContext)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value.join(', '))
   const update = useUpdateProfile(selector)
@@ -506,9 +746,13 @@ function EditableListField({
   }
 
   if (readOnly) {
+    const origin = origins?.[field]
     return (
       <div className="space-y-1.5">
-        <Label className="text-xs uppercase tracking-wide text-muted-foreground">{label}</Label>
+        <div className="flex items-center gap-2">
+          <Label className="text-xs uppercase tracking-wide text-muted-foreground">{label}</Label>
+          {origin && <OriginBadge origin={origin} field={field} />}
+        </div>
         {value.length === 0 ? (
           <div className="text-sm text-muted-foreground" data-testid={`profile-value-${field}`}>
             None

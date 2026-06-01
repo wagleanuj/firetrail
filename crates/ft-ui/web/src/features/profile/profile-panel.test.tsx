@@ -31,6 +31,20 @@ let addBody: unknown = null
 const profileGets: string[] = []
 /** Records the query string of every GET /api/files the panel issues. */
 const fileGets: string[] = []
+/** Records the query string of every GET /api/profile/resolve the panel issues. */
+const resolveGets: string[] = []
+
+const resolvePlan = {
+  entries: [
+    { command: 'cargo test', scopes: [], fileCount: 2 },
+    { command: 'pnpm test', scopes: ['apps/checkout'], fileCount: 1 },
+  ],
+  unresolved: 0,
+}
+const resolveStagedPlan = {
+  entries: [{ command: 'cargo test', scopes: [], fileCount: 3 }],
+  unresolved: 1,
+}
 
 const scopeDelta = {
   ...baseProfile,
@@ -58,6 +72,12 @@ const scopeList = {
 
 const server = setupServer(
   http.get('/api/scope', () => HttpResponse.json(scopeList)),
+  http.get('/api/profile/resolve', ({ request }) => {
+    const url = new URL(request.url)
+    resolveGets.push(url.search)
+    if (url.searchParams.get('staged')) return HttpResponse.json(resolveStagedPlan)
+    return HttpResponse.json(resolvePlan)
+  }),
   http.get('/api/profile', ({ request }) => {
     const url = new URL(request.url)
     profileGets.push(url.search)
@@ -91,6 +111,7 @@ afterEach(() => {
   addBody = null
   profileGets.length = 0
   fileGets.length = 0
+  resolveGets.length = 0
 })
 afterAll(() => server.close())
 
@@ -198,6 +219,87 @@ describe('<ProfilePanel />', () => {
     // Resolved view inherits the base validate command.
     await waitFor(() =>
       expect(screen.getByTestId('profile-value-validateCommand')).toHaveTextContent('cargo test'),
+    )
+  })
+
+  it('resolve panel: add paths + Resolve issues ?paths= and renders entries', async () => {
+    renderPanel()
+    await screen.findByTestId('profile-value-validateCommand')
+
+    // Add two paths.
+    const input = screen.getByTestId('profile-resolve-path-input') as HTMLInputElement
+    fireEvent.change(input, { target: { value: 'crates/ft-cli/src/main.rs' } })
+    fireEvent.click(screen.getByTestId('profile-resolve-add'))
+    fireEvent.change(input, { target: { value: 'apps/checkout/index.ts' } })
+    fireEvent.click(screen.getByTestId('profile-resolve-add'))
+
+    fireEvent.click(screen.getByTestId('profile-resolve-run'))
+
+    await waitFor(() =>
+      expect(
+        resolveGets.some(
+          (s) =>
+            s.includes('paths=') &&
+            s.includes('crates%2Fft-cli%2Fsrc%2Fmain.rs') &&
+            s.includes('apps%2Fcheckout%2Findex.ts'),
+        ),
+      ).toBe(true),
+    )
+
+    const entries = await screen.findAllByTestId('profile-resolve-entry')
+    expect(entries).toHaveLength(2)
+    expect(entries[0]).toHaveTextContent('cargo test')
+    expect(entries[1]).toHaveTextContent('pnpm test')
+    expect(entries[1]).toHaveTextContent('apps/checkout')
+    // base callout when scopes empty
+    expect(entries[0]).toHaveTextContent(/base/i)
+    // file counts surface
+    expect(entries[0]).toHaveTextContent('2')
+    expect(entries[1]).toHaveTextContent('1')
+    // unresolved 0 → no callout
+    expect(screen.queryByTestId('profile-resolve-unresolved')).toBeNull()
+  })
+
+  it('resolve panel: Resolve is disabled with no paths', async () => {
+    renderPanel()
+    await screen.findByTestId('profile-value-validateCommand')
+    expect(screen.getByTestId('profile-resolve-run')).toBeDisabled()
+  })
+
+  it('resolve panel: Use staged diff issues ?staged=1 and shows unresolved callout', async () => {
+    renderPanel()
+    await screen.findByTestId('profile-value-validateCommand')
+
+    fireEvent.click(screen.getByTestId('profile-resolve-staged'))
+
+    await waitFor(() =>
+      expect(resolveGets.some((s) => s.includes('staged=1'))).toBe(true),
+    )
+    expect(await screen.findByTestId('profile-resolve-unresolved')).toHaveTextContent(/1/)
+    expect(screen.getByTestId('profile-resolve-unresolved')).toHaveTextContent(/no validate command/i)
+  })
+
+  it('badges: resolved scope shows overridden vs inherited per field', async () => {
+    renderPanel()
+    await screen.findByTestId('profile-value-validateCommand')
+
+    fireEvent.change(await screen.findByTestId('profile-scope-switcher'), {
+      target: { value: 'apps/checkout' },
+    })
+    await waitFor(() =>
+      expect(screen.getByTestId('profile-value-testCommand')).toHaveTextContent('pnpm test'),
+    )
+
+    fireEvent.click(screen.getByTestId('profile-resolved-toggle'))
+    await waitFor(() => expect(profileGets.some((s) => s.includes('resolved=1'))).toBe(true))
+
+    // testCommand is set in the raw delta → overridden here.
+    await waitFor(() =>
+      expect(screen.getByTestId('profile-field-origin-testCommand')).toHaveTextContent(/overridden/i),
+    )
+    // validateCommand is null in the raw delta → inherited from base.
+    expect(screen.getByTestId('profile-field-origin-validateCommand')).toHaveTextContent(
+      /inherited/i,
     )
   })
 })

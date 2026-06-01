@@ -8,7 +8,8 @@
 //!
 //! - [`Embedder`] trait + [`MockEmbedder`] (deterministic, dependency-free).
 //! - An ONNX-backed embedder behind the `onnx` cargo feature (uses `tract` +
-//!   `bge-small-en-v1.5`). Disabled by default to keep CI hermetic.
+//!   `bge-small-en-v1.5`). Enabled by default; build with
+//!   `--no-default-features` for a hermetic, model-free build.
 //! - [`EmbeddingCache`] — SQLite-backed, keyed by `(model_id, content_hash)`,
 //!   each row protected by a BLAKE3 integrity checksum.
 //! - [`EmbedService`] — combines an [`Embedder`] with an [`EmbeddingCache`]

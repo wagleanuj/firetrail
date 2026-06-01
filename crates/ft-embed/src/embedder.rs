@@ -149,11 +149,11 @@ impl Embedder for MockEmbedder {
 /// constructor returns [`EmbedError::ModelUnavailable`]. This lets dependents
 /// compile against the same surface in both modes.
 ///
-/// With feature `onnx` **on**, [`OnnxEmbedder::load_dir`] initialises an
-/// `ort::Session` plus a `tokenizer.json` from a model directory. Inference
-/// runs BERT-style tokenisation, executes the ONNX graph, mean-pools over
-/// the last hidden state weighted by the attention mask, and L2-normalises
-/// the result. See [`crate::onnx`] for the pipeline.
+/// With feature `onnx` **on**, [`OnnxEmbedder::load_dir`] initialises a
+/// pure-Rust `tract` runnable plan plus a `tokenizer.json` from a model
+/// directory. Inference runs BERT-style tokenisation, executes the ONNX
+/// graph, mean-pools over the last hidden state weighted by the attention
+/// mask, and L2-normalises the result. See [`crate::onnx`] for the pipeline.
 #[derive(Debug)]
 pub struct OnnxEmbedder {
     #[cfg(feature = "onnx")]
@@ -174,7 +174,7 @@ impl OnnxEmbedder {
     ///
     /// # Errors
     /// Returns [`EmbedError::ModelUnavailable`] when the `onnx` feature is
-    /// disabled, when the model or tokenizer file is missing, or when `ort`
+    /// disabled, when the model or tokenizer file is missing, or when `tract`
     /// or `tokenizers` rejects the input.
     #[cfg(feature = "onnx")]
     pub fn load_dir(

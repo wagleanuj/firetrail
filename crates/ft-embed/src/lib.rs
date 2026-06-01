@@ -7,7 +7,7 @@
 //! multi-tenant throttling) is **out of scope for M3**. This crate ships:
 //!
 //! - [`Embedder`] trait + [`MockEmbedder`] (deterministic, dependency-free).
-//! - An ONNX-backed embedder behind the `onnx` cargo feature (uses `ort` +
+//! - An ONNX-backed embedder behind the `onnx` cargo feature (uses `tract` +
 //!   `bge-small-en-v1.5`). Disabled by default to keep CI hermetic.
 //! - [`EmbeddingCache`] — SQLite-backed, keyed by `(model_id, content_hash)`,
 //!   each row protected by a BLAKE3 integrity checksum.

@@ -12,9 +12,10 @@ workspace = true
 
 [features]
 # `onnx` is on by default: real `bge-small-en-v1.5` inference is the intended
-# out-of-the-box experience. This links the `ort` native runtime at build time.
-# Build with `--no-default-features` for a hermetic, ONNX-free build (the
-# `MockEmbedder` fallback still works without a model on disk).
+# out-of-the-box experience. This compiles the pure-Rust `tract` inference engine
+# (no native runtime is linked). Build with `--no-default-features` for a
+# hermetic, ONNX-free build (the `MockEmbedder` fallback still works without a
+# model on disk).
 default = ["onnx"]
 # Enable the real ONNX-backed embedder (`bge-small-en-v1.5`) via pure-Rust tract.
 onnx = ["dep:tract-onnx", "dep:tokenizers"]

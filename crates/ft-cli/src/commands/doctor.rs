@@ -199,11 +199,12 @@ pub fn run(args: &DoctorArgs, global: &GlobalOpts) -> Result<CommandOutcome, Cli
 
     // RepoProfile checks (firetrail-lj41.4). `strict_violations` captures the
     // failing tiers a `--strict` run must turn into a non-zero exit.
-    let strict_violations = check_profile(&ws, &mut checks);
+    let mut strict_violations = check_profile(&ws, &mut checks);
 
     // Per-scope profile coverage (firetrail-jr02, Phase 4). Only fires when a
     // `scopes.yaml` is present — standalone repos see zero behavior change.
-    check_profile_scopes(&ws, &mut checks);
+    // Returns the per-scope `--strict` validate-coverage violations.
+    strict_violations.extend(check_profile_scopes(&ws, &mut checks));
 
     let clean = checks.iter().all(|c| c.status == CheckStatus::Ok);
     let _ = global;
@@ -368,24 +369,25 @@ fn check_profile(ws: &workspace::Workspace, checks: &mut Vec<CheckResult>) -> Ve
 /// violation list carries the Phase-4.2 `--strict` coverage gate — for each
 /// ENABLED scope whose resolved (base ⊕ delta) profile has no validate
 /// command, one violation string so `doctor --strict` exits non-zero.
-fn check_profile_scopes(ws: &workspace::Workspace, checks: &mut Vec<CheckResult>) {
+fn check_profile_scopes(ws: &workspace::Workspace, checks: &mut Vec<CheckResult>) -> Vec<String> {
     use ft_scope::ScopeRegistry;
 
     // A malformed scopes.yaml is already reported by `check_scope_registry`.
     let Ok(registry) = ScopeRegistry::load(&ws.root) else {
-        return;
+        return Vec::new();
     };
     // Zero-overhead guard: no scopes ⇒ no per-scope checks at all.
     if registry.is_empty() {
-        return;
+        return Vec::new();
     }
 
     let Ok(storage) = EmbeddedStorage::open(&ws.root) else {
-        return;
+        return Vec::new();
     };
 
     check_scope_profile_bindings(&storage, &registry, checks);
     check_scope_glob_coverage(&ws.root, &registry, checks);
+    check_scope_validate_coverage(&storage, &registry)
 }
 
 /// `profile.scope.dangling` + `profile.scope.duplicate` (design §5).
@@ -520,6 +522,50 @@ fn check_scope_glob_coverage(
             "declare narrower scopes AFTER broader ones (last-declared-wins)",
         ));
     }
+}
+
+/// Phase 4.2: `--strict` per-scope validate coverage. For each ENABLED scope,
+/// resolve `merge(base, delta)` and push a violation when it has no validate
+/// command — so `doctor --strict` exits non-zero. Returns the violations.
+fn check_scope_validate_coverage(
+    storage: &EmbeddedStorage,
+    registry: &ft_scope::ScopeRegistry,
+) -> Vec<String> {
+    use ft_core::RecordBody;
+    use ft_ops::profile::resolve::merge;
+    use ft_storage::{profile_get_base, profile_get_for_scope};
+
+    let body_of = |rec: ft_core::Record| match rec.body {
+        RecordBody::RepoProfile(b) => Some(b),
+        _ => None,
+    };
+
+    let base_body = profile_get_base(storage)
+        .ok()
+        .flatten()
+        .and_then(body_of)
+        .unwrap_or_default();
+
+    let mut violations: Vec<String> = Vec::new();
+    for scope in registry.scopes() {
+        if !registry.is_scope_enabled(&scope.id) {
+            continue;
+        }
+        let delta = profile_get_for_scope(storage, &scope.id)
+            .ok()
+            .flatten()
+            .and_then(body_of)
+            .unwrap_or_default();
+        let resolved = merge(&base_body, &delta);
+        let has_validate = resolved
+            .validate_command
+            .as_ref()
+            .is_some_and(|c| !c.trim().is_empty());
+        if !has_validate {
+            violations.push(format!("scope `{}` has no validate command", scope.id));
+        }
+    }
+    violations
 }
 
 /// Tracked files at `HEAD`, repo-relative. `None` when the repo / `HEAD`

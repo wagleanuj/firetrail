@@ -667,3 +667,64 @@ fn doctor_no_shadow_when_broad_declared_first() {
         "broad-first ordering must not shadow"
     );
 }
+
+// ─── Phase 4.2 — `--strict` per-scope validate coverage ─────────────────────
+
+/// With base validate UNSET and an enabled scope that also resolves to no
+/// validate, `doctor --strict` exits non-zero.
+#[test]
+fn doctor_strict_fails_when_enabled_scope_has_no_validate() {
+    let tr = fresh_repo();
+    write_scopes(tr.root(), &[("checkout", "apps/checkout/**")]);
+    // Scope delta sets only test (no validate); base has no validate either.
+    run_firetrail(
+        tr.root(),
+        &[
+            "--json",
+            "profile",
+            "set",
+            "--scope",
+            "checkout",
+            "--test",
+            "pnpm test",
+        ],
+    );
+    let doc = run_firetrail(tr.root(), &["--json", "doctor", "--strict"]);
+    assert!(
+        !doc.success(),
+        "--strict must fail when a scope resolves to no validate"
+    );
+}
+
+/// Once base validate is set, the scope inherits it on merge, so the per-scope
+/// strict coverage gate no longer fires for that scope. (The base profile is
+/// still Draft so the run still fails overall — but NOT for the scope's
+/// validate coverage.)
+#[test]
+fn doctor_strict_scope_inherits_base_validate() {
+    let tr = fresh_repo();
+    write_scopes(tr.root(), &[("checkout", "apps/checkout/**")]);
+    run_firetrail(
+        tr.root(),
+        &[
+            "--json",
+            "profile",
+            "set",
+            "--scope",
+            "checkout",
+            "--test",
+            "pnpm test",
+        ],
+    );
+    // Base validate set → checkout inherits it on merge.
+    run_firetrail(
+        tr.root(),
+        &["--json", "profile", "set", "--validate", "just ci"],
+    );
+    let doc = run_firetrail(tr.root(), &["--json", "doctor", "--strict"]);
+    let msg = doc.stderr.clone() + &doc.stdout;
+    assert!(
+        !msg.contains("scope `checkout` has no validate"),
+        "scope should inherit base validate: {msg}"
+    );
+}

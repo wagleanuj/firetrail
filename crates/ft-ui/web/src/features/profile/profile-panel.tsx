@@ -29,6 +29,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { FilePathCombobox } from '@/components/ui/autocomplete'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -700,9 +701,10 @@ function AddComponentForm() {
           autoFocus
           data-testid="profile-component-name"
         />
-        <Input
+        <FilePathCombobox
+          dirs
           value={path}
-          onChange={(e) => setPath(e.target.value)}
+          onValueChange={setPath}
           placeholder="path (e.g. crates/ft-cli)"
           className="font-mono text-xs"
           data-testid="profile-component-path"

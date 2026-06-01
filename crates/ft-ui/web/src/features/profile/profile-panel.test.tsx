@@ -26,8 +26,11 @@ const baseProfile = {
 }
 
 let putBody: unknown = null
+let addBody: unknown = null
 /** Records the query string of every GET /api/profile the panel issues. */
 const profileGets: string[] = []
+/** Records the query string of every GET /api/files the panel issues. */
+const fileGets: string[] = []
 
 const scopeDelta = {
   ...baseProfile,
@@ -72,12 +75,22 @@ const server = setupServer(
   http.delete('/api/profile/components/ft-ui', () =>
     HttpResponse.json({ ...baseProfile, components: [] }),
   ),
+  http.post('/api/profile/components', async ({ request }) => {
+    addBody = await request.json()
+    return HttpResponse.json(baseProfile)
+  }),
+  http.get('/api/files', ({ request }) => {
+    fileGets.push(new URL(request.url).search)
+    return HttpResponse.json({ paths: ['crates/ft-cli', 'crates/ft-core'] })
+  }),
 )
 beforeAll(() => server.listen({ onUnhandledRequest: 'bypass' }))
 afterEach(() => {
   server.resetHandlers()
   putBody = null
+  addBody = null
   profileGets.length = 0
+  fileGets.length = 0
 })
 afterAll(() => server.close())
 
@@ -116,6 +129,35 @@ describe('<ProfilePanel />', () => {
     await waitFor(() =>
       expect(screen.getByText(/No components mapped yet/i)).toBeInTheDocument(),
     )
+  })
+
+  it('adds a component: path field is a /api/files combobox; select + submit POSTs', async () => {
+    renderPanel()
+    // Open the add-component form.
+    fireEvent.click(await screen.findByTestId('profile-component-add-open'))
+
+    fireEvent.change(screen.getByTestId('profile-component-name'), {
+      target: { value: 'ft-cli' },
+    })
+
+    // Typing into the path field drives the file combobox (dirs=true).
+    const path = screen.getByTestId('profile-component-path') as HTMLInputElement
+    fireEvent.change(path, { target: { value: 'crates/' } })
+    expect(path.value).toBe('crates/')
+
+    await waitFor(() =>
+      expect(fileGets.some((s) => s.includes('dirs=true'))).toBe(true),
+    )
+
+    // A suggestion renders; selecting it sets the path.
+    const option = await screen.findByText('crates/ft-cli')
+    fireEvent.mouseDown(option)
+    await waitFor(() => expect(path.value).toBe('crates/ft-cli'))
+
+    // Submitting still POSTs the component.
+    fireEvent.click(screen.getByTestId('profile-component-add-submit'))
+    await waitFor(() => expect(addBody).not.toBeNull())
+    expect(addBody).toMatchObject({ name: 'ft-cli', path: 'crates/ft-cli' })
   })
 
   it('switches scope and refetches ?scope=, with a per-scope trust badge', async () => {

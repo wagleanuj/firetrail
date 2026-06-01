@@ -215,6 +215,35 @@ Default queries filter by current scope (detected from cwd). Search uses
 scope-distance ranking. CODEOWNERS resolves aggregated review requirements.
 See ADR-0004.
 
+### Scope authoring
+
+Scopes are defined in `.firetrail/scopes.yaml`; `ft-scope` compiles it into a
+registry that resolves a path to its owning scope and CODEOWNERS. The write path
+(`ft_scope::writer`, `firetrail scope add | edit | rm | reorder`, the
+`/api/scope` mutations + `GET /api/scope/preview`, and the scope-explorer UI)
+manages that file under three rules:
+
+- **Last-declared-wins.** A path can match several scopes' globs; the *last* one
+  in source order governs — identical to CODEOWNERS. Declaration order is
+  precedence, so the convention is broad scopes first, narrow exceptions last.
+  `scope add` appends (highest precedence); `scope reorder` is the lever for
+  changing it. This is the single precedence model end-to-end: scope resolution,
+  CODEOWNERS routing, and per-scope profiles all key on it.
+- **Progressive disclosure.** A standalone repo never needs scopes. The file is
+  never auto-created — a missing file yields an empty registry, every path
+  resolves with no owning scope, and scope concepts never surface. The UI's
+  standalone empty state explains scopes are a monorepo-only concern and offers
+  an opt-in add (plus a suggest-only `<dir>/**` scaffold).
+- **Regenerate-with-header round-trip.** The writer is order-stable but
+  rewrites the whole block deterministically under a tool-managed header
+  comment, validating first (globs compile, unique ids/aliases, non-empty
+  `appliesTo`); hand-written comments are not preserved.
+
+Scopes are the substrate per-scope profiles sit on. See
+`docs/components/scope-authoring.md`, ADR-0004's authoring addendum, and the
+design spec `docs/specs/2026-05-31-per-scope-profiles-design.md`
+(epic `firetrail-jr02`).
+
 ---
 
 ## Identity model

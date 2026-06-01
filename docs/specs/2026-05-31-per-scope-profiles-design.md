@@ -302,3 +302,9 @@ detects a monorepo). It strengthens the foundation that B (architecture docs),
 C (rules), and E (audit loop) build on: work, docs, rules, and profiles all bind
 to a package through the *same* `owning_scope` axis, so a future
 `firetrail scope show <id>` can render the whole per-package bundle.
+
+The scope axis itself — `.firetrail/scopes.yaml`, its last-declared-wins
+resolution, and the authoring surface this design's `--scope` flags target — is
+documented in `docs/components/scope-authoring.md` and ADR-0004's authoring
+addendum (`docs/decisions/0004-multi-scope-records.md`). Per-scope profiles are
+the first consumer of that axis beyond CODEOWNERS routing.

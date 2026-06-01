@@ -182,6 +182,7 @@ fn dispatch(cli: &Cli) -> Result<commands::CommandOutcome, CliError> {
 
         Command::Profile(ProfileCmd::Show(args)) => commands::profile::show(args, &cli.global),
         Command::Profile(ProfileCmd::Set(args)) => commands::profile::set(args, &cli.global),
+        Command::Profile(ProfileCmd::List(args)) => commands::profile::list(args, &cli.global),
         Command::Profile(ProfileCmd::Component(ProfileComponentCmd::Add(args))) => {
             commands::profile::component_add(args, &cli.global)
         }

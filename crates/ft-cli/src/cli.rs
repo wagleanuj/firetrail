@@ -406,10 +406,18 @@ pub enum ProfileCmd {
     Show(ProfileShowArgs),
     /// Create or partially-update the profile (only the flags passed change).
     Set(ProfileSetArgs),
+    /// List the base profile + every per-scope delta (one row each).
+    List(ProfileListArgs),
     /// Manage the shallow component map.
     #[command(subcommand)]
     Component(ProfileComponentCmd),
 }
+
+/// `firetrail profile list` args.
+///
+/// `--json` is handled by the global `--json` / `--format` options.
+#[derive(Debug, Args)]
+pub struct ProfileListArgs {}
 
 /// `firetrail profile show` args.
 ///

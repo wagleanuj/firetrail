@@ -18,11 +18,12 @@ use ft_core::{
     ComponentRef, Record, RecordBody, RecordBuilder, RecordKind, RepoProfileBody, TrustState,
 };
 use ft_scope::ScopeRegistry;
-use ft_storage::{profile_get, profile_get_base, profile_get_for_scope};
+use ft_storage::{profile_get, profile_get_base, profile_get_for_scope, profile_list};
 use serde::Serialize;
 
 use crate::cli::{
-    GlobalOpts, ProfileComponentAddArgs, ProfileComponentRmArgs, ProfileSetArgs, ProfileShowArgs,
+    GlobalOpts, ProfileComponentAddArgs, ProfileComponentRmArgs, ProfileListArgs, ProfileSetArgs,
+    ProfileShowArgs,
 };
 use crate::commands::CommandOutcome;
 use crate::context::WorkCtx;
@@ -30,8 +31,12 @@ use crate::error::CliError;
 
 const SHOW: &str = "profile show";
 const SET: &str = "profile set";
+const LIST: &str = "profile list";
 const COMPONENT_ADD: &str = "profile component add";
 const COMPONENT_RM: &str = "profile component rm";
+
+/// Scope label used for the base profile (no `owning_scope`).
+const BASE_SCOPE_LABEL: &str = "(base)";
 
 /// Title given to a freshly-created repo profile record. Matches the constant
 /// used by `ft_storage::profile_set` so the singleton reads identically.
@@ -171,6 +176,92 @@ fn persist(
         ctx.save_record(&mut record)?;
         Ok(record)
     }
+}
+
+/// One row of `firetrail profile list`: a base or per-scope profile record.
+#[derive(Debug, Clone, Serialize)]
+pub struct ProfileListRow {
+    /// Owning scope id, or `(base)` for the base profile.
+    pub scope: String,
+    /// Canonical record id.
+    pub id: String,
+    /// Whether the (stored, unmerged) record carries a validate command.
+    pub has_validate: bool,
+}
+
+/// Outcome of `firetrail profile list` — the base profile + every scope delta.
+#[derive(Debug, Clone, Serialize)]
+pub struct ProfileListOutcome {
+    /// Stable command name.
+    #[serde(skip)]
+    pub command: &'static str,
+    /// One row per `RepoProfile` record (base + scopes).
+    pub profiles: Vec<ProfileListRow>,
+    /// Non-fatal warnings to surface in the JSON envelope.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub warnings: Vec<String>,
+}
+
+impl ProfileListOutcome {
+    /// Markdown table of the rows.
+    #[must_use]
+    pub fn markdown(&self) -> String {
+        use std::fmt::Write as _;
+        let mut s = String::from("# repo profiles\n\n| Scope | Id | Validate |\n|---|---|---|\n");
+        for row in &self.profiles {
+            let _ = writeln!(
+                s,
+                "| {} | `{}` | {} |",
+                row.scope,
+                row.id,
+                if row.has_validate { "yes" } else { "no" }
+            );
+        }
+        s
+    }
+
+    /// One-line summary for `--quiet`.
+    #[must_use]
+    pub fn quiet_line(&self) -> String {
+        format!("profile list: {} profile(s)", self.profiles.len())
+    }
+
+    /// JSON payload.
+    #[must_use]
+    pub fn json_data(&self) -> serde_json::Value {
+        serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
+    }
+}
+
+/// `firetrail profile list` — one row per `RepoProfile` record (base + scopes).
+pub fn list(_args: &ProfileListArgs, global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
+    let ctx = WorkCtx::open(LIST, global.workspace.as_deref())?;
+    let records =
+        profile_list(&ctx.storage).map_err(|e| CliError::internal(LIST, format!("list: {e}")))?;
+    let profiles = records
+        .into_iter()
+        .map(|r| {
+            let scope = r
+                .envelope
+                .owning_scope
+                .clone()
+                .unwrap_or_else(|| BASE_SCOPE_LABEL.to_string());
+            let has_validate = match &r.body {
+                RecordBody::RepoProfile(b) => b.validate_command.is_some(),
+                _ => false,
+            };
+            ProfileListRow {
+                scope,
+                id: r.envelope.id.as_str().to_string(),
+                has_validate,
+            }
+        })
+        .collect();
+    Ok(CommandOutcome::ProfileList(ProfileListOutcome {
+        command: LIST,
+        profiles,
+        warnings: ctx.warnings.clone(),
+    }))
 }
 
 /// Validate that `scope_id` is a declared scope in `.firetrail/scopes.yaml`.

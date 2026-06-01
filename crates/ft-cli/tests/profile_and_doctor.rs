@@ -311,6 +311,65 @@ fn profile_no_scopes_yaml_zero_overhead() {
 }
 
 #[test]
+fn profile_list_shows_base_and_scopes() {
+    let tr = fresh_repo();
+    write_scopes(
+        tr.root(),
+        &[
+            ("apps/checkout", "apps/checkout/**"),
+            ("libs/ui", "libs/ui/**"),
+        ],
+    );
+    // Base + two scope deltas.
+    run_firetrail(
+        tr.root(),
+        &["--json", "profile", "set", "--validate", "just ci"],
+    );
+    run_firetrail(
+        tr.root(),
+        &[
+            "--json",
+            "profile",
+            "set",
+            "--scope",
+            "apps/checkout",
+            "--validate",
+            "pnpm test",
+        ],
+    );
+    run_firetrail(
+        tr.root(),
+        &[
+            "--json", "profile", "set", "--scope", "libs/ui", "--test", "vitest",
+        ],
+    );
+
+    let out = run_firetrail(tr.root(), &["--json", "profile", "list"]);
+    assert!(out.success(), "list failed: {}", out.stderr);
+    let v = parse_json(&out);
+    let rows = v["data"]["profiles"].as_array().expect("profiles array");
+    assert_eq!(rows.len(), 3, "base + 2 scopes");
+
+    let base = rows
+        .iter()
+        .find(|r| r["scope"] == "(base)")
+        .expect("base row");
+    assert_eq!(base["has_validate"], true);
+
+    let checkout = rows
+        .iter()
+        .find(|r| r["scope"] == "apps/checkout")
+        .expect("checkout row");
+    assert_eq!(checkout["has_validate"], true);
+
+    let ui = rows
+        .iter()
+        .find(|r| r["scope"] == "libs/ui")
+        .expect("ui row");
+    assert_eq!(ui["has_validate"], false, "ui set only test, not validate");
+}
+
+#[test]
 fn doctor_warns_when_no_profile() {
     let tr = fresh_repo();
     let doc = run_firetrail(tr.root(), &["--json", "doctor"]);

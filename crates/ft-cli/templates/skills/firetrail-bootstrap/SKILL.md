@@ -1,6 +1,6 @@
 ---
 name: firetrail-bootstrap
-description: Use when starting in a firetrail repo that has no roadmap or architecture docs and no open work — a fresh or empty workspace — or when `firetrail doctor` reports a missing or unconfirmed repo profile. Asks the user for consent, then guides a self-contained setup session that drafts ARCHITECTURE.md and ROADMAP.md, adopts them as Doc records, seeds the first epic and tasks with dependency edges, and populates the repo profile (validate/test/build/lint commands, tooling facts, component map) by inspecting the repo and confirming with the user.
+description: Use when starting in a firetrail repo that has no roadmap or architecture docs and no open work — a fresh or empty workspace — or when `firetrail doctor` reports a missing or unconfirmed repo profile. Asks the user for consent, then guides a self-contained setup session that drafts ARCHITECTURE.md and ROADMAP.md, adopts them as Doc records, seeds the first epic and tasks with dependency edges, and populates the repo profile (validate/test/build/lint commands, tooling facts, component map) by inspecting the repo and confirming with the user. In a monorepo it also sets per-scope profile deltas so each package gets its own validate/test commands.
 ---
 
 # Firetrail bootstrap (fresh-repo setup)
@@ -87,11 +87,17 @@ firetrail ready             # only the genuine leaves are unblocked?
 
 ## 8. Populate the repo profile
 
-The **repo profile** is a singleton record of repo facts every other firetrail
-tool reads from: the canonical validate/test/build/lint commands, the
-language/tooling facts, and a shallow component map. `firetrail doctor` warns
-when it is missing or still unconfirmed — that warning is what sends you here,
-whether or not the rest of this skill applied.
+The **repo profile** is a record of repo facts every other firetrail tool reads
+from: the canonical validate/test/build/lint commands, the language/tooling
+facts, and a shallow component map. `firetrail doctor` warns when it is missing
+or still unconfirmed — that warning is what sends you here, whether or not the
+rest of this skill applied.
+
+In a **monorepo** the profile is a repo-wide **base** plus optional **per-scope
+deltas** — one package can override just its `test` command while inheriting
+everything else from the base. A standalone repo has only the base and never
+touches scopes (zero overhead). Steps 8a–8e set up the base; **Step 8f** adds
+per-scope deltas when the repo warrants it.
 
 firetrail ships **no detection heuristics** — this is YOUR judgment (ADR-0005).
 firetrail only stores, indexes, and surfaces what you decide. So:
@@ -152,5 +158,69 @@ just another `profile set` round: it updates the record in place and re-enters
 > `firetrail doctor --strict` (for CI) exits non-zero when the validate command
 > is empty or the profile is still unconfirmed — so getting through 8a–8d
 > unblocks a `--strict` pipeline.
+
+## 8f. Monorepos — per-scope profiles
+
+Do this **only** when the repo is a monorepo whose packages need *different*
+validate/test/build commands (e.g. a Rust crate validated with `cargo` next to
+a JS app validated with `pnpm`). If one repo-wide validate command covers
+everything, the base profile from 8a–8e is enough — skip this step.
+
+**Detect a monorepo.** Signals: a workspace manifest (`[workspace]` in
+`Cargo.toml`, `pnpm-workspace.yaml`, `nx.json`, `turbo.json`, `go.work`) or
+several `package.json` / manifests under `apps/`, `packages/`, `crates/`. This
+is YOUR judgment, not a firetrail heuristic (ADR-0005).
+
+**Per-scope profiles require scopes.** A per-scope delta is keyed to a scope id,
+and `firetrail profile set --scope <id>` **errors if `<id>` is not a declared
+scope**. Check what exists:
+
+```
+firetrail scope list      # the scopes declared in .firetrail/scopes.yaml
+```
+
+If the packages aren't declared yet, author `.firetrail/scopes.yaml` first (it's
+hand-edited — there is no `scope add` command). Declare **broad patterns first,
+narrow exceptions last**: resolution is **last-declared-wins** (the same rule as
+CODEOWNERS), so a catch-all belongs at the *top*.
+
+```yaml
+# .firetrail/scopes.yaml
+scopes:
+  - id: apps/checkout
+    applies_to: ["apps/checkout/**"]
+  - id: libs/ui
+    applies_to: ["libs/ui/**"]
+```
+
+**Set the base to the common case, then override only the deltas.** A scope
+profile is a *sparse* delta: it sets only what differs; every unset field
+inherits the base. Don't re-state shared commands per scope.
+
+```
+# base = the repo-wide default (8a–8e already did this)
+firetrail profile set --validate "just ci" --test "cargo test"
+
+# per-package overrides — only the field that differs
+firetrail profile set --scope apps/checkout --test "pnpm --filter checkout test"
+firetrail profile set --scope libs/ui       --validate "pnpm --filter ui lint && pnpm --filter ui test"
+```
+
+**Verify the resolution.** Confirm each scope resolves to the command you
+expect, and that a changeset maps to the right distinct commands:
+
+```
+firetrail profile list                          # base + every scope delta, one row each
+firetrail profile show --scope apps/checkout --resolved   # the merged base ⊕ delta
+firetrail profile resolve --staged              # distinct validate commands for the staged diff
+```
+
+**Confirm each delta's trust.** Like the base, every scope delta is written as
+`Draft`; confirm the ones the user trusts via the trust commands (8d), using its
+own id from `firetrail profile list`.
+
+> Each scope's validate command feeds `firetrail doctor --strict` and the audit
+> loop independently — so a scope with no resolved validate command (its own or
+> inherited from base) is a `--strict` gap, surfaced by `doctor`.
 
 Then return to the router loop and claim the first ready item.

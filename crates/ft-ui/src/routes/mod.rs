@@ -20,6 +20,7 @@ use crate::sse::events_handler;
 pub mod audit;
 pub mod docs;
 pub mod epics;
+pub mod files;
 pub mod identity;
 pub mod memory;
 pub mod profile;
@@ -37,6 +38,7 @@ pub fn build(state: Arc<AppState>) -> Router {
         .nest("/epics", epics::router())
         .nest("/tickets", tickets::router())
         .nest("/docs", docs::router())
+        .nest("/files", files::router())
         .nest("/memory", memory::router())
         .nest("/profile", profile::router())
         .nest("/search", search::router())

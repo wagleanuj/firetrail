@@ -12,8 +12,22 @@
 
 use std::collections::BTreeSet;
 
+use serde::{Deserialize, Serialize};
+
 use crate::error::OpsError;
 use crate::workspace::Workspace;
+
+/// The autocomplete result: a flat list of repo-relative, forward-slash paths.
+///
+/// The wire mirror surfaced by `GET /api/files`, kept in `ft-ops` so ts-rs only
+/// ever sees ops types (the xtask ts exporter depends on `ft-ops`, not `ft-ui`).
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts-rs", ts(export))]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FileListView {
+    /// Suggested paths (or directory prefixes), sorted and deduped.
+    pub paths: Vec<String>,
+}
 
 /// Upper bound on how many suggestions [`list_files`] will return; callers that
 /// pass a larger `limit` are clamped to this.

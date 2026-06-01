@@ -26,6 +26,7 @@ use ft_ops::audit::{
 };
 use ft_ops::docs::{DocFreshnessView, DocView};
 use ft_ops::events::SalvageDecision;
+use ft_ops::files::FileListView;
 use ft_ops::identity_ops::{
     CapabilitiesInput, CapabilitiesOutput, CapabilityRow, IdentityKindInput, IdentityListOutput,
     IdentityRegisterOutput, IdentityShowOutput, IdentityStatusFilter, IdentityView,
@@ -268,6 +269,8 @@ fn export_into(dir: &Path) -> Result<()> {
     // Per-scope resolve plan (per-scope profiles epic).
     ValidatePlanView::export_all_to(dir).context("export ValidatePlanView")?;
     ValidateEntryView::export_all_to(dir).context("export ValidateEntryView")?;
+    // File-path autocomplete (/api/files).
+    FileListView::export_all_to(dir).context("export FileListView")?;
     Ok(())
 }
 

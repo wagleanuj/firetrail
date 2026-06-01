@@ -250,6 +250,7 @@ Tests-first, at every layer, using `ft-testkit`'s `TestRepo`:
 ## Open questions / future extensions
 
 - Per-scope profiles for monorepos (different validate commands per package).
+  **Designed in `docs/specs/2026-05-31-per-scope-profiles-design.md` (Sub-project A.2).**
 - Whether `doctor`'s validate-command tier should ever escalate from `warn` to a
   blocking error in CI contexts (kept as `warn` for v1).
 

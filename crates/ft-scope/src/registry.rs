@@ -5,7 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use globset::{Glob, GlobMatcher};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use ft_core::Identity;
 
@@ -17,26 +17,53 @@ pub const SCOPES_FILE: &str = ".firetrail/scopes.yaml";
 
 /// On-disk YAML shape for a single scope. Parsed and then lifted into
 /// [`Scope`] (which carries compiled matchers).
-#[derive(Debug, Deserialize)]
-struct ScopeYaml {
-    id: String,
-    #[serde(default)]
-    name: Option<String>,
-    #[serde(default, rename = "applies_to", alias = "appliesTo")]
-    applies_to: Vec<String>,
-    #[serde(default)]
-    aliases: Vec<String>,
-    #[serde(default)]
-    codeowners: Option<PathBuf>,
+///
+/// This is the *raw* serializable model used by both the loader
+/// ([`ScopeRegistry::load`]) and the writer ([`crate::writer`]). The serde
+/// renames are shared by serialization and deserialization so the file
+/// round-trips through the canonical field names (`applies_to`,
+/// `enabled_scopes`). `skip_serializing_if` keeps the emitted file clean for
+/// empty/absent optional fields; it does **not** affect deserialization.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct ScopeYaml {
+    /// Canonical scope id (e.g. `apps/checkout`).
+    pub id: String,
+    /// Optional display name; defaults to the id when omitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Glob patterns this scope applies to, in declaration order.
+    #[serde(
+        default,
+        rename = "applies_to",
+        alias = "appliesTo",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub applies_to: Vec<String>,
+    /// Aliases that resolve to this scope.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
+    /// Optional path to a CODEOWNERS file for this scope.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codeowners: Option<PathBuf>,
 }
 
 /// On-disk YAML shape for the top-level scopes file.
-#[derive(Debug, Deserialize)]
-struct ScopesFile {
-    #[serde(default)]
-    scopes: Vec<ScopeYaml>,
-    #[serde(default, rename = "enabled_scopes", alias = "enabledScopes")]
-    enabled_scopes: Option<Vec<String>>,
+///
+/// Declaration order of [`Self::scopes`] is **semantic**: scope resolution is
+/// last-declared-wins, so writers must preserve order.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct ScopesFile {
+    /// All declared scopes, in declaration order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scopes: Vec<ScopeYaml>,
+    /// Optional pilot-rollout filter. `None` means every scope is enabled.
+    #[serde(
+        default,
+        rename = "enabled_scopes",
+        alias = "enabledScopes",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub enabled_scopes: Option<Vec<String>>,
 }
 
 /// A single resolved scope. Globs are compiled at load time.

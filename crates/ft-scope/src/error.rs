@@ -79,4 +79,23 @@ pub enum ScopeError {
         /// The duplicated scope id.
         id: String,
     },
+
+    /// A write operation referenced a scope id that does not exist.
+    #[error("scope `{id}` not found")]
+    ScopeNotFound {
+        /// The id that could not be found.
+        id: String,
+    },
+
+    /// A scope was written with no `applies_to` patterns. Every scope must
+    /// declare at least one pattern.
+    #[error("scope `{id}` has no `applies_to` patterns")]
+    EmptyAppliesTo {
+        /// The scope that is missing patterns.
+        id: String,
+    },
+
+    /// A reorder request was not a permutation of the existing scope ids.
+    #[error("reorder ids are not a permutation of the existing scope ids")]
+    ReorderMismatch,
 }

@@ -10,9 +10,15 @@ ci = "github"
 # The installers to generate for each app
 installers = ["shell"]
 # Target platforms to build apps for (Rust target-triple syntax).
-# x86_64-apple-darwin is intentionally excluded: `ort` (ONNX runtime) ships no
-# prebuilt binary for Intel macOS, so the ONNX-enabled build cannot link there.
-targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-unknown-linux-gnu"]
+# x86_64-apple-darwin is back: the embedding backend is pure-Rust tract
+# (firetrail-huvf), so the ONNX-enabled build links on every target with no
+# platform-specific prebuilt runtime.
+targets = [
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-unknown-linux-gnu",
+]
 # Path that installers should place binaries in
 install-path = "CARGO_HOME"
 # Where to host releases
@@ -23,10 +29,3 @@ install-updater = false
 # pnpm and builds crates/ft-ui/web/dist so the ft-ui binary can embed the SPA
 # (bundled-ui). Path is relative to .github/workflows/.
 github-build-setup = "../build-setup.yml"
-
-# The prebuilt onnxruntime that `ort` links references glibc >= 2.38 symbols
-# (__isoc23_strtoull etc.), which ubuntu-22.04 (glibc 2.35) lacks. Build the
-# Linux targets on ubuntu-24.04 (glibc 2.39) so ONNX links.
-[dist.github-custom-runners]
-x86_64-unknown-linux-gnu = "ubuntu-24.04"
-aarch64-unknown-linux-gnu = "ubuntu-24.04-arm"

@@ -51,7 +51,10 @@ pub use external::{
 };
 pub use filter::StorageFilter;
 pub use history::write_with_history;
-pub use profile::{profile_get, profile_get_base, profile_get_for_scope, profile_set};
+pub use profile::{
+    profile_get, profile_get_base, profile_get_for_scope, profile_list, profile_set,
+    profile_set_for_scope,
+};
 pub use refs::{ExternalRefViolation, validate_external_references};
 pub use storage::Storage;
 pub use validate::{

@@ -1,10 +1,11 @@
 //! Singleton [`RepoProfile`](ft_core::RecordKind::RepoProfile) accessors.
 //!
-//! A repo has at most one `RepoProfile` record — a small bag of always-read
-//! facts (validate/test/build/lint commands, languages, components, …). These
-//! free helpers read and upsert that singleton through the [`Storage`] trait,
-//! so they work against any backend (embedded or external) without duplicating
-//! the per-backend write/commit machinery.
+//! A repo holds at most one **base** `RepoProfile` (`owning_scope == None`) plus
+//! at most one **per-scope** profile for each distinct `owning_scope` — a small
+//! bag of always-read facts (validate/test/build/lint commands, languages,
+//! components, …). These free helpers read and upsert those records through the
+//! [`Storage`] trait, so they work against any backend (embedded or external)
+//! without duplicating the per-backend write/commit machinery.
 //!
 //! Design: `docs/specs/2026-05-31-repo-profile-bootstrap-design.md`.
 //!
@@ -129,6 +130,43 @@ fn profile_records(storage: &dyn Storage) -> Result<Vec<Record>, StorageError> {
     ids.into_iter().map(|id| storage.read(&id)).collect()
 }
 
+/// Every `RepoProfile` record (base + per-scope), id-sorted.
+///
+/// # Errors
+/// Any error from [`Storage::list`] / [`Storage::read`].
+pub fn profile_list(storage: &dyn Storage) -> Result<Vec<Record>, StorageError> {
+    profile_records(storage)
+}
+
+/// Upsert the per-scope profile delta for `scope_id` in place; create with
+/// `owning_scope = Some(scope_id)` if absent. Mirrors [`profile_set`].
+///
+/// # Errors
+/// Any error from [`Storage::list`] / [`Storage::read`] / [`Storage::write`],
+/// or [`StorageError::Core`] on first build.
+pub fn profile_set_for_scope(
+    storage: &dyn Storage,
+    scope_id: &str,
+    body: RepoProfileBody,
+    author: &Identity,
+) -> Result<Record, StorageError> {
+    if let Some(mut existing) = profile_get_for_scope(storage, scope_id)? {
+        existing.body = RecordBody::RepoProfile(body);
+        existing.envelope.updated_at = Utc::now();
+        existing.envelope.state_hash = String::new();
+        existing.envelope.state_hash = state_hash(&existing)?;
+        storage.write(&existing)?;
+        Ok(existing)
+    } else {
+        let record = RecordBuilder::new(RecordKind::RepoProfile, PROFILE_TITLE, author.clone())
+            .owning_scope(scope_id)
+            .repo_profile(body)
+            .build()?;
+        storage.write(&record)?;
+        Ok(record)
+    }
+}
+
 /// Title given to a freshly-created repo profile record.
 const PROFILE_TITLE: &str = "Repo profile";
 
@@ -201,6 +239,47 @@ mod tests {
             .expect("present");
         assert_eq!(got.envelope.owning_scope.as_deref(), Some("apps/checkout"));
         assert!(profile_get_for_scope(&s, "nope").unwrap().is_none());
+    }
+
+    #[test]
+    fn list_returns_base_and_scopes() {
+        let tr = TestRepo::new().unwrap();
+        let s = open(&tr);
+        profile_set(&s, sample_body(), &make_identity()).unwrap();
+        s.write(&scope_record("apps/checkout", "pnpm test"))
+            .unwrap();
+        let all = profile_list(&s).unwrap();
+        assert_eq!(all.len(), 2);
+    }
+
+    #[test]
+    fn set_for_scope_upserts_in_place() {
+        let tr = TestRepo::new().unwrap();
+        let s = open(&tr);
+        let mut b = RepoProfileBody {
+            test_command: Some("pnpm test".into()),
+            ..Default::default()
+        };
+        let first =
+            profile_set_for_scope(&s, "apps/checkout", b.clone(), &make_identity()).unwrap();
+        assert_eq!(
+            first.envelope.owning_scope.as_deref(),
+            Some("apps/checkout")
+        );
+
+        b.test_command = Some("pnpm --filter checkout test".into());
+        let second = profile_set_for_scope(&s, "apps/checkout", b, &make_identity()).unwrap();
+        assert_eq!(first.envelope.id, second.envelope.id, "upsert in place");
+        assert_eq!(
+            profile_get_for_scope(&s, "apps/checkout")
+                .unwrap()
+                .unwrap()
+                .envelope
+                .id,
+            first.envelope.id
+        );
+        // base untouched / absent
+        assert!(profile_get_base(&s).unwrap().is_none());
     }
 
     #[test]

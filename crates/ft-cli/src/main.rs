@@ -197,6 +197,10 @@ fn dispatch(cli: &Cli) -> Result<commands::CommandOutcome, CliError> {
         Command::Scope(ScopeCmd::Show(args)) => commands::scope::show(args, &cli.global),
         Command::Scope(ScopeCmd::Aliases) => commands::scope::aliases(&cli.global),
         Command::Scope(ScopeCmd::Owners(args)) => commands::scope::owners(args, &cli.global),
+        Command::Scope(ScopeCmd::Add(args)) => commands::scope::add(args, &cli.global),
+        Command::Scope(ScopeCmd::Edit(args)) => commands::scope::edit(args, &cli.global),
+        Command::Scope(ScopeCmd::Rm(args)) => commands::scope::rm(args, &cli.global),
+        Command::Scope(ScopeCmd::Reorder(args)) => commands::scope::reorder_cmd(args, &cli.global),
 
         Command::Sync(args) => commands::sync_cmd::run(args, &cli.global),
 

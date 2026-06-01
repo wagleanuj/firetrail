@@ -193,6 +193,8 @@ pub enum CommandOutcome {
     ScopeAliases(scope::ScopeAliasesOutcome),
     /// `firetrail scope owners`.
     ScopeOwners(scope::ScopeOwnersOutcome),
+    /// `firetrail scope add` / `edit` / `rm` / `reorder`.
+    ScopeWrite(scope::ScopeWriteOutcome),
     /// `firetrail sync`.
     Sync(sync_cmd::SyncOutcome),
     /// `firetrail import …` (M6).
@@ -246,6 +248,7 @@ impl CommandOutcome {
             Self::ScopeShow(r) => r.command,
             Self::ScopeAliases(r) => r.command,
             Self::ScopeOwners(r) => r.command,
+            Self::ScopeWrite(r) => r.command,
             Self::Sync(r) => r.command,
             Self::Import(r) => r.command,
             Self::PromoteImport(r) => r.command,
@@ -297,6 +300,7 @@ impl CommandOutcome {
             Self::ScopeShow(r) => r.markdown(),
             Self::ScopeAliases(r) => r.markdown(),
             Self::ScopeOwners(r) => r.markdown(),
+            Self::ScopeWrite(r) => r.markdown(),
             Self::Sync(r) => r.markdown(),
             Self::Import(r) => r.markdown(),
             Self::PromoteImport(r) => r.markdown(),
@@ -348,6 +352,7 @@ impl CommandOutcome {
             Self::ScopeShow(r) => r.quiet_line(),
             Self::ScopeAliases(r) => r.quiet_line(),
             Self::ScopeOwners(r) => r.quiet_line(),
+            Self::ScopeWrite(r) => r.quiet_line(),
             Self::Sync(r) => r.quiet_line(),
             Self::Import(r) => r.quiet_line(),
             Self::PromoteImport(r) => r.quiet_line(),
@@ -401,6 +406,7 @@ impl CommandOutcome {
             Self::ScopeShow(r) => serde_json::to_value(r).unwrap_or(Value::Null),
             Self::ScopeAliases(r) => serde_json::to_value(r).unwrap_or(Value::Null),
             Self::ScopeOwners(r) => serde_json::to_value(r).unwrap_or(Value::Null),
+            Self::ScopeWrite(r) => r.json_data(),
             Self::Sync(r) => serde_json::to_value(r).unwrap_or(Value::Null),
             Self::Import(r) => serde_json::to_value(r).unwrap_or(Value::Null),
             Self::PromoteImport(r) => serde_json::to_value(r).unwrap_or(Value::Null),
@@ -452,6 +458,7 @@ impl CommandOutcome {
             Self::ScopeShow(r) => r.warnings.clone(),
             Self::ScopeAliases(r) => r.warnings.clone(),
             Self::ScopeOwners(r) => r.warnings.clone(),
+            Self::ScopeWrite(r) => r.warnings.clone(),
             Self::Sync(r) => r.warnings.clone(),
             Self::Import(r) => r.warnings.clone(),
             Self::PromoteImport(r) => r.warnings.clone(),

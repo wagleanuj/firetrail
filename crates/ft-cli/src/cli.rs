@@ -614,6 +614,16 @@ pub enum ScopeCmd {
     Aliases,
     /// Resolve CODEOWNERS for a repo-relative path.
     Owners(ScopeOwnersArgs),
+    /// Add a new scope to `.firetrail/scopes.yaml` (appended last —
+    /// resolution is last-declared-wins, so declare broad scopes first).
+    Add(ScopeAddArgs),
+    /// Edit an existing scope's fields in place.
+    Edit(ScopeEditArgs),
+    /// Remove a scope by id.
+    Rm(ScopeRmArgs),
+    /// Reorder scopes to the given full id list (order is semantic:
+    /// last-declared-wins).
+    Reorder(ScopeReorderArgs),
 }
 
 /// `firetrail scope show` args.
@@ -628,6 +638,71 @@ pub struct ScopeShowArgs {
 pub struct ScopeOwnersArgs {
     /// Repo-relative path to resolve.
     pub path: PathBuf,
+}
+
+/// `firetrail scope add` args.
+#[derive(Debug, Args)]
+pub struct ScopeAddArgs {
+    /// Canonical scope id (e.g. `apps/checkout`).
+    pub id: String,
+    /// Glob pattern this scope applies to (repeatable, at least one required).
+    #[arg(long = "applies-to", value_name = "GLOB", required = true)]
+    pub applies_to: Vec<String>,
+    /// Optional display name (defaults to the id).
+    #[arg(long)]
+    pub name: Option<String>,
+    /// Alias that resolves to this scope (repeatable).
+    #[arg(long = "alias", value_name = "ALIAS")]
+    pub aliases: Vec<String>,
+    /// Path to a CODEOWNERS file for this scope.
+    #[arg(long)]
+    pub codeowners: Option<PathBuf>,
+}
+
+/// `firetrail scope edit` args.
+///
+/// Only the fields explicitly passed change. `--applies-to` / `--alias`
+/// **replace** the stored list when given (omit them to keep the existing
+/// list). `--clear-name` / `--clear-codeowners` unset the corresponding
+/// optional field.
+#[derive(Debug, Args)]
+pub struct ScopeEditArgs {
+    /// Scope id to edit (must already exist).
+    pub id: String,
+    /// Replace the `applies_to` globs (repeatable). Omit to keep them.
+    #[arg(long = "applies-to", value_name = "GLOB")]
+    pub applies_to: Vec<String>,
+    /// Set the display name.
+    #[arg(long, conflicts_with = "clear_name")]
+    pub name: Option<String>,
+    /// Replace the aliases (repeatable). Omit to keep them.
+    #[arg(long = "alias", value_name = "ALIAS")]
+    pub aliases: Vec<String>,
+    /// Set the CODEOWNERS path.
+    #[arg(long, conflicts_with = "clear_codeowners")]
+    pub codeowners: Option<PathBuf>,
+    /// Unset the display name.
+    #[arg(long)]
+    pub clear_name: bool,
+    /// Unset the CODEOWNERS path.
+    #[arg(long)]
+    pub clear_codeowners: bool,
+}
+
+/// `firetrail scope rm` args.
+#[derive(Debug, Args)]
+pub struct ScopeRmArgs {
+    /// Scope id to remove.
+    pub id: String,
+}
+
+/// `firetrail scope reorder` args.
+#[derive(Debug, Args)]
+pub struct ScopeReorderArgs {
+    /// The full ordered list of scope ids (must be a permutation of the
+    /// existing ids).
+    #[arg(required = true)]
+    pub ids: Vec<String>,
 }
 
 /// `firetrail sync` args.

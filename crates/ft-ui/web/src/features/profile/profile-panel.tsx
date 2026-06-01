@@ -12,10 +12,11 @@
  * relevant to confirming a profile; the full trust state machine lives in the
  * memory surface.
  */
-import { useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 import {
   Boxes,
   Check,
+  Layers,
   Loader2,
   Pencil,
   Plus,
@@ -49,15 +50,37 @@ import {
   useAddComponent,
   useProfileQuery,
   useRemoveComponent,
+  useScopesQuery,
   useUpdateProfile,
 } from './use-profile-query'
-import type { ProfilePatch } from './api'
+import type { ProfilePatch, ProfileSelector } from './api'
+
+/** The base profile (no scope selected). */
+const BASE = '__base__'
+
+/**
+ * The active scope selector, shared with the inline editors so each `Save`
+ * writes to the right record (base vs. a per-scope delta). A resolved view is
+ * read-only — its editors are disabled.
+ */
+const SelectorContext = createContext<{ selector: ProfileSelector; readOnly: boolean }>({
+  selector: {},
+  readOnly: false,
+})
 
 export function ProfilePanel() {
   const qc = useQueryClient()
-  const { data, isLoading, error } = useProfileQuery()
+  const [scopeSel, setScopeSel] = useState<string>(BASE)
+  const [resolved, setResolved] = useState(false)
 
-  // Re-fetch when another client edits the profile.
+  const isBase = scopeSel === BASE
+  const selector: ProfileSelector = isBase ? {} : { scope: scopeSel, resolved }
+  const readOnly = !isBase && resolved
+
+  const { data: scopes = [] } = useScopesQuery()
+  const { data, isLoading, error } = useProfileQuery(selector)
+
+  // Re-fetch when another client edits the profile (any selector under the key).
   const { last } = useEvents<AppEvent>({})
   useEffect(() => {
     if (last && last.kind === 'profile_updated') {
@@ -76,6 +99,17 @@ export function ProfilePanel() {
         </p>
       </header>
 
+      <ScopeSwitcher
+        scopes={scopes}
+        value={scopeSel}
+        onValueChange={(v) => {
+          setScopeSel(v)
+          if (v === BASE) setResolved(false)
+        }}
+        resolved={resolved}
+        onResolvedChange={setResolved}
+      />
+
       {isLoading ? (
         <Skeleton className="h-64 w-full" />
       ) : error ? (
@@ -83,16 +117,79 @@ export function ProfilePanel() {
           Failed to load profile: {(error as Error).message}
         </p>
       ) : (
-        <ProfileBody profile={data ?? null} />
+        <SelectorContext.Provider value={{ selector, readOnly }}>
+          <ProfileBody profile={data ?? null} showScopeTrust={!isBase} />
+        </SelectorContext.Provider>
       )}
     </div>
   )
 }
 
-function ProfileBody({ profile }: { profile: ProfileView | null }) {
+/** Base/scope switcher + a Resolved toggle (only meaningful for a scope). */
+function ScopeSwitcher({
+  scopes,
+  value,
+  onValueChange,
+  resolved,
+  onResolvedChange,
+}: {
+  scopes: { id: string; name: string }[]
+  value: string
+  onValueChange: (v: string) => void
+  resolved: boolean
+  onResolvedChange: (v: boolean) => void
+}) {
+  const isScope = value !== BASE
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card/40 px-4 py-3">
+      <Layers className="h-4 w-4 text-muted-foreground" />
+      <Label className="text-xs uppercase tracking-wide text-muted-foreground" htmlFor="scope-sel">
+        Scope
+      </Label>
+      <select
+        id="scope-sel"
+        data-testid="profile-scope-switcher"
+        value={value}
+        onChange={(e) => onValueChange(e.target.value)}
+        className="h-8 rounded-md border border-border bg-background px-2 text-sm"
+      >
+        <option value={BASE}>Base (repo-wide)</option>
+        {scopes.map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.name}
+          </option>
+        ))}
+      </select>
+
+      <label
+        className={
+          'ml-auto flex items-center gap-2 text-sm ' +
+          (isScope ? 'cursor-pointer' : 'cursor-not-allowed opacity-50')
+        }
+      >
+        <input
+          type="checkbox"
+          data-testid="profile-resolved-toggle"
+          checked={resolved}
+          disabled={!isScope}
+          onChange={(e) => onResolvedChange(e.target.checked)}
+        />
+        Resolved
+      </label>
+    </div>
+  )
+}
+
+function ProfileBody({
+  profile,
+  showScopeTrust,
+}: {
+  profile: ProfileView | null
+  showScopeTrust: boolean
+}) {
   return (
     <div className="space-y-6">
-      <TrustRow profile={profile} />
+      {showScopeTrust ? <ScopeTrustRow profile={profile} /> : <TrustRow profile={profile} />}
 
       <Card>
         <CardHeader>
@@ -238,6 +335,23 @@ function TrustRow({ profile }: { profile: ProfileView | null }) {
   )
 }
 
+/**
+ * The trust badge for a per-scope delta (read-only). The forward confirmation
+ * steps live on the base `TrustRow`; a scope delta only surfaces its own state.
+ */
+function ScopeTrustRow({ profile }: { profile: ProfileView | null }) {
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card/40 px-4 py-3">
+      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        Scope trust
+      </span>
+      <span data-testid="profile-scope-trust">
+        <TrustBadge state={profile?.trust ?? null} />
+      </span>
+    </div>
+  )
+}
+
 /** A single string field, edited inline and persisted via PUT /api/profile. */
 function EditableField({
   label,
@@ -256,13 +370,35 @@ function EditableField({
   multiline?: boolean
   hideLabel?: boolean
 }) {
+  const { selector, readOnly } = useContext(SelectorContext)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value ?? '')
-  const update = useUpdateProfile()
+  const update = useUpdateProfile(selector)
 
   function save() {
     const next = draft.trim() === '' ? null : draft
     update.mutate({ [field]: next } as ProfilePatch, { onSuccess: () => setEditing(false) })
+  }
+
+  // A resolved (merged) view is read-only — edits would be ambiguous.
+  if (readOnly) {
+    return (
+      <div className="space-y-1.5">
+        {!hideLabel && (
+          <Label className="text-xs uppercase tracking-wide text-muted-foreground">{label}</Label>
+        )}
+        <div
+          className={
+            'w-full rounded-md border border-border/40 px-3 py-2 text-sm ' +
+            (value ? '' : 'text-muted-foreground') +
+            (mono && value ? ' font-mono text-xs' : '')
+          }
+          data-testid={`profile-value-${field}`}
+        >
+          {value ?? 'Not set'}
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -355,9 +491,10 @@ function EditableListField({
   value: string[]
   field: 'languages' | 'packageManagers'
 }) {
+  const { selector, readOnly } = useContext(SelectorContext)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value.join(', '))
-  const update = useUpdateProfile()
+  const update = useUpdateProfile(selector)
 
   function save() {
     const next = draft
@@ -365,6 +502,30 @@ function EditableListField({
       .map((s) => s.trim())
       .filter(Boolean)
     update.mutate({ [field]: next } as ProfilePatch, { onSuccess: () => setEditing(false) })
+  }
+
+  if (readOnly) {
+    return (
+      <div className="space-y-1.5">
+        <Label className="text-xs uppercase tracking-wide text-muted-foreground">{label}</Label>
+        {value.length === 0 ? (
+          <div className="text-sm text-muted-foreground" data-testid={`profile-value-${field}`}>
+            None
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-1.5" data-testid={`profile-value-${field}`}>
+            {value.map((v) => (
+              <span
+                key={v}
+                className="rounded-full bg-muted px-2.5 py-0.5 font-mono text-xs text-foreground"
+              >
+                {v}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    )
   }
 
   return (

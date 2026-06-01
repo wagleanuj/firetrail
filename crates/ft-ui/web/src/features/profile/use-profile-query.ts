@@ -8,30 +8,52 @@
  */
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
 import type { ProfileView } from '@/api/types/ProfileView'
+import type { ScopeSummary } from '@/api/types/ScopeSummary'
 import { toastApiError } from '@/api/error'
 import {
   addComponent,
   fetchProfile,
+  fetchScopes,
   removeComponent,
   updateProfile,
   type ProfilePatch,
+  type ProfileSelector,
 } from './api'
 
+/** The base profile lives under the root key; scopes nest a selector under it. */
 export const profileKey = ['profile'] as const
 
-export function useProfileQuery(): UseQueryResult<ProfileView | null> {
+/** Query key for a specific selector (base when `scope` is null/absent). */
+export function profileSelectorKey(selector: ProfileSelector) {
+  return [...profileKey, selector.scope ?? null, Boolean(selector.resolved)] as const
+}
+
+export const scopesKey = ['profile', 'scopes'] as const
+
+export function useProfileQuery(
+  selector: ProfileSelector = {},
+): UseQueryResult<ProfileView | null> {
   return useQuery({
-    queryKey: profileKey,
-    queryFn: fetchProfile,
+    queryKey: profileSelectorKey(selector),
+    queryFn: () => fetchProfile(selector),
     staleTime: 15_000,
   })
 }
 
-export function useUpdateProfile() {
+/** The scope list that feeds the panel's scope switcher. */
+export function useScopesQuery(): UseQueryResult<ScopeSummary[]> {
+  return useQuery({
+    queryKey: scopesKey,
+    queryFn: fetchScopes,
+    staleTime: 60_000,
+  })
+}
+
+export function useUpdateProfile(selector: ProfileSelector = {}) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (patch: ProfilePatch) => updateProfile(patch),
-    onSuccess: (view) => qc.setQueryData(profileKey, view),
+    mutationFn: (patch: ProfilePatch) => updateProfile(patch, selector),
+    onSuccess: (view) => qc.setQueryData(profileSelectorKey(selector), view),
     onError: (err) => toastApiError(err),
   })
 }
@@ -41,7 +63,7 @@ export function useAddComponent() {
   return useMutation({
     mutationFn: (input: { name: string; path: string; summary?: string }) =>
       addComponent(input.name, input.path, input.summary),
-    onSuccess: (view) => qc.setQueryData(profileKey, view),
+    onSuccess: (view) => qc.setQueryData(profileSelectorKey({}), view),
     onError: (err) => toastApiError(err),
   })
 }
@@ -50,7 +72,7 @@ export function useRemoveComponent() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (name: string) => removeComponent(name),
-    onSuccess: (view) => qc.setQueryData(profileKey, view),
+    onSuccess: (view) => qc.setQueryData(profileSelectorKey({}), view),
     onError: (err) => toastApiError(err),
   })
 }

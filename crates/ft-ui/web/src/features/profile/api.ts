@@ -12,6 +12,30 @@
  */
 import { apiFetch, ApiError } from '@/api/client'
 import type { ProfileView } from '@/api/types/ProfileView'
+import type { ScopeListOutput } from '@/api/types/ScopeListOutput'
+import type { ScopeSummary } from '@/api/types/ScopeSummary'
+
+/**
+ * Which profile to fetch: the base singleton, or a per-scope delta — and, for a
+ * scope, whether to resolve it against the base (the merged view).
+ */
+export interface ProfileSelector {
+  /** Scope id; `null`/absent selects the base profile. */
+  scope?: string | null
+  /** When true (and `scope` set), return the base-merged view. */
+  resolved?: boolean
+}
+
+/** Build the `/api/profile` query string for a selector. */
+function selectorQuery({ scope, resolved }: ProfileSelector): string {
+  const params = new URLSearchParams()
+  if (scope) {
+    params.set('scope', scope)
+    if (resolved) params.set('resolved', '1')
+  }
+  const qs = params.toString()
+  return qs ? `?${qs}` : ''
+}
 
 /** A single-field partial update. `null` clears the field; omitting leaves it. */
 export interface ProfilePatch {
@@ -25,19 +49,45 @@ export interface ProfilePatch {
   notes?: string | null
 }
 
-/** GET /api/profile — resolves to `null` when no profile exists yet (404). */
-export async function fetchProfile(): Promise<ProfileView | null> {
+/**
+ * GET /api/profile[?scope=&resolved=1] — resolves to `null` when no profile (or
+ * scope delta) exists yet (404). Base when `selector` is omitted.
+ */
+export async function fetchProfile(selector: ProfileSelector = {}): Promise<ProfileView | null> {
   try {
-    return await apiFetch<ProfileView>('/api/profile', { withRequestId: false })
+    return await apiFetch<ProfileView>(`/api/profile${selectorQuery(selector)}`, {
+      withRequestId: false,
+    })
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) return null
     throw err
   }
 }
 
-/** PUT /api/profile — partial update; creates the profile if absent. */
-export function updateProfile(patch: ProfilePatch): Promise<ProfileView> {
-  return apiFetch<ProfileView>('/api/profile', { method: 'PUT', body: patch })
+/** GET /api/scope — every scope declared in `.firetrail/scopes.yaml`. */
+export async function fetchScopes(): Promise<ScopeSummary[]> {
+  try {
+    const out = await apiFetch<ScopeListOutput>('/api/scope', { withRequestId: false })
+    return out.scopes
+  } catch (err) {
+    // No scopes.yaml (standalone repo) → empty list, not an error.
+    if (err instanceof ApiError && err.status === 404) return []
+    throw err
+  }
+}
+
+/**
+ * PUT /api/profile[?scope=] — partial update; creates the record if absent.
+ * `resolved` is ignored on a write.
+ */
+export function updateProfile(
+  patch: ProfilePatch,
+  selector: ProfileSelector = {},
+): Promise<ProfileView> {
+  return apiFetch<ProfileView>(`/api/profile${selectorQuery({ scope: selector.scope })}`, {
+    method: 'PUT',
+    body: patch,
+  })
 }
 
 /** POST /api/profile/components — add (or replace by name) a component. */

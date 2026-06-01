@@ -4,7 +4,10 @@
 //!
 //! Design: `docs/specs/2026-05-31-per-scope-profiles-design.md`.
 
+use std::path::Path;
+
 use ft_core::RepoProfileBody;
+use ft_scope::ScopeRegistry;
 
 /// Merge a per-scope delta over the base profile, member-wins.
 ///
@@ -47,6 +50,13 @@ fn pick_list<T: Clone>(base: &[T], delta: &[T]) -> Vec<T> {
     }
 }
 
+/// The scope governing `path`, last-declared-wins (mirrors CODEOWNERS / the
+/// `ft-scope` source order). `None` when no scope matches.
+#[must_use]
+pub fn scope_for_path<'a>(reg: &'a ScopeRegistry, path: &Path) -> Option<&'a ft_scope::Scope> {
+    reg.scopes_for_path(path).into_iter().last()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -85,5 +95,26 @@ mod tests {
 
         let empty = RepoProfileBody::default(); // languages empty
         assert_eq!(merge(&base(), &empty).languages, vec!["rust".to_string()]);
+    }
+
+    #[test]
+    fn last_declared_scope_wins() {
+        use ft_scope::ScopeRegistry;
+        use ft_testkit::TestRepo;
+        use std::path::Path;
+
+        let tr = TestRepo::new().unwrap();
+        std::fs::create_dir_all(tr.root().join(".firetrail")).unwrap();
+        std::fs::write(
+            tr.root().join(".firetrail/scopes.yaml"),
+            "scopes:\n  - id: all\n    applies_to: [\"**\"]\n  - id: checkout\n    applies_to: [\"apps/checkout/**\"]\n",
+        )
+        .unwrap();
+        let reg = ScopeRegistry::load(tr.root()).unwrap();
+
+        let id = scope_for_path(&reg, Path::new("apps/checkout/main.ts")).map(|s| s.id.clone());
+        assert_eq!(id.as_deref(), Some("checkout")); // last-declared of the two matches
+        let id2 = scope_for_path(&reg, Path::new("README.md")).map(|s| s.id.clone());
+        assert_eq!(id2.as_deref(), Some("all"));
     }
 }

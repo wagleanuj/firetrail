@@ -30,7 +30,8 @@ import { cn } from '@/lib/utils'
 import { useMemorySearch, useMemorySimilar } from './use-memory-query'
 import { KindBadge } from './memory-list'
 import { TrustBadge } from '@/features/trust/trust-badge'
-import { MEMORY_KINDS, SEARCH_MODES, TRUST_STATES } from './types'
+import { ModeSegmented } from '@/features/search/mode-segmented'
+import { MEMORY_KINDS, TRUST_STATES } from './types'
 
 export interface SearchRouteParams {
   q?: string
@@ -297,40 +298,6 @@ export function MemorySearch() {
           ))}
         </ul>
       )}
-    </div>
-  )
-}
-
-function ModeSegmented({
-  value,
-  onChange,
-}: {
-  value: SearchMode
-  onChange: (m: SearchMode) => void
-}) {
-  return (
-    <div
-      role="radiogroup"
-      aria-label="Search mode"
-      className="inline-flex rounded-lg border border-border bg-surface-2 p-1"
-    >
-      {SEARCH_MODES.map((m) => (
-        <button
-          key={m}
-          type="button"
-          role="radio"
-          aria-checked={m === value}
-          onClick={() => onChange(m)}
-          className={cn(
-            'rounded-md px-3 py-1 font-mono text-xs uppercase tracking-wider transition-colors',
-            m === value
-              ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground hover:text-foreground',
-          )}
-        >
-          {m}
-        </button>
-      ))}
     </div>
   )
 }

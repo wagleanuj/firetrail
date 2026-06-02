@@ -33,6 +33,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import type { SearchKind } from '@/api/types/SearchKind'
+import type { SearchMode } from '@/api/types/SearchMode'
 import { Badge } from '@/components/ui/badge'
 import { TrustBadge } from '@/features/trust/trust-badge'
 import {
@@ -40,6 +41,7 @@ import {
   kindBadgeVariant,
   resultTarget,
 } from '@/features/search/result-nav'
+import { ModeSegmented } from '@/features/search/mode-segmented'
 import { useGlobalSearch } from '@/features/search/use-global-search'
 import { cn } from '@/lib/utils'
 
@@ -54,6 +56,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const [query, setQuery] = React.useState('')
   const [debounced, setDebounced] = React.useState('')
   const [kinds, setKinds] = React.useState<SearchKind[]>([])
+  const [mode, setMode] = React.useState<SearchMode>('auto')
 
   // Reset transient state when the palette closes so a stale query never
   // lingers behind the next invocation. Done in the change handler (rather than
@@ -64,6 +67,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         setQuery('')
         setDebounced('')
         setKinds([])
+        setMode('auto')
       }
       onOpenChange(next)
     },
@@ -77,7 +81,9 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   }, [query])
 
   const searchResult = useGlobalSearch(
-    { q: debounced, kinds, limit: 15 },
+    // `auto` is the default and the backend's default, so omit it from the
+    // request to keep the common-case URL clean; only send an explicit mode.
+    { q: debounced, kinds, mode: mode === 'auto' ? undefined : mode, limit: 15 },
     open,
   )
   const hits = searchResult.data?.hits ?? []
@@ -180,6 +186,15 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                   </button>
                 )
               })}
+            </div>
+
+            {/* Search-mode selector. `auto` runs hybrid when embeddings are
+                available; the rest force a single strategy. */}
+            <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+              <span className="font-mono text-[0.625rem] uppercase tracking-wider text-muted-foreground">
+                Mode
+              </span>
+              <ModeSegmented value={mode} onChange={setMode} dense />
             </div>
 
             <Command.List className="max-h-80 overflow-y-auto overflow-x-hidden p-1.5">

@@ -165,6 +165,19 @@ describe('<CommandPalette />', () => {
       expect(lastRequestUrl).toContain('kind=gotcha')
     })
   })
+
+  it('passes the selected search mode to the backend', async () => {
+    renderPalette()
+
+    await typeQuery('frobnicator')
+    await screen.findByText('Fix the frobnicator')
+
+    fireEvent.click(screen.getByTestId('mode-segment-vector'))
+
+    await waitFor(() => {
+      expect(lastRequestUrl).toContain('mode=vector')
+    })
+  })
 })
 
 vi.spyOn(console, 'error').mockImplementation(() => {})

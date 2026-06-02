@@ -200,7 +200,7 @@ pub fn search(
     let mut warnings: Vec<String> = Vec::new();
 
     let mode = input.mode.to_core_mode();
-    let want_embedding = matches!(mode, CoreSearchMode::Hybrid | CoreSearchMode::Vector);
+    let want_embedding = wants_query_embedding(mode);
 
     let embedding = if want_embedding {
         match crate::memory::ensure_daemon_running(ws)? {
@@ -330,6 +330,18 @@ fn resolve_search_mode(
     }
 }
 
+/// Whether a query embedding should be computed for `mode`.
+///
+/// `Auto` is included so the engine's `Auto → Hybrid` path (which fires only
+/// when an embedding is supplied) can surface semantic matches; without an
+/// embedding `Auto` silently collapses to lexical-only.
+fn wants_query_embedding(mode: CoreSearchMode) -> bool {
+    matches!(
+        mode,
+        CoreSearchMode::Hybrid | CoreSearchMode::Vector | CoreSearchMode::Auto
+    )
+}
+
 fn mode_label(mode: CoreSearchMode) -> &'static str {
     match mode {
         CoreSearchMode::Auto => "auto",
@@ -352,4 +364,28 @@ fn serialize_lower<T: serde::Serialize>(v: &T) -> String {
         .ok()
         .and_then(|v| v.as_str().map(str::to_owned))
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod auto_embedding_tests {
+    use super::wants_query_embedding;
+    use ft_search::SearchMode as CoreSearchMode;
+
+    #[test]
+    fn auto_mode_requests_an_embedding() {
+        // Auto must compute a query embedding so the engine can run hybrid
+        // (lexical + vector); otherwise auto can only ever keyword-match.
+        assert!(wants_query_embedding(CoreSearchMode::Auto));
+    }
+
+    #[test]
+    fn hybrid_and_vector_request_an_embedding() {
+        assert!(wants_query_embedding(CoreSearchMode::Hybrid));
+        assert!(wants_query_embedding(CoreSearchMode::Vector));
+    }
+
+    #[test]
+    fn lexical_does_not_request_an_embedding() {
+        assert!(!wants_query_embedding(CoreSearchMode::Lexical));
+    }
 }

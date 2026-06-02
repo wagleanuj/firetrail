@@ -20,7 +20,7 @@ pub fn search(args: &SearchArgs, global: &GlobalOpts) -> Result<CommandOutcome, 
     let mut warnings = ctx.warnings.clone();
 
     let mode = args.mode.to_core();
-    let want_embedding = matches!(mode, SearchMode::Hybrid | SearchMode::Vector);
+    let want_embedding = wants_query_embedding(mode);
 
     // Compute / fetch the query embedding when the requested mode benefits
     // from one. The default `MockEmbedder` is deterministic and good enough
@@ -201,6 +201,18 @@ fn resolve_search_mode(
     }
 }
 
+/// Whether a query embedding should be computed for `mode`.
+///
+/// `Auto` is included so the engine's `Auto → Hybrid` path (which fires only
+/// when an embedding is supplied) can surface semantic matches; without an
+/// embedding `Auto` silently collapses to lexical-only.
+fn wants_query_embedding(mode: SearchMode) -> bool {
+    matches!(
+        mode,
+        SearchMode::Hybrid | SearchMode::Vector | SearchMode::Auto
+    )
+}
+
 fn mode_label(mode: SearchMode) -> String {
     match mode {
         SearchMode::Auto => "auto",
@@ -314,5 +326,21 @@ impl SearchOutcome {
     /// One-line quiet summary.
     pub fn quiet_line(&self) -> String {
         format!("{}: {} hit(s)", self.command, self.hits.len())
+    }
+}
+
+#[cfg(test)]
+mod auto_embedding_tests {
+    use super::wants_query_embedding;
+    use ft_search::SearchMode;
+
+    #[test]
+    fn auto_mode_requests_an_embedding() {
+        assert!(wants_query_embedding(SearchMode::Auto));
+    }
+
+    #[test]
+    fn lexical_does_not_request_an_embedding() {
+        assert!(!wants_query_embedding(SearchMode::Lexical));
     }
 }

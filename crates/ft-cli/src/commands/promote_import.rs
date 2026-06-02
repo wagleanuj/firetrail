@@ -35,6 +35,24 @@ pub fn run(args: &PromoteImportArgs, global: &GlobalOpts) -> Result<CommandOutco
         let id = ctx.resolve_id(raw)?;
         let record = ctx.read_record(&id)?;
         if !is_quarantined(&record) {
+            if args.force {
+                // The record is already canonical. `--force` is documented as
+                // an idempotent no-op in this case (see the `--force` help),
+                // so report success without mutating anything.
+                let mut warnings = warnings;
+                warnings.push(format!(
+                    "record `{}` is already canonical (not quarantined); --force is a no-op",
+                    id.as_str()
+                ));
+                return Ok(CommandOutcome::PromoteImport(PromoteImportOutcome {
+                    command: COMMAND,
+                    action: "noop",
+                    promoted_ids: Vec::new(),
+                    candidates: Vec::new(),
+                    min_inbound_refs: opts.min_inbound_refs,
+                    warnings,
+                }));
+            }
             return Err(CliError::UserError {
                 command: COMMAND.to_string(),
                 message: format!("record `{}` is not quarantined", id.as_str()),

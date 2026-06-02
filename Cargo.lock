@@ -1131,6 +1131,7 @@ version = "0.2.1"
 dependencies = [
  "chrono",
  "ft-core",
+ "ft-history",
  "ft-storage",
  "ft-testkit",
  "serde",

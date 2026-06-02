@@ -90,6 +90,7 @@ pub fn refresh(args: &ImportRefreshArgs, global: &GlobalOpts) -> Result<CommandO
         written: 0,
         failures: Vec::new(),
         records: Vec::new(),
+        imported: Vec::new(),
         note: Some(
             "import refresh is a no-op for LocalMarkdown sources; re-run `firetrail import <kind> <dir>` to re-ingest."
                 .to_string(),
@@ -159,6 +160,10 @@ pub struct ImportOutcome {
     pub failures: Vec<ImportFailureView>,
     /// IDs of records produced (or that would have been produced in dry-run).
     pub records: Vec<String>,
+    /// Per-file detail (id, source path, `parse_confidence`) for every
+    /// successfully-parsed file. Lets callers triage low-confidence imports
+    /// before promotion.
+    pub imported: Vec<ImportedRecordView>,
     /// Optional human-readable note (e.g. for the refresh stub).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
@@ -174,6 +179,17 @@ pub struct ImportFailureView {
     pub path: String,
     /// Reason it failed.
     pub reason: String,
+}
+
+/// Serialised per-file import detail, including the parser's confidence.
+#[derive(Debug, Clone, Serialize)]
+pub struct ImportedRecordView {
+    /// Id of the produced record.
+    pub id: String,
+    /// Source markdown file.
+    pub path: String,
+    /// Parser confidence in `[0.0, 1.0]`.
+    pub parse_confidence: f32,
 }
 
 impl ImportOutcome {
@@ -206,6 +222,15 @@ impl ImportOutcome {
                 .iter()
                 .map(|id| id.as_str().to_string())
                 .collect(),
+            imported: report
+                .imported
+                .iter()
+                .map(|r| ImportedRecordView {
+                    id: r.id.as_str().to_string(),
+                    path: r.path.display().to_string(),
+                    parse_confidence: r.parse_confidence,
+                })
+                .collect(),
             note: None,
             warnings: Vec::new(),
         }
@@ -231,6 +256,13 @@ impl ImportOutcome {
         );
         if let Some(note) = &self.note {
             let _ = writeln!(s, "_note: {note}_");
+        }
+        for r in &self.imported {
+            let _ = writeln!(
+                s,
+                "- `{}` (confidence {:.2}) — {}",
+                r.id, r.parse_confidence, r.path
+            );
         }
         s
     }

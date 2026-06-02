@@ -6,7 +6,8 @@
 //! marker to the record's `history`.
 
 use chrono::Utc;
-use ft_core::{HistoryEntry, Identity, Record, RecordId, state_hash};
+use ft_core::{Identity, Record, RecordId};
+use ft_history::{HistoryDraft, HistoryEntryKind, append_history};
 use ft_storage::{Storage, StorageFilter};
 
 use crate::error::ImportError;
@@ -108,18 +109,21 @@ pub fn promotion_candidates(
 
 /// Promote a quarantined record into the canonical corpus.
 ///
-/// Strips the `quarantine=true` label, appends a `HistoryEntry` whose
-/// `ops_summary` carries the `promote-import: <source>` marker (per
-/// ADR-0017 audit requirements; reusing `HistoryEntry` rather than extending
-/// `HistoryEntryKind` keeps the change non-breaking — the dedicated kind
-/// can be added in a follow-up), and writes the record back to `storage`.
+/// Strips the `quarantine=true` label and appends an audit `HistoryEntry`
+/// whose `ops_summary` carries the `promote-import: <source>` marker (per
+/// ADR-0017). The entry is appended through [`ft_history::append_history`] —
+/// the single sanctioned writer of the history chain — so the resulting
+/// record satisfies the chain invariants (genesis `from_hash`,
+/// `prev_state_hash`, and the tail `to_hash`) and passes
+/// [`ft_history::verify_chain`]. Imported records have no prior history, so
+/// the promotion entry becomes their genesis entry with an empty `from_hash`.
 ///
 /// # Errors
 ///
 /// - [`ImportError::NotQuarantined`] if the record is not currently
 ///   quarantined.
-/// - [`ImportError::Storage`] / [`ImportError::Core`] on I/O or hashing
-///   failures.
+/// - [`ImportError::Storage`] / [`ImportError::Core`] / [`ImportError::History`]
+///   on I/O, hashing, or chain-append failures.
 pub fn promote_record(storage: &dyn Storage, id: &RecordId) -> Result<(), ImportError> {
     let mut record = storage.read(id)?;
     if !is_quarantined(&record) {
@@ -134,48 +138,33 @@ pub fn promote_record(storage: &dyn Storage, id: &RecordId) -> Result<(), Import
         .find(|l| l.key == IMPORT_SOURCE_LABEL_KEY)
         .map_or_else(|| "unknown".to_string(), |l| l.value.clone());
 
-    // Remove the quarantine label.
+    // Apply the body-level change (clear quarantine) *before* appending the
+    // history entry — `append_history` hashes the post-change record.
     record
         .envelope
         .labels
         .retain(|l| l.key != QUARANTINE_LABEL_KEY);
 
-    // Append an audit entry. `HistoryEntry` carries no dedicated kind, so we
-    // encode the marker into `ops_summary` directly. `from_hash` references
-    // the current envelope hash so the audit is anchored to the
-    // pre-promotion state.
-    let from_hash = record.envelope.state_hash.clone();
     let actor = record
         .envelope
         .owner
         .clone()
         .unwrap_or_else(|| record.envelope.created_by.clone());
-    let entry = HistoryEntry {
+
+    // Delegate chain maintenance to ft-history so genesis/link/tail invariants
+    // stay correct. `HistoryEntry` has no dedicated kind field; the marker is
+    // carried in `ops_summary` and the entry is classified as an `Update`.
+    let draft = HistoryDraft {
         merged_via_pr: None,
         timestamp: Utc::now(),
         primary_actor: actor,
         contributors: Vec::new(),
         ops_summary: vec![format!("promote-import: {source_tag}")],
         ops_count: 1,
-        from_hash,
-        to_hash: String::new(),
+        kind: HistoryEntryKind::Update,
         transition: None,
     };
-    record.envelope.history.push(entry);
-
-    // Re-hash. The just-pushed `to_hash` field is left empty here; populating
-    // it with the open-tail hash is the responsibility of `ft-history`'s
-    // chain-aware path, which we do not depend on here to keep the crate
-    // boundary thin. Downstream `ft-history` will detect and repair the open
-    // tail on its next pass.
-    record.envelope.state_hash.clear();
-    let new_hash = state_hash(&record)?;
-    if let Some(tail) = record.envelope.history.last_mut() {
-        tail.to_hash.clone_from(&new_hash);
-    }
-    // Re-hash a second time so envelope hash includes the populated to_hash.
-    record.envelope.state_hash.clear();
-    record.envelope.state_hash = state_hash(&record)?;
+    append_history(&mut record, draft)?;
 
     storage.write(&record)?;
     Ok(())
@@ -196,7 +185,7 @@ mod tests {
     use crate::convert::{BuilderOpts, parsed_incident_to_record};
     use crate::parse::parse_incident_md;
     use crate::source::ImportSource;
-    use ft_core::{Label, RecordBody, Relation, RelationKind};
+    use ft_core::{Label, RecordBody, Relation, RelationKind, state_hash};
     use ft_storage::EmbeddedStorage;
     use ft_testkit::{TestRepo, make_task};
 
@@ -262,9 +251,31 @@ mod tests {
         // History entry recorded.
         assert!(!back.envelope.history.is_empty());
         let tail = back.envelope.history.last().unwrap();
-        assert!(tail.ops_summary[0].starts_with("promote-import:"));
+        // `append_history` prefixes the entry kind, so the marker is embedded
+        // rather than leading: e.g. "update: promote-import: <source>".
+        assert!(
+            tail.ops_summary[0].contains("promote-import:"),
+            "audit marker missing: {:?}",
+            tail.ops_summary
+        );
         // Body still intact.
         assert!(matches!(back.body, RecordBody::Incident(_)));
+    }
+
+    #[test]
+    fn promoted_record_passes_chain_verification() {
+        let tr = TestRepo::new().unwrap();
+        let storage = EmbeddedStorage::open(tr.root()).unwrap();
+        let q_id = fixture_quarantined(&storage);
+
+        promote_record(&storage, &q_id).unwrap();
+
+        let back = storage.read(&q_id).unwrap();
+        // The promotion audit entry is the record's first history entry, so it
+        // must satisfy the genesis invariant (empty from_hash) and the rest of
+        // the chain contract enforced by ft-history.
+        ft_history::verify_chain(&back)
+            .expect("promoted record must pass ft-history chain verification");
     }
 
     #[test]

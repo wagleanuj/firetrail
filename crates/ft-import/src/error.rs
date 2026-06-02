@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use ft_core::CoreError;
+use ft_history::HistoryError;
 use ft_storage::StorageError;
 
 /// Errors returned by `ft-import` public functions.
@@ -24,6 +25,11 @@ pub enum ImportError {
     /// Wrapped `ft-storage` failure during import or promotion.
     #[error("storage: {0}")]
     Storage(#[from] StorageError),
+
+    /// Wrapped `ft-history` failure while maintaining a record's history
+    /// chain (e.g. appending the promotion audit entry).
+    #[error("history: {0}")]
+    History(#[from] HistoryError),
 
     /// I/O while walking an import directory or reading a file.
     #[error("io reading {path}: {source}")]

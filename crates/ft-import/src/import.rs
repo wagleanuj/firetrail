@@ -51,6 +51,21 @@ impl ImportOptions {
     }
 }
 
+/// One successfully-parsed file in an [`import_dir`] invocation, carrying the
+/// per-file `parse_confidence` so callers can triage low-quality imports
+/// before promotion.
+#[derive(Debug, Clone)]
+pub struct ImportedRecord {
+    /// The id of the produced record (written, or that would be written in
+    /// dry-run mode).
+    pub id: RecordId,
+    /// Source markdown file the record was parsed from.
+    pub path: PathBuf,
+    /// Parser confidence in `[0.0, 1.0]` — the fraction of the expected
+    /// structural sections that were found in the source file.
+    pub parse_confidence: f32,
+}
+
 /// Summary of an [`import_dir`] invocation.
 #[derive(Debug, Default)]
 pub struct ImportReport {
@@ -64,6 +79,9 @@ pub struct ImportReport {
     pub failures: Vec<(PathBuf, String)>,
     /// IDs of records produced (written or that would have been written).
     pub records: Vec<RecordId>,
+    /// Per-file detail (id, source path, `parse_confidence`) for every
+    /// successfully-parsed file, in walk order. Parallel to [`Self::records`].
+    pub imported: Vec<ImportedRecord>,
 }
 
 /// Import every `*.md` file under `dir`.
@@ -112,9 +130,14 @@ pub fn import_dir(
         report.files_seen += 1;
 
         match import_one(storage, path, kind, opts) {
-            Ok((id, wrote)) => {
+            Ok((id, parse_confidence, wrote)) => {
                 report.parsed += 1;
-                report.records.push(id);
+                report.records.push(id.clone());
+                report.imported.push(ImportedRecord {
+                    id,
+                    path: path.to_path_buf(),
+                    parse_confidence,
+                });
                 if wrote {
                     report.written += 1;
                 }
@@ -132,7 +155,7 @@ fn import_one(
     path: &Path,
     kind: ImportKind,
     opts: &ImportOptions,
-) -> Result<(RecordId, bool), ImportError> {
+) -> Result<(RecordId, f32, bool), ImportError> {
     let content = fs::read_to_string(path).map_err(|source| ImportError::Io {
         path: path.to_path_buf(),
         source,
@@ -140,18 +163,27 @@ fn import_one(
     let source = ImportSource::local_markdown(path);
     let bopts = BuilderOpts::new(opts.created_by.clone(), source.clone());
 
-    let record: Record = match kind {
+    let (record, parse_confidence): (Record, f32) = match kind {
         ImportKind::Incidents => {
             let parsed = parse_incident_md(&content, &source)?;
-            parsed_incident_to_record(&parsed, &bopts)?
+            (
+                parsed_incident_to_record(&parsed, &bopts)?,
+                parsed.parse_confidence,
+            )
         }
         ImportKind::Adrs => {
             let parsed = parse_adr_md(&content, &source)?;
-            parsed_adr_to_record(&parsed, &bopts)?
+            (
+                parsed_adr_to_record(&parsed, &bopts)?,
+                parsed.parse_confidence,
+            )
         }
         ImportKind::Runbooks => {
             let parsed = parse_runbook_md(&content, &source)?;
-            parsed_runbook_to_record(&parsed, &bopts)?
+            (
+                parsed_runbook_to_record(&parsed, &bopts)?,
+                parsed.parse_confidence,
+            )
         }
     };
 
@@ -162,7 +194,7 @@ fn import_one(
     } else {
         false
     };
-    Ok((id, wrote))
+    Ok((id, parse_confidence, wrote))
 }
 
 #[cfg(test)]
@@ -222,6 +254,43 @@ mod tests {
             let r = storage.read(id).unwrap();
             assert!(is_quarantined(&r));
         }
+    }
+
+    #[test]
+    fn import_dir_reports_parse_confidence_per_file() {
+        let tr = TestRepo::new().unwrap();
+        let storage = EmbeddedStorage::open(tr.root()).unwrap();
+        let dir = tr.root().join("imports");
+        fs::create_dir_all(&dir).unwrap();
+        // INCIDENT_A has all five canonical sections (confidence 1.0);
+        // INCIDENT_C has only Symptoms (1/5 = 0.2).
+        write_file(&dir, "full.md", INCIDENT_A);
+        write_file(&dir, "thin.md", INCIDENT_C);
+
+        let opts = ImportOptions::new(Identity::new("imp@firetrail.test").unwrap());
+        let report = import_dir(&storage, &dir, ImportKind::Incidents, &opts).unwrap();
+
+        assert_eq!(report.imported.len(), 2, "per-file detail must be reported");
+        let full = report
+            .imported
+            .iter()
+            .find(|r| r.path.ends_with("full.md"))
+            .expect("full.md should be reported");
+        assert!(
+            (full.parse_confidence - 1.0).abs() < f32::EPSILON,
+            "full incident confidence should be 1.0, got {}",
+            full.parse_confidence
+        );
+        let thin = report
+            .imported
+            .iter()
+            .find(|r| r.path.ends_with("thin.md"))
+            .expect("thin.md should be reported");
+        assert!(
+            (thin.parse_confidence - 0.2).abs() < 1e-6,
+            "thin incident confidence should be 0.2, got {}",
+            thin.parse_confidence
+        );
     }
 
     #[test]

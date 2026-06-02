@@ -260,6 +260,119 @@ fn promote_import_listing_then_targeted_promote() {
     assert!(v["data"]["candidates"].as_array().unwrap().is_empty());
 }
 
+#[test]
+fn import_apply_reports_parse_confidence() {
+    let tr = fresh_repo();
+    // INCIDENT_A has Symptoms + Root Cause + Resolution = 3 of 5 canonical
+    // sections, so its parse_confidence is 0.6 — a partial score proves the
+    // real computed value is surfaced, not a placeholder.
+    let dir = stage_dir(tr.root(), "imp-conf", &[("a.md", INCIDENT_A)]);
+    let out = run_firetrail(
+        tr.root(),
+        &[
+            "--json",
+            "import",
+            "incidents",
+            dir.to_str().unwrap(),
+            "--apply",
+        ],
+    );
+    assert!(out.success(), "{}", out.stderr);
+    let v = parse_json(&out);
+    let imported = v["data"]["imported"]
+        .as_array()
+        .expect("import output must carry per-file `imported` with parse_confidence");
+    assert_eq!(imported.len(), 1);
+    let conf = imported[0]["parse_confidence"]
+        .as_f64()
+        .expect("each imported file must report parse_confidence");
+    assert!(
+        (conf - 0.6).abs() < 1e-6,
+        "INCIDENT_A (3/5 sections) should report 0.6, got {conf}"
+    );
+}
+
+#[test]
+fn promoted_record_passes_verify() {
+    let tr = fresh_repo();
+    let dir = stage_dir(tr.root(), "imp-verify", &[("a.md", INCIDENT_A)]);
+    let out = run_firetrail(
+        tr.root(),
+        &[
+            "--json",
+            "import",
+            "incidents",
+            dir.to_str().unwrap(),
+            "--apply",
+        ],
+    );
+    assert!(out.success(), "{}", out.stderr);
+    let id = parse_json(&out)["data"]["records"][0]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // `--force` overrides the inbound-ref threshold; no canonical references
+    // are needed to exercise the promotion path.
+    let prom = run_firetrail(tr.root(), &["--json", "promote-import", &id, "--force"]);
+    assert!(prom.success(), "{}", prom.stderr);
+
+    // The promoted record must pass chain verification. Before the fix, the
+    // promotion audit entry was a genesis entry with a non-empty from_hash,
+    // which `verify` rejected.
+    let verify = run_firetrail(tr.root(), &["--json", "verify"]);
+    assert!(
+        verify.success(),
+        "verify must pass after promotion\nstdout={}\nstderr={}",
+        verify.stdout,
+        verify.stderr
+    );
+}
+
+#[test]
+fn promote_import_force_on_already_promoted_is_noop() {
+    let tr = fresh_repo();
+    let dir = stage_dir(tr.root(), "imp-force-noop", &[("a.md", INCIDENT_A)]);
+    let out = run_firetrail(
+        tr.root(),
+        &[
+            "--json",
+            "import",
+            "incidents",
+            dir.to_str().unwrap(),
+            "--apply",
+        ],
+    );
+    assert!(out.success(), "{}", out.stderr);
+    let id = parse_json(&out)["data"]["records"][0]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Promote once with --force.
+    let first = run_firetrail(tr.root(), &["--json", "promote-import", &id, "--force"]);
+    assert!(
+        first.success(),
+        "first force-promote failed: {}",
+        first.stderr
+    );
+
+    // `--help` documents `--force` on a non-quarantined record as a no-op, so
+    // a second force-promote must succeed rather than exit non-zero.
+    let second = run_firetrail(tr.root(), &["--json", "promote-import", &id, "--force"]);
+    assert!(
+        second.success(),
+        "force-promote on an already-promoted record should be a no-op, got: {}",
+        second.stderr
+    );
+    let v = parse_json(&second);
+    assert_eq!(v["data"]["action"], "noop");
+    assert!(
+        v["data"]["promoted_ids"].as_array().unwrap().is_empty(),
+        "no-op must promote nothing"
+    );
+}
+
 // Jira/Confluence adapters are deliberately not in firetrail's surface — the
 // calling agent fetches via its own MCP server and pipes markdown into
 // `firetrail import …`. See ADR-0014.

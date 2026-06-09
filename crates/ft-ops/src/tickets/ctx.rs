@@ -16,7 +16,7 @@ use ft_history::{HistoryDraft, HistoryEntryKind, append_history};
 use ft_identity::load_registry;
 use ft_index::Index;
 use ft_search::SearchEngine;
-use ft_storage::{EmbeddedStorage, Storage as _, StorageFilter};
+use ft_storage::{EmbeddedStorage, ExternalStorage, Storage as _, StorageFilter};
 
 use crate::error::OpsError;
 use crate::identity::Identity;
@@ -25,7 +25,13 @@ use crate::workspace::Workspace;
 /// Internal bundle of resources every ticket op needs.
 pub(crate) struct TicketCtx<'a> {
     pub ws: &'a Workspace,
+    /// Record store. In external mode this is rooted on the data-repo clone,
+    /// not the host workspace, so reads/lists see the records the data repo
+    /// holds (firetrail-zkme).
     pub storage: EmbeddedStorage,
+    /// External-mode handle. `Some` when storage mode is external; writes are
+    /// routed through it so they auto-commit into the data-repo clone.
+    pub external: Option<ExternalStorage>,
     pub index: Index,
     /// Stable name used in lockfiles + history summaries.
     pub op: &'static str,
@@ -43,8 +49,15 @@ impl<'a> TicketCtx<'a> {
         identity: &Identity,
         op: &'static str,
     ) -> Result<Self, OpsError> {
-        let storage = EmbeddedStorage::open(&ws.root)
+        let (storage, external) = ft_storage::resolve_workspace_storage(&ws.root)
             .map_err(|e| OpsError::Internal(anyhow::anyhow!("open storage: {e}")))?;
+        if let Some(ext) = &external {
+            // Best-effort fast-forward of the clone so the read path reflects
+            // records other agents have pushed. Offline / diverged is non-fatal.
+            if let Err(e) = ext.pull() {
+                tracing::warn!(error = %e, op = op, "external storage auto-pull failed");
+            }
+        }
 
         let db_path = ws.index_db_path();
         let needs_rebuild = !db_path.exists();
@@ -81,6 +94,7 @@ impl<'a> TicketCtx<'a> {
         Ok(Self {
             ws,
             storage,
+            external,
             index,
             op,
             actor,
@@ -174,10 +188,18 @@ impl<'a> TicketCtx<'a> {
             state_hash(record).map_err(|e| OpsError::Internal(anyhow::anyhow!("hash: {e}")))?;
         record.envelope.state_hash = new_hash;
 
-        let path = self
-            .storage
-            .write(record)
-            .map_err(|e| OpsError::Internal(anyhow::anyhow!("write: {e}")))?;
+        // In external mode route the write through ExternalStorage so it is
+        // auto-committed into the data-repo clone. Both views (the embedded
+        // view rooted on the clone path, and the external handle) back the
+        // same files (firetrail-zkme).
+        let path = if let Some(ext) = &self.external {
+            ext.write(record)
+                .map_err(|e| OpsError::Internal(anyhow::anyhow!("write (external): {e}")))?
+        } else {
+            self.storage
+                .write(record)
+                .map_err(|e| OpsError::Internal(anyhow::anyhow!("write: {e}")))?
+        };
 
         self.index
             .refresh(&self.storage, std::slice::from_ref(&path), &[])

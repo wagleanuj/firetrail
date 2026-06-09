@@ -10,7 +10,7 @@ use chrono::Utc;
 use ft_index::Index;
 use ft_scope::ScopeRegistry;
 use ft_search::{IndexDoc, SearchEngine};
-use ft_storage::{EmbeddedStorage, Storage as _, StorageFilter};
+use ft_storage::{Storage as _, StorageFilter};
 use serde::Serialize;
 
 use crate::cli::GlobalOpts;
@@ -24,8 +24,13 @@ const CMD_REFRESH: &str = "index refresh";
 /// `firetrail index rebuild`
 pub fn rebuild(global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
     let ws = workspace::require_initialised(CMD_REBUILD, global.workspace.as_deref())?;
-    let storage =
-        EmbeddedStorage::open(&ws.root).map_err(|e| CliError::internal(CMD_REBUILD, e))?;
+    // In external mode the records live in the data-repo clone, not the host
+    // repo — rebuild from there or the index would be wiped empty (firetrail-zkme).
+    let (storage, external) = ft_storage::resolve_workspace_storage(&ws.root)
+        .map_err(|e| CliError::internal(CMD_REBUILD, e))?;
+    if let Some(ext) = &external {
+        let _ = ext.pull();
+    }
     let mut index = Index::open(&ws.root).map_err(|e| CliError::internal(CMD_REBUILD, e))?;
     let report = index
         .rebuild_from(&storage)
@@ -66,8 +71,12 @@ pub fn rebuild(global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
 /// `firetrail index refresh`
 pub fn refresh(global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
     let ws = workspace::require_initialised(CMD_REFRESH, global.workspace.as_deref())?;
-    let storage =
-        EmbeddedStorage::open(&ws.root).map_err(|e| CliError::internal(CMD_REFRESH, e))?;
+    // External mode: read records from the data-repo clone (firetrail-zkme).
+    let (storage, external) = ft_storage::resolve_workspace_storage(&ws.root)
+        .map_err(|e| CliError::internal(CMD_REFRESH, e))?;
+    if let Some(ext) = &external {
+        let _ = ext.pull();
+    }
     let mut index = Index::open(&ws.root).map_err(|e| CliError::internal(CMD_REFRESH, e))?;
 
     // For M3, a "refresh" is a full re-scan with `refresh()` semantics —

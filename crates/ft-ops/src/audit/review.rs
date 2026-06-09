@@ -148,7 +148,8 @@ pub fn review(
     input: ReviewInput,
     _events: &EventBus,
 ) -> Result<ReviewOutput, OpsError> {
-    let storage = EmbeddedStorage::open(&ws.root)
+    // External mode reads from the data-repo clone, not the host repo (firetrail-zkme).
+    let (storage, _external) = ft_storage::resolve_workspace_storage(&ws.root)
         .map_err(|e| OpsError::Internal(anyhow::anyhow!("open storage: {e}")))?;
     let id = resolve_id(&storage, &input.id)?;
     let record = storage.read(&id).map_err(|e| match e {

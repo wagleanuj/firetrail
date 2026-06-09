@@ -8,7 +8,7 @@ use std::path::Path;
 
 use ft_core::Record;
 use ft_history::verify_chain;
-use ft_storage::{EmbeddedStorage, Storage as _};
+use ft_storage::Storage as _;
 use serde::{Deserialize, Serialize};
 
 use crate::error::OpsError;
@@ -71,7 +71,8 @@ pub fn verify(
     input: VerifyInput,
     events: &EventBus,
 ) -> Result<VerifyOutput, OpsError> {
-    let storage = EmbeddedStorage::open(&ws.root)
+    // External mode reads from the data-repo clone, not the host repo (firetrail-zkme).
+    let (storage, _external) = ft_storage::resolve_workspace_storage(&ws.root)
         .map_err(|e| OpsError::Internal(anyhow::anyhow!("open storage: {e}")))?;
     let mut results: Vec<VerifyResult> = Vec::new();
     let mut failures = 0usize;

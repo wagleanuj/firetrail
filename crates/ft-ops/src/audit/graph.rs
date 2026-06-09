@@ -138,7 +138,8 @@ pub fn graph(
     input: GraphInput,
     _events: &EventBus,
 ) -> Result<GraphOutput, OpsError> {
-    let storage = EmbeddedStorage::open(&ws.root)
+    // External mode reads from the data-repo clone, not the host repo (firetrail-zkme).
+    let (storage, _external) = ft_storage::resolve_workspace_storage(&ws.root)
         .map_err(|e| OpsError::Internal(anyhow::anyhow!("open storage: {e}")))?;
     let mut index = Index::open(&ws.root)
         .map_err(|e| OpsError::Internal(anyhow::anyhow!("open index: {e}")))?;

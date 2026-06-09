@@ -450,16 +450,23 @@ fn daemon_foreground_runs_and_status_reports_running() {
         .spawn()
         .expect("spawn daemon");
 
-    // Wait until the socket appears (or time out).
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while Instant::now() < deadline && !socket.exists() {
+    // Poll the real readiness condition — the daemon accepting connections —
+    // not just the socket file's existence. The file can appear a moment
+    // before the accept loop is live (a one-shot status check there races and
+    // flakes), and daemon startup initializes the embedding engine, which can
+    // take several seconds under parallel CPU load. Mirrors the polling the
+    // sibling `create_with_running_daemon_*` test already does.
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while Instant::now() < deadline && daemon::status(&socket) != DaemonStatus::Running {
         thread::sleep(Duration::from_millis(50));
     }
-    assert!(socket.exists(), "daemon did not create socket in time");
-
-    // Round-trip the daemon via ft_embed directly using the test socket.
     let status = daemon::status(&socket);
-    assert_eq!(status, DaemonStatus::Running, "daemon should be running");
+    assert_eq!(
+        status,
+        DaemonStatus::Running,
+        "daemon did not become Running in time (socket exists: {})",
+        socket.exists()
+    );
 
     // Tear down.
     let _ = child.kill();
@@ -500,7 +507,9 @@ fn create_with_running_daemon_dispatches_embed_under_one_second() {
     // per firetrail-tij / ADR-0007. Read it back from `daemon status --json`
     // so the test does not have to recompute the repo hash.
     let socket = {
-        let deadline = Instant::now() + Duration::from_secs(5);
+        // Generous deadline: daemon startup initializes the embedding engine,
+        // which can take several seconds under parallel CPU load.
+        let deadline = Instant::now() + Duration::from_secs(30);
         let mut resolved = None;
         while Instant::now() < deadline {
             let s = run_firetrail(&root, &["daemon", "status", "--json"]);
@@ -515,7 +524,7 @@ fn create_with_running_daemon_dispatches_embed_under_one_second() {
         }
         resolved.expect("daemon status reported a socket path")
     };
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + Duration::from_secs(30);
     while Instant::now() < deadline && daemon::status(&socket) != DaemonStatus::Running {
         thread::sleep(Duration::from_millis(50));
     }

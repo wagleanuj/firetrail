@@ -134,6 +134,39 @@ pub fn open_for_workspace(workspace_root: &Path) -> Result<Box<dyn Storage>, Sto
     }
 }
 
+/// Resolve a workspace into a record-backing [`EmbeddedStorage`] plus the
+/// [`ExternalStorage`] handle when external mode is active.
+///
+/// In embedded mode the storage is rooted on the workspace and the second
+/// element is `None`. In external mode the storage is rooted on the data-repo
+/// clone (`.firetrail/cache/data-repo`) — so reads/lists see the records the
+/// data repo holds — and the [`ExternalStorage`] is `Some`, letting callers
+/// route writes through it (auto-commit to the clone) and pull/push.
+///
+/// This is the single resolution every caller — ft-cli's `WorkCtx`, the ft-ops
+/// contexts behind the web UI, and `index rebuild` — should use so they never
+/// diverge on where records actually live. Reading from the wrong location is
+/// the bug class this helper exists to prevent (firetrail-zkme).
+///
+/// # Errors
+///
+/// - [`StorageError::NotInitialized`] if the config file is missing.
+/// - [`StorageError::Invalid`] if the YAML is malformed.
+/// - Any error returned by the underlying backend's `open` (including the
+///   clone/fetch in external mode).
+pub fn resolve_workspace_storage(
+    workspace_root: &Path,
+) -> Result<(EmbeddedStorage, Option<ExternalStorage>), StorageError> {
+    match StorageMode::from_workspace(workspace_root)? {
+        StorageMode::Embedded { root } => Ok((EmbeddedStorage::open(root)?, None)),
+        StorageMode::External { config, .. } => {
+            let ext = ExternalStorage::open(workspace_root, &config)?;
+            let storage = EmbeddedStorage::open(ext.clone_path())?;
+            Ok((storage, Some(ext)))
+        }
+    }
+}
+
 // ── On-disk YAML shape ──────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize, Default)]

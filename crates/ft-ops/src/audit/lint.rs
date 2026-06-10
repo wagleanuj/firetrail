@@ -10,7 +10,7 @@ use chrono::Utc;
 use ft_core::{Record, RecordBody, Status, TrustState};
 use ft_history::verify_chain;
 use ft_pr::{PrValidatorOptions, default_secret_patterns};
-use ft_storage::{EmbeddedStorage, Storage as _};
+use ft_storage::Storage as _;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
@@ -88,7 +88,8 @@ pub fn lint(
     input: LintInput,
     events: &EventBus,
 ) -> Result<LintOutput, OpsError> {
-    let storage = EmbeddedStorage::open(&ws.root)
+    // External mode reads from the data-repo clone, not the host repo (firetrail-zkme).
+    let (storage, _external) = ft_storage::resolve_workspace_storage(&ws.root)
         .map_err(|e| OpsError::Internal(anyhow::anyhow!("open storage: {e}")))?;
 
     let emit_fix_hints = input.fix_hints;

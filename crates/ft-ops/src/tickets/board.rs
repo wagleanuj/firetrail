@@ -496,4 +496,76 @@ mod tests {
         assert_eq!(out.epics.len(), 1);
         assert_eq!(out.epics[0].id, e_id);
     }
+
+    /// External storage mode: records the CLI writes into the data repo must
+    /// be visible to the ops/UI read path. Regression for firetrail-zkme —
+    /// ft-ops opened `EmbeddedStorage::open(&ws.root)` unconditionally, so in
+    /// external mode it read the (empty) host repo instead of the data-repo
+    /// clone and the board / detail view showed nothing.
+    fn external_fixture() -> (TestRepo, TestRepo, Workspace, ft_storage::ExternalConfig) {
+        // The data repo: a plain git repo with an initial commit, cloneable
+        // over file://.
+        let data = TestRepo::new().expect("data repo");
+        let ws_repo = TestRepo::new().expect("workspace repo");
+        let firetrail = ws_repo.firetrail_dir();
+        std::fs::create_dir_all(&firetrail).expect("mkdir .firetrail");
+        let url = format!("file://{}", data.root().display());
+        std::fs::write(
+            firetrail.join("config.yml"),
+            format!(
+                "schema_version: 1\n\
+                 storage:\n  mode: external\n  data_repo_url: {url}\n  \
+                 default_branch: main\n  sync_policy: loose\n\
+                 identity:\n  strict: false\n"
+            ),
+        )
+        .expect("write config.yml");
+        let ws = Workspace::open(ws_repo.root()).expect("open workspace");
+        let config = ft_storage::ExternalConfig {
+            data_repo_url: url,
+            default_branch: "main".to_string(),
+            sync_policy: ft_storage::SyncPolicy::Loose,
+        };
+        (data, ws_repo, ws, config)
+    }
+
+    #[test]
+    fn external_mode_board_and_show_read_from_data_repo() {
+        use ft_storage::{ExternalStorage, Storage as _};
+
+        let (_data, _ws_repo, ws, config) = external_fixture();
+
+        // Simulate the CLI / another agent: write a task straight into the
+        // data-repo clone via the external backend.
+        let ext = ExternalStorage::open(&ws.root, &config).expect("open external storage");
+        let task = ft_testkit::make_task()
+            .title("lives in the data repo")
+            .build();
+        let id = task.envelope.id.clone();
+        ext.write(&task).expect("seed task into data repo");
+
+        // Drop any index so the next ops open rebuilds from storage — the
+        // natural "fresh UI" state that surfaced the bug.
+        let _ = std::fs::remove_file(ws.index_db_path());
+
+        // The UI read path: the board must surface the data-repo record.
+        let out = board(&ws, &alice(), BoardInput::default(), &bus()).expect("board");
+        let total = out.todo.len() + out.in_progress.len() + out.review.len() + out.done.len();
+        assert_eq!(
+            total, 1,
+            "board must show the task that lives in the external data repo"
+        );
+
+        // The detail view (reads storage directly) must find it too.
+        let shown = tickets::show(
+            &ws,
+            &alice(),
+            tickets::ShowInput {
+                id: id.as_str().to_string(),
+            },
+            &bus(),
+        )
+        .expect("show must find the data-repo record");
+        assert_eq!(shown.record.envelope.id, id);
+    }
 }

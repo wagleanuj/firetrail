@@ -43,7 +43,7 @@ pub use change::{
 pub use compact::{
     CompactRunReport, SkipReason, SkippedPath, compact_changed_in_pr, compact_record,
 };
-pub use config::{StorageMode, open_for_workspace};
+pub use config::{StorageMode, open_for_workspace, resolve_workspace_storage};
 pub use embedded::EmbeddedStorage;
 pub use error::StorageError;
 pub use external::{

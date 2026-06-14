@@ -8,7 +8,7 @@
  * - `?similarTo=<id>` deep-link short-circuits into `/api/memory/similar/:id`.
  * - Debounce: typing pauses 300ms before firing the query.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { AlertTriangle, Search as SearchIcon } from 'lucide-react'
 import type { MemoryKind } from '@/api/types/MemoryKind'
@@ -28,6 +28,7 @@ import {
 import { PageHeader } from '@/components/page-header'
 import { cn } from '@/lib/utils'
 import { useMemorySearch, useMemorySimilar } from './use-memory-query'
+import { resultTarget, type ResultTarget } from '@/features/search/result-nav'
 import { KindBadge } from './memory-list'
 import { TrustBadge } from '@/features/trust/trust-badge'
 import { ModeSegmented } from '@/features/search/mode-segmented'
@@ -262,9 +263,8 @@ export function MemorySearch() {
         <ul data-testid="search-results" className="space-y-2.5">
           {data.hits.map((hit) => (
             <li key={hit.id}>
-              <Link
-                to="/memory/$id"
-                params={{ id: hit.id }}
+              <HitLink
+                target={resultTarget(hit.kind, hit.id)}
                 className={cn(
                   'block rounded-lg border border-border bg-card p-3 shadow-elevation-1 transition-colors',
                   'hover:border-primary/40 hover:bg-surface-2',
@@ -293,13 +293,64 @@ export function MemorySearch() {
                 <div className="mt-2">
                   <TrustBadge state={hit.trust} />
                 </div>
-              </Link>
+              </HitLink>
             </li>
           ))}
         </ul>
       )}
     </div>
   )
+}
+
+/**
+ * Render a hit card as a link to its kind-appropriate detail route. Falls back
+ * to a non-navigable card when the hit cannot be linked (e.g. a malformed
+ * synthetic doc id) so a dead-end click can never 404.
+ *
+ * The per-route `switch` keeps TanStack Router's typed `to`/`params` happy —
+ * a union `to` would erase the param type.
+ */
+function HitLink({
+  target,
+  className,
+  children,
+}: {
+  target: ResultTarget | null
+  className: string
+  children: ReactNode
+}) {
+  if (!target) {
+    return <div className={cn(className, 'cursor-default')}>{children}</div>
+  }
+  const params = target.params as { id: string }
+  switch (target.to) {
+    case '/tickets/$id':
+      return (
+        <Link to="/tickets/$id" params={params} className={className}>
+          {children}
+        </Link>
+      )
+    case '/scope/$id':
+      return (
+        <Link to="/scope/$id" params={params} className={className}>
+          {children}
+        </Link>
+      )
+    case '/identity/$id':
+      return (
+        <Link to="/identity/$id" params={params} className={className}>
+          {children}
+        </Link>
+      )
+    case '/memory/$id':
+      return (
+        <Link to="/memory/$id" params={params} className={className}>
+          {children}
+        </Link>
+      )
+    default:
+      return <div className={cn(className, 'cursor-default')}>{children}</div>
+  }
 }
 
 function ResultsSkeleton() {

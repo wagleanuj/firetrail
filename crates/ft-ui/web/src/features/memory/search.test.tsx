@@ -53,6 +53,16 @@ function renderSearch(initialPath: string) {
     path: '/memory/$id',
     component: () => <div>memory detail</div>,
   })
+  const ticketIdRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/tickets/$id',
+    component: () => <div>ticket detail</div>,
+  })
+  const scopeIdRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/scope/$id',
+    component: () => <div>scope detail</div>,
+  })
   const searchRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/memory/search',
@@ -60,7 +70,12 @@ function renderSearch(initialPath: string) {
     validateSearch: (s: Record<string, unknown>) => s as Record<string, unknown>,
   })
   const router = createRouter({
-    routeTree: rootRoute.addChildren([searchRoute, memoryIdRoute]),
+    routeTree: rootRoute.addChildren([
+      searchRoute,
+      memoryIdRoute,
+      ticketIdRoute,
+      scopeIdRoute,
+    ]),
     history: createMemoryHistory({ initialEntries: [initialPath] }),
   })
   return render(
@@ -88,6 +103,34 @@ describe('<MemorySearch />', () => {
     expect(
       screen.getByText(/embedder unavailable; falling back to lexical/i),
     ).toBeInTheDocument()
+  })
+
+  it('links an audit synthetic hit to its underlying record, not /memory/<audit-id> (firetrail-g5n6)', async () => {
+    const task = `TASK-${'a'.repeat(64)}`
+    server.use(
+      http.get('/api/memory/search', () =>
+        HttpResponse.json({
+          mode: 'lexical',
+          hits: [
+            {
+              id: `audit:${task}#h0`,
+              kind: 'audit',
+              title: 'task created: Fix login',
+              score: 0.9,
+              trust: 'reviewed',
+              mode: 'lexical',
+              quarantine: false,
+            },
+          ],
+          warnings: [],
+        }),
+      ),
+    )
+    renderSearch('/memory/search?q=audit')
+    const link = await screen.findByRole('link', { name: /task created: Fix login/i })
+    // The audit echo resolves to its task on the tickets surface — never a
+    // dead `/memory/audit:…` link (the reported "memory not found" 404).
+    expect(link).toHaveAttribute('href', `/tickets/${task}`)
   })
 })
 

@@ -19,7 +19,11 @@ const MEMORY_KINDS = new Set([
   'gotcha',
   'memory',
   'doc',
+  'repo_profile',
 ])
+
+/** Uppercase `RecordId` prefixes (ADR-0015) for ticket-surface kinds. */
+const WORK_ID_PREFIXES = ['TASK-', 'EPIC-', 'SUB-', 'BUG-']
 
 /** A router `navigate` target for a hit, or `null` when it isn't routable. */
 export interface ResultTarget {
@@ -34,16 +38,43 @@ function syntheticKey(id: string): string {
 }
 
 /**
- * Resolve where selecting a hit should navigate. Audit entries route to the
- * audit dashboard (there is no per-entry detail route); unknown kinds return
- * `null` so the caller can no-op rather than navigate somewhere wrong.
+ * Underlying `RecordId` from an `audit:<RecordId>#h<n>` synthetic doc id.
+ * Returns `null` for non-audit ids or an empty record portion.
+ */
+export function recordIdFromAuditDoc(id: string): string | null {
+  const tag = 'audit:'
+  if (!id.startsWith(tag)) return null
+  const rest = id.slice(tag.length)
+  const hash = rest.indexOf('#')
+  const recordId = hash === -1 ? rest : rest.slice(0, hash)
+  return recordId.length > 0 ? recordId : null
+}
+
+/** Route a real record by its id prefix: ticket surface vs memory surface. */
+function recordTarget(recordId: string): ResultTarget {
+  const isWork = WORK_ID_PREFIXES.some((p) => recordId.startsWith(p))
+  return isWork
+    ? { to: '/tickets/$id', params: { id: recordId } }
+    : { to: '/memory/$id', params: { id: recordId } }
+}
+
+/**
+ * Resolve where selecting a hit should navigate.
+ *
+ * Audit entries are per-history-entry echoes (`audit:<RecordId>#h<n>`) with no
+ * detail route of their own, so they resolve to their *underlying* record's
+ * detail page. Unknown kinds (or a malformed audit key) return `null` so the
+ * caller can no-op rather than navigate somewhere wrong.
  */
 export function resultTarget(kind: string, id: string): ResultTarget | null {
   if (WORK_KINDS.has(kind)) return { to: '/tickets/$id', params: { id } }
   if (MEMORY_KINDS.has(kind)) return { to: '/memory/$id', params: { id } }
   if (kind === 'scope') return { to: '/scope/$id', params: { id: syntheticKey(id) } }
   if (kind === 'identity') return { to: '/identity/$id', params: { id: syntheticKey(id) } }
-  if (kind === 'audit') return { to: '/audit' }
+  if (kind === 'audit') {
+    const recordId = recordIdFromAuditDoc(id)
+    return recordId ? recordTarget(recordId) : null
+  }
   return null
 }
 

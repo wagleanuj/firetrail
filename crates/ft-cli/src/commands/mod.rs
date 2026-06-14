@@ -42,6 +42,7 @@ pub mod sync_cmd;
 pub mod trust;
 pub mod ui;
 pub mod update;
+pub mod upgrade;
 pub mod verify;
 
 use ft_core::Record;

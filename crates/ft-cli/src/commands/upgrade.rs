@@ -51,9 +51,6 @@ impl UpgradeOutcome {
     }
 
     /// Default-mode result after a successful install.
-    // Only called by the real (networked) `run`, which lands in Task 4; the
-    // placeholder `run` never reaches the install path.
-    #[allow(dead_code)]
     #[must_use]
     pub fn upgraded(current_version: String, new_version: Option<String>) -> Self {
         Self {
@@ -113,20 +110,65 @@ impl UpgradeOutcome {
 use crate::cli::{GlobalOpts, UpgradeArgs};
 use crate::commands::CommandOutcome;
 use crate::error::CliError;
+use axoupdater::AxoUpdater;
 
-/// `firetrail upgrade` entry point. (Network logic added in Task 4.)
-// The placeholder body never returns `Err`, but the real (networked) `run` in
-// Task 4 does; keep the fallible signature the dispatch arm + `main.rs` expect.
-#[allow(clippy::unnecessary_wraps)]
+/// `firetrail upgrade` entry point.
+///
+/// Self-updates via the install receipt the Firetrail installer wrote. Does
+/// **not** require a workspace. Returns a user error (not a panic) when the
+/// binary was installed some other way and has no receipt.
 pub fn run(args: &UpgradeArgs, _global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
     let current = env!("CARGO_PKG_VERSION").to_string();
-    // Placeholder wiring — replaced in Task 4.
-    let outcome = if args.check {
-        UpgradeOutcome::checked(current, false)
-    } else {
-        UpgradeOutcome::up_to_date(current)
-    };
-    Ok(CommandOutcome::Upgrade(outcome))
+
+    let mut updater = AxoUpdater::new_for("firetrail");
+    updater.load_receipt().map_err(|e| {
+        CliError::user(
+            "upgrade",
+            format!(
+                "this `firetrail` was not installed by the Firetrail installer, so it \
+                 can't self-update ({e}). Re-run the install script from the latest \
+                 GitHub release, or update via your package manager / `cargo install`."
+            ),
+        )
+    })?;
+
+    // Guard against updating a binary that the receipt isn't actually for
+    // (e.g. a package-manager copy alongside a shell-installed receipt).
+    if !updater
+        .check_receipt_is_for_this_executable()
+        .map_err(|e| CliError::internal("upgrade", e))?
+    {
+        return Err(CliError::user(
+            "upgrade",
+            "the running `firetrail` was not installed by the Firetrail installer \
+             (the install receipt points at a different binary); update it the way \
+             you installed it.",
+        ));
+    }
+
+    let update_available = updater
+        .is_update_needed_sync()
+        .map_err(|e| CliError::internal("upgrade", e))?;
+
+    if args.check {
+        return Ok(CommandOutcome::Upgrade(UpgradeOutcome::checked(
+            current,
+            update_available,
+        )));
+    }
+
+    if !update_available {
+        return Ok(CommandOutcome::Upgrade(UpgradeOutcome::up_to_date(current)));
+    }
+
+    let result = updater
+        .run_sync()
+        .map_err(|e| CliError::internal("upgrade", e))?;
+    let new_version = result.map(|r| r.new_version.to_string());
+    Ok(CommandOutcome::Upgrade(UpgradeOutcome::upgraded(
+        current,
+        new_version,
+    )))
 }
 
 #[cfg(test)]

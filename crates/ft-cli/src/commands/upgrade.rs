@@ -7,11 +7,6 @@
 //! `cargo install` or hand-copied build) it fails with an actionable message
 //! rather than attempting a network update.
 
-// The type below is wired into the CLI surface in a follow-up task; until then
-// the non-test build has no caller, so allow dead code for this intermediate
-// commit.
-#![allow(dead_code)]
-
 use serde::Serialize;
 
 /// Outcome of `firetrail upgrade`.
@@ -56,6 +51,9 @@ impl UpgradeOutcome {
     }
 
     /// Default-mode result after a successful install.
+    // Only called by the real (networked) `run`, which lands in Task 4; the
+    // placeholder `run` never reaches the install path.
+    #[allow(dead_code)]
     #[must_use]
     pub fn upgraded(current_version: String, new_version: Option<String>) -> Self {
         Self {
@@ -110,6 +108,25 @@ impl UpgradeOutcome {
             format!("upgrade {} (up to date)", self.current_version)
         }
     }
+}
+
+use crate::cli::{GlobalOpts, UpgradeArgs};
+use crate::commands::CommandOutcome;
+use crate::error::CliError;
+
+/// `firetrail upgrade` entry point. (Network logic added in Task 4.)
+// The placeholder body never returns `Err`, but the real (networked) `run` in
+// Task 4 does; keep the fallible signature the dispatch arm + `main.rs` expect.
+#[allow(clippy::unnecessary_wraps)]
+pub fn run(args: &UpgradeArgs, _global: &GlobalOpts) -> Result<CommandOutcome, CliError> {
+    let current = env!("CARGO_PKG_VERSION").to_string();
+    // Placeholder wiring — replaced in Task 4.
+    let outcome = if args.check {
+        UpgradeOutcome::checked(current, false)
+    } else {
+        UpgradeOutcome::up_to_date(current)
+    };
+    Ok(CommandOutcome::Upgrade(outcome))
 }
 
 #[cfg(test)]

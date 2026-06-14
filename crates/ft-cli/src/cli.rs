@@ -213,6 +213,9 @@ pub enum Command {
     /// Start the local Firetrail web UI server.
     Ui(UiArgs),
 
+    /// Self-update the `firetrail` binary to the latest release.
+    Upgrade(UpgradeArgs),
+
     /// Identity registry management (M5).
     #[command(subcommand)]
     Identity(IdentityCmd),
@@ -979,6 +982,14 @@ pub struct UiArgs {
     /// Pass through to `ft-ui`: relaxes the `Origin` check for Vite (`:5173`).
     #[arg(long)]
     pub dev: bool,
+}
+
+/// `firetrail upgrade [--check]` args.
+#[derive(Debug, clap::Args)]
+pub struct UpgradeArgs {
+    /// Report whether a newer release exists without installing it.
+    #[arg(long)]
+    pub check: bool,
 }
 
 /// `firetrail daemon start` arguments.

@@ -178,6 +178,8 @@ pub enum CommandOutcome {
     Daemon(daemon_cmd::DaemonOutcome),
     /// `firetrail ui`.
     Ui(ui::UiOutcome),
+    /// `firetrail upgrade`.
+    Upgrade(upgrade::UpgradeOutcome),
     /// `firetrail identity register`.
     IdentityRegister(identity::IdentityRegisterOutcome),
     /// `firetrail identity list`.
@@ -241,6 +243,7 @@ impl CommandOutcome {
             Self::ProfileResolve(p) => p.command,
             Self::Daemon(d) => d.command,
             Self::Ui(_) => "ui",
+            Self::Upgrade(_) => "upgrade",
             Self::IdentityRegister(r) => r.command,
             Self::IdentityList(r) => r.command,
             Self::IdentityShow(r) => r.command,
@@ -293,6 +296,7 @@ impl CommandOutcome {
             Self::ProfileResolve(p) => p.markdown(),
             Self::Daemon(d) => d.markdown(),
             Self::Ui(u) => u.markdown(),
+            Self::Upgrade(u) => u.markdown(),
             Self::IdentityRegister(r) => r.markdown(),
             Self::IdentityList(r) => r.markdown(),
             Self::IdentityShow(r) => r.markdown(),
@@ -345,6 +349,7 @@ impl CommandOutcome {
             Self::ProfileResolve(p) => p.quiet_line(),
             Self::Daemon(d) => d.quiet_line(),
             Self::Ui(u) => u.quiet_line(),
+            Self::Upgrade(u) => u.quiet_line(),
             Self::IdentityRegister(r) => r.quiet_line(),
             Self::IdentityList(r) => r.quiet_line(),
             Self::IdentityShow(r) => r.quiet_line(),
@@ -399,6 +404,7 @@ impl CommandOutcome {
             Self::ProfileResolve(p) => p.json_data(),
             Self::Daemon(d) => serde_json::to_value(d).unwrap_or(Value::Null),
             Self::Ui(u) => serde_json::to_value(u).unwrap_or(Value::Null),
+            Self::Upgrade(u) => serde_json::to_value(u).unwrap_or(Value::Null),
             Self::IdentityRegister(r) => serde_json::to_value(r).unwrap_or(Value::Null),
             Self::IdentityList(r) => serde_json::to_value(r).unwrap_or(Value::Null),
             Self::IdentityShow(r) => serde_json::to_value(r).unwrap_or(Value::Null),
@@ -451,6 +457,7 @@ impl CommandOutcome {
             Self::ProfileResolve(p) => p.warnings.clone(),
             Self::Daemon(d) => d.warnings.clone(),
             Self::Ui(u) => u.warnings.clone(),
+            Self::Upgrade(_) => Vec::new(),
             Self::IdentityRegister(r) => r.warnings.clone(),
             Self::IdentityList(r) => r.warnings.clone(),
             Self::IdentityShow(r) => r.warnings.clone(),

@@ -165,6 +165,7 @@ fn dispatch(cli: &Cli) -> Result<commands::CommandOutcome, CliError> {
         Command::Daemon(DaemonCmd::Stop) => commands::daemon_cmd::stop(&cli.global),
         Command::Daemon(DaemonCmd::Status) => commands::daemon_cmd::status(&cli.global),
         Command::Ui(args) => commands::ui::run(args, &cli.global),
+        Command::Upgrade(args) => commands::upgrade::run(args, &cli.global),
 
         Command::ClaimTakeover(args) => commands::claim::takeover(args, &cli.global),
 

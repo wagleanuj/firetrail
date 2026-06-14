@@ -134,6 +134,18 @@ cargo does not track the `dist/` directory for changes on its own.
 > inside `crates/ft-ui/web` (where `packageManager: pnpm@…` is declared) to
 > avoid this.
 
+### Updating firetrail
+
+Update an installed binary to the latest release:
+
+    firetrail upgrade            # install the latest release
+    firetrail upgrade --check    # report whether a newer release exists
+
+`upgrade` only works for binaries installed via the Firetrail installer
+(the `curl … | sh` script from a GitHub release), which records an install
+receipt. For `cargo install` or hand-copied builds it prints how to update
+instead. Note: `firetrail update <id>` is unrelated — it edits a record.
+
 ---
 
 ## 3. Initialise a workspace

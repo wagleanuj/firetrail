@@ -222,4 +222,10 @@ mod tests {
         assert_eq!(v["checkedOnly"], true);
         assert_eq!(v["installed"], false);
     }
+
+    // NOTE: the "no install receipt → friendly user error" path is verified by
+    // the manual binary smoke test (`firetrail upgrade --check` on a build with
+    // no receipt), not a unit test: triggering it deterministically requires
+    // overriding HOME/XDG via `std::env::set_var`, which is `unsafe` in edition
+    // 2024 and the workspace forbids `unsafe` (`unsafe_code = "forbid"`).
 }

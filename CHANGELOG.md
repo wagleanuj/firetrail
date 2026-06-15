@@ -5,6 +5,17 @@ All notable changes to Firetrail are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.2.5 - 2026-06-15
+
+### Added
+
+- **`firetrail upgrade`:** self-update the installed binary to the latest
+  GitHub release, with `firetrail upgrade --check` to report availability
+  without installing. Backed by `axoupdater`; works for binaries installed via
+  the Firetrail installer (which records an install receipt) and prints
+  actionable guidance otherwise. Named `upgrade` to avoid colliding with the
+  existing record `update` command (firetrail-7oic).
+
 ## 0.2.4 - 2026-06-14
 
 ### Fixed

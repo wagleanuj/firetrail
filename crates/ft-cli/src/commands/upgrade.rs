@@ -223,9 +223,10 @@ mod tests {
         assert_eq!(v["installed"], false);
     }
 
-    // NOTE: the "no install receipt → friendly user error" path is verified by
-    // the manual binary smoke test (`firetrail upgrade --check` on a build with
-    // no receipt), not a unit test: triggering it deterministically requires
-    // overriding HOME/XDG via `std::env::set_var`, which is `unsafe` in edition
-    // 2024 and the workspace forbids `unsafe` (`unsafe_code = "forbid"`).
+    // NOTE: the "no install receipt → friendly user error" path is covered by
+    // the hermetic integration test in `tests/upgrade.rs`, which runs the
+    // binary as a subprocess with `AXOUPDATER_CONFIG_PATH` pointed at an empty
+    // dir. It lives there (not here) because redirecting axoupdater's receipt
+    // search in-process needs `std::env::set_var` — `unsafe` in edition 2024,
+    // and the workspace forbids `unsafe` (`unsafe_code = "forbid"`).
 }
